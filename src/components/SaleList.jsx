@@ -8,6 +8,21 @@ function saleServicesText(sale) {
   return sale.service || sale.concept || "Sin servicio";
 }
 
+function money(value) {
+  return `${Number(value || 0).toFixed(2)} EUR`;
+}
+
+function groupSalesBy(items, keyField, configuredKeys = []) {
+  const groups = Object.fromEntries((configuredKeys || []).map((key) => [key, 0]));
+
+  items.forEach((sale) => {
+    const key = sale[keyField] || "Sin especificar";
+    groups[key] = (groups[key] || 0) + Number(sale.total || sale.amount || 0);
+  });
+
+  return groups;
+}
+
 function SaleItem({ sale, clients, onEditSale, onDeleteSale }) {
   return (
     <article className="list-item sale-card">
@@ -30,7 +45,8 @@ function SaleItem({ sale, clients, onEditSale, onDeleteSale }) {
   );
 }
 
-function SaleList({ sales, clients, selectedDate, onEditSale, onDeleteSale }) {
+function SaleList({ sales, clients, config, selectedDate, onEditSale, onDeleteSale }) {
+  const [showDaySales, setShowDaySales] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
@@ -47,22 +63,69 @@ function SaleList({ sales, clients, selectedDate, onEditSale, onDeleteSale }) {
       .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")))
   ), [sales, selectedDate, historyFrom, historyTo]);
 
+  const daySummary = useMemo(() => {
+    const total = daySales.reduce((sum, sale) => sum + Number(sale.total || sale.amount || 0), 0);
+    return {
+      total,
+      count: daySales.length,
+      averageTicket: daySales.length ? total / daySales.length : 0,
+      paymentMethods: groupSalesBy(daySales, "paymentMethod", config.paymentMethods),
+      entryChannels: groupSalesBy(daySales, "entryChannel", config.entryChannels),
+    };
+  }, [daySales, config.paymentMethods, config.entryChannels]);
+
   return (
     <section className="panel list-panel">
-      <h2>Ventas del d&iacute;a</h2>
+      <h2>Resumen del d&iacute;a</h2>
       <p className="muted-text">{selectedDate}</p>
-      <div className="list">
-        {daySales.length === 0 && <p className="empty-state">Sin ventas en la fecha seleccionada.</p>}
-        {daySales.map((sale) => (
-          <SaleItem key={sale.id} sale={sale} clients={clients} onEditSale={onEditSale} onDeleteSale={onDeleteSale} />
-        ))}
+
+      <div className="daily-summary">
+        <article className="daily-summary-hero">
+          <span>Total ventas del dia</span>
+          <strong>{money(daySummary.total)}</strong>
+        </article>
+        <div className="summary-line"><span>N&ordm; de ventas</span><strong>{daySummary.count}</strong></div>
+        <div className="summary-line"><span>Ticket medio</span><strong>{money(daySummary.averageTicket)}</strong></div>
       </div>
 
+      <section className="summary-section">
+        <h3>Metodos de pago</h3>
+        <div className="list compact-list">
+          {Object.entries(daySummary.paymentMethods).map(([method, amount]) => (
+            <div className="summary-line" key={method}><span>{method}</span><strong>{money(amount)}</strong></div>
+          ))}
+        </div>
+      </section>
+
+      <section className="summary-section">
+        <h3>Ventas por canal</h3>
+        <div className="list compact-list">
+          {Object.entries(daySummary.entryChannels).map(([channel, amount]) => (
+            <div className="summary-line" key={channel}><span>{channel}</span><strong>{money(amount)}</strong></div>
+          ))}
+        </div>
+      </section>
+
       <div className="history-toggle">
+        <button className="secondary-button" type="button" onClick={() => setShowDaySales((current) => !current)}>
+          Ver ventas del dia
+        </button>
         <button className="secondary-button" type="button" onClick={() => setShowHistory((current) => !current)}>
           Hist&oacute;rico de ventas
         </button>
       </div>
+
+      {showDaySales && (
+        <section className="sales-history">
+          <h3>Ventas del d&iacute;a</h3>
+          <div className="list">
+            {daySales.length === 0 && <p className="empty-state">Sin ventas en la fecha seleccionada.</p>}
+            {daySales.map((sale) => (
+              <SaleItem key={sale.id} sale={sale} clients={clients} onEditSale={onEditSale} onDeleteSale={onDeleteSale} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {showHistory && (
         <section className="sales-history">

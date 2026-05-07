@@ -18,6 +18,7 @@ function Settings({ config, onSave, onRestoreBaseConfig }) {
   const [form, setForm] = useState({
     employees: listToText(config.employees),
     paymentMethods: listToText(config.paymentMethods),
+    entryChannels: listToText(config.entryChannels),
     expenseCategories: listToText(config.expenseCategories),
     monthlyGoal: config.monthlyGoal,
     loyaltyVisits: config.loyaltyVisits,
@@ -101,6 +102,7 @@ function Settings({ config, onSave, onRestoreBaseConfig }) {
       employees: textToList(form.employees),
       services,
       paymentMethods: textToList(form.paymentMethods),
+      entryChannels: textToList(form.entryChannels),
       expenseCategories: textToList(form.expenseCategories),
       monthlyGoal: Number(form.monthlyGoal || 0),
       loyaltyVisits: Number(form.loyaltyVisits || 5),
@@ -114,7 +116,8 @@ function Settings({ config, onSave, onRestoreBaseConfig }) {
     onRestoreBaseConfig();
     setForm({
       employees: "Marianne\nAmbar\nGrace\nLeidys",
-      paymentMethods: "Tarjeta\nEfectivo\nBizum",
+      paymentMethods: "Efectivo\nTarjeta\nBizum\nTarjeta regalo\nBonos",
+      entryChannels: "Walk-in/Calle\nInstagram\nGoogle\nTreatwell\nBooksy\nWhatsApp\nRecomendacion\nTikTok\nCliente recurrente\nAcademia\nOtro",
       expenseCategories: "Suministros\nNominas\nAlquiler\nGestoria\nMateriales\nImpuestos\nComisiones bancarias\nMarketing\nMantenimiento\nServicios externos\nOtros",
       monthlyGoal: 4500,
       loyaltyVisits: 5,
@@ -130,7 +133,10 @@ function Settings({ config, onSave, onRestoreBaseConfig }) {
           <label>Metodos pago<textarea name="paymentMethods" value={form.paymentMethods} onChange={updateField} /></label>
         </div>
         <div className="field-row">
+          <label>Canales de entrada<textarea name="entryChannels" value={form.entryChannels} onChange={updateField} /></label>
           <label>Categorias gasto<textarea name="expenseCategories" value={form.expenseCategories} onChange={updateField} /></label>
+        </div>
+        <div className="field-row">
           <div className="inline-form">
             <label>Objetivo mensual<input type="number" name="monthlyGoal" value={form.monthlyGoal} onChange={updateField} /></label>
             <label>Visitas fidelizacion<input type="number" min="1" name="loyaltyVisits" value={form.loyaltyVisits} onChange={updateField} /></label>

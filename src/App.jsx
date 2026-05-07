@@ -188,6 +188,7 @@ function App() {
           <SaleList
             sales={data.sales}
             clients={clientMap}
+            config={data.config}
             selectedDate={selectedSaleDate}
             onEditSale={(sale) => {
               setEditingSale(sale);

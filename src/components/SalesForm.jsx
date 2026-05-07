@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
 const CUSTOM_SERVICE = "custom-service";
-const CREATE_CLIENT_VALUE = "__create_client__";
-
 function serviceSearchText(service) {
   return `${service.name} ${service.category} ${service.duration}`.toLowerCase();
 }
@@ -11,18 +9,25 @@ function createLineId() {
   return `line-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function emptySaleForm() {
+  return {
+    date: new Date().toISOString().slice(0, 10),
+    clientId: "",
+    employee: "",
+    extra: "0",
+    paymentMethod: "",
+    entryChannel: "",
+    commissionPercent: "0",
+    notes: "",
+  };
+}
+
 function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateClient, onCancelEdit, onDateChange }) {
   const catalogServices = (config.services || []).filter((service) => service.active !== false);
-  const [form, setForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    clientId: clients[0]?.id || "",
-    employee: config.employees[0] || "",
-    extra: "0",
-    paymentMethod: config.paymentMethods[0] || "",
-    commissionPercent: "10",
-    notes: "",
-  });
+  const [form, setForm] = useState(() => emptySaleForm());
   const [saleServices, setSaleServices] = useState([]);
+  const [clientQuery, setClientQuery] = useState("");
+  const [showClientResults, setShowClientResults] = useState(false);
   const [serviceQuery, setServiceQuery] = useState("");
   const [showServiceResults, setShowServiceResults] = useState(false);
   const [customServiceName, setCustomServiceName] = useState("");
@@ -40,9 +45,12 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
       employee: editingSale.employee || config.employees[0] || "",
       extra: String(editingSale.extra ?? 0),
       paymentMethod: editingSale.paymentMethod || config.paymentMethods[0] || "",
+      entryChannel: editingSale.entryChannel || config.entryChannels?.[0] || "",
       commissionPercent: String(editingSale.commissionPercent ?? 0),
       notes: editingSale.notes || "",
     });
+    setClientQuery(editingSale.clientName || clients.find((client) => client.id === editingSale.clientId)?.name || "");
+    setShowClientResults(false);
     setSaleServices((editingSale.services || []).map((service) => ({
       lineId: createLineId(),
       serviceId: service.serviceId || "",
@@ -57,13 +65,19 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
     setCustomServiceName("");
     setCustomServicePrice("");
     onDateChange?.(nextDate);
-  }, [editingSale, config.employees, config.paymentMethods, onDateChange]);
+  }, [editingSale, clients, config.employees, config.paymentMethods, config.entryChannels, onDateChange]);
 
   const filteredServices = useMemo(() => {
     const query = serviceQuery.trim().toLowerCase();
     if (!query) return [];
     return catalogServices.filter((service) => serviceSearchText(service).includes(query)).slice(0, 20);
   }, [serviceQuery, catalogServices]);
+
+  const filteredClients = useMemo(() => {
+    const query = clientQuery.trim().toLowerCase();
+    if (!query) return [];
+    return clients.filter((client) => `${client.name} ${client.phone || ""}`.toLowerCase().includes(query)).slice(0, 12);
+  }, [clientQuery, clients]);
 
   const totals = useMemo(() => {
     const subtotalServices = saleServices.reduce((total, service) => total + Number(service.price || 0) * Number(service.quantity || 1), 0);
@@ -85,16 +99,34 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
     }
   };
 
-  const updateClientField = (event) => {
-    const value = event.target.value;
-    if (value === CREATE_CLIENT_VALUE) {
-      setShowQuickClientForm(true);
-      setForm({ ...form, clientId: "" });
-      return;
-    }
-
+  const selectClient = (client) => {
+    setForm((current) => ({ ...current, clientId: client.id }));
+    setClientQuery(client.name || "");
+    setShowClientResults(false);
     setShowQuickClientForm(false);
-    setForm({ ...form, clientId: value });
+  };
+
+  const clearClient = () => {
+    setForm((current) => ({ ...current, clientId: "" }));
+    setClientQuery("");
+    setShowClientResults(false);
+    setShowQuickClientForm(false);
+  };
+
+  const openQuickClientForm = () => {
+    setForm((current) => ({ ...current, clientId: "" }));
+    setClientQuery("");
+    setShowClientResults(false);
+    setShowQuickClientForm(true);
+  };
+
+  const updateClientQuery = (event) => {
+    const value = event.target.value;
+    setClientQuery(value);
+    setShowClientResults(Boolean(value.trim()));
+    if (!value.trim()) {
+      setForm((current) => ({ ...current, clientId: "" }));
+    }
   };
 
   const updateQuickClientField = (event) => {
@@ -111,9 +143,8 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
     });
     if (!client) return;
 
-    setForm((current) => ({ ...current, clientId: client.id }));
+    selectClient(client);
     setQuickClient({ name: "", phone: "", email: "", observations: "" });
-    setShowQuickClientForm(false);
   };
 
   const addServiceLine = (service) => {
@@ -160,21 +191,15 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
   const resetSaleForm = () => {
     const nextDate = new Date().toISOString().slice(0, 10);
     setSaleServices([]);
+    setClientQuery("");
+    setShowClientResults(false);
     setServiceQuery("");
     setShowServiceResults(false);
     setCustomServiceName("");
     setCustomServicePrice("");
     setShowQuickClientForm(false);
     setQuickClient({ name: "", phone: "", email: "", observations: "" });
-    setForm({
-      date: nextDate,
-      clientId: clients[0]?.id || "",
-      employee: config.employees[0] || "",
-      extra: "0",
-      paymentMethod: config.paymentMethods[0] || "",
-      commissionPercent: "10",
-      notes: "",
-    });
+    setForm({ ...emptySaleForm(), date: nextDate });
     onDateChange?.(nextDate);
   };
 
@@ -223,7 +248,30 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
       <h2>{editingSale ? "Editar venta" : "Nueva venta"}</h2>
       <div className="field-row">
         <label>Fecha<input type="date" name="date" value={form.date} onChange={updateField} /></label>
-        <label>Cliente<select name="clientId" value={form.clientId} onChange={updateClientField}><option value="">Sin cliente</option><option value={CREATE_CLIENT_VALUE}>+ Crear cliente nuevo</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+        <label className="service-search-field">
+          Cliente
+          <input
+            value={clientQuery}
+            onChange={updateClientQuery}
+            onFocus={() => setShowClientResults(Boolean(clientQuery.trim()))}
+            placeholder="Buscar cliente por nombre o telefono"
+          />
+          <div className="client-quick-actions">
+            <button className="secondary-button" type="button" onClick={clearClient}>Sin cliente</button>
+            <button className="secondary-button" type="button" onClick={openQuickClientForm}>+ Crear cliente nuevo</button>
+          </div>
+          {showClientResults && (
+            <div className="service-results">
+              {filteredClients.map((client) => (
+                <button className="service-result" type="button" key={client.id} onMouseDown={() => selectClient(client)}>
+                  <strong>{client.name}</strong>
+                  <span>{client.phone || "Sin telefono"}{client.email ? ` - ${client.email}` : ""}</span>
+                </button>
+              ))}
+              {filteredClients.length === 0 && <p className="empty-state">Sin clientes con esa busqueda.</p>}
+            </div>
+          )}
+        </label>
       </div>
       {showQuickClientForm && (
         <section className="quick-client-box">
@@ -246,6 +294,7 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
         <label>Empleada<select name="employee" value={form.employee} onChange={updateField}>{config.employees.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label>Metodo pago<select name="paymentMethod" value={form.paymentMethod} onChange={updateField}>{config.paymentMethods.map((item) => <option key={item}>{item}</option>)}</select></label>
       </div>
+      <label>Canal de entrada<select name="entryChannel" value={form.entryChannel} onChange={updateField}>{(config.entryChannels || []).map((item) => <option key={item}>{item}</option>)}</select></label>
 
       <label className="service-search-field">
         Servicio
@@ -299,14 +348,10 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
       </div>
       <label>Observaciones<textarea name="notes" value={form.notes} onChange={updateField} placeholder="Observaciones internas de la venta" /></label>
 
-      <div className="calculated-row tax-row">
+      <div className="calculated-row operational-total-row">
         <span>Subtotal servicios: <b>{totals.subtotalServices.toFixed(2)} EUR</b></span>
         <span>Extra: <b>{Number(form.extra || 0).toFixed(2)} EUR</b></span>
         <span>Total venta: <b>{totals.total.toFixed(2)} EUR</b></span>
-        <span>IVA incluido 21%: <b>{totals.ivaAmount.toFixed(2)} EUR</b></span>
-        <span>Neto sin IVA: <b>{totals.netWithoutVat.toFixed(2)} EUR</b></span>
-        <span>Comision: <b>{totals.commissionAmount.toFixed(2)} EUR</b></span>
-        <span>Neto despues de IVA y comision: <b>{totals.netAfterCommission.toFixed(2)} EUR</b></span>
       </div>
       <div className="form-actions">
         <button type="submit">{editingSale ? "Guardar cambios" : "Guardar venta"}</button>

@@ -374,6 +374,55 @@ h3 {
   padding-top: 16px;
 }
 
+.daily-summary,
+.summary-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.daily-summary-hero {
+  background: #fbf8f1;
+  border: 1px solid #eadfcb;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+}
+
+.daily-summary-hero span,
+.summary-line span {
+  color: #776f64;
+  font-size: 0.82rem;
+}
+
+.daily-summary-hero strong {
+  color: #171412;
+  font-size: 1.55rem;
+  font-weight: 600;
+}
+
+.compact-list {
+  gap: 7px;
+}
+
+.summary-line {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #ebe4d8;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.summary-line strong {
+  color: #8a6d2e;
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
 .list-item,
 .stat-row,
 .client-row {
@@ -670,6 +719,18 @@ h3 {
 
 .service-search-field {
   position: relative;
+}
+
+.client-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.client-quick-actions button {
+  font-size: 0.82rem;
+  min-height: 34px;
+  padding: 0.38rem 0.62rem;
 }
 
 .service-results {

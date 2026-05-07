@@ -98,7 +98,8 @@ const defaultData = {
   config: {
     employees: ["Marianne", "Ambar", "Grace", "Leidys"],
     services: initialServices,
-    paymentMethods: ["Tarjeta", "Efectivo", "Bizum"],
+    paymentMethods: ["Efectivo", "Tarjeta", "Bizum", "Tarjeta regalo", "Bonos"],
+    entryChannels: ["Walk-in/Calle", "Instagram", "Google", "Treatwell", "Booksy", "WhatsApp", "Recomendacion", "TikTok", "Cliente recurrente", "Academia", "Otro"],
     expenseCategories: [
       "Suministros",
       "Nominas",
@@ -121,6 +122,7 @@ const defaultData = {
 const vsStudioBaseConfig = {
   employees: defaultData.config.employees,
   paymentMethods: defaultData.config.paymentMethods,
+  entryChannels: defaultData.config.entryChannels,
   expenseCategories: defaultData.config.expenseCategories,
   monthlyGoal: defaultData.config.monthlyGoal,
   loyaltyVisits: defaultData.config.loyaltyVisits,
@@ -451,6 +453,8 @@ function normalizeConfig(config) {
 
   return {
     ...config,
+    paymentMethods: config.paymentMethods || defaultData.config.paymentMethods,
+    entryChannels: config.entryChannels || defaultData.config.entryChannels,
     services: hasLegacyServices ? clone(initialServices) : normalizeServices(rawServices),
   };
 }
@@ -481,6 +485,7 @@ function normalizeSale(sale) {
     ivaAmount: fields.ivaAmount,
     netWithoutVat: fields.netWithoutVat,
     paymentMethod: sale.paymentMethod || sale.metodoPago || "",
+    entryChannel: sale.entryChannel || sale.channel || "",
     commissionPercent: fields.commissionPercent,
     commissionAmount: fields.commissionAmount,
     netAfterCommission: fields.netAfterCommission,
