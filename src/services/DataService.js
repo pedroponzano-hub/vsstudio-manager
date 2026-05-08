@@ -953,6 +953,26 @@ const DataService = {
     return this.getData();
   },
 
+  updateAppointment(appointmentId, updates) {
+    const currentAppointments = this.getAppointments();
+    const existingAppointment = currentAppointments.find((appointment) => appointment.id === appointmentId);
+    if (!existingAppointment) return this.getData();
+
+    const updatedAppointment = { ...existingAppointment, ...updates, id: appointmentId };
+    writeCollection(
+      "appointments",
+      currentAppointments.map((appointment) => (appointment.id === appointmentId ? updatedAppointment : appointment)),
+    );
+    saveDocumentToFirestore("appointments", updatedAppointment);
+    return this.getData();
+  },
+
+  deleteAppointment(appointmentId) {
+    writeCollection("appointments", this.getAppointments().filter((appointment) => appointment.id !== appointmentId));
+    deleteDocumentFromFirestore("appointments", appointmentId);
+    return this.getData();
+  },
+
   deleteSale(arg1, arg2) {
     const id = arg2 || arg1;
     writeCollection("sales", this.getSales().filter((sale) => sale.id !== id));

@@ -160,6 +160,8 @@ function App() {
   };
   const deleteClient = (clientId) => setData(DataService.deleteClient(clientId));
   const addAppointment = (appointment) => setData(DataService.addAppointment(appointment));
+  const updateAppointment = (appointmentId, updates) => setData(DataService.updateAppointment(appointmentId, updates));
+  const deleteAppointment = (appointmentId) => setData(DataService.deleteAppointment(appointmentId));
   const updateConfig = (updates) => setData(DataService.updateConfig(updates));
   const restoreVSStudioConfig = () => setData(DataService.restoreVSStudioConfig());
   const importTreatwellClients = (rows) => {
@@ -274,7 +276,16 @@ function App() {
         />
       )}
       {activeTab === "loyalty" && <Loyalty clients={data.clients} config={data.config} />}
-      {activeTab === "agenda" && <Agenda clients={data.clients} config={data.config} onSave={addAppointment} />}
+      {activeTab === "agenda" && (
+        <Agenda
+          clients={data.clients}
+          config={data.config}
+          appointments={data.appointments}
+          onSave={addAppointment}
+          onUpdate={updateAppointment}
+          onDelete={deleteAppointment}
+        />
+      )}
       {activeTab === "statistics" && <Statistics dataVersion={data} />}
       {activeTab === "settings" && <Settings config={data.config} onSave={updateConfig} onRestoreBaseConfig={restoreVSStudioConfig} onImportClients={importTreatwellClients} />}
     </main>
