@@ -242,6 +242,17 @@ h3 {
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
 }
 
+.sales-workspace {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 1180px;
+}
+
+.sales-main-column {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
 .two-column {
   align-items: start;
   grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
@@ -271,6 +282,11 @@ h3 {
 .panel,
 .reset-panel {
   padding: 18px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 14px;
 }
 
 .reset-panel {
@@ -323,6 +339,44 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.sale-top-row {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 210px);
+}
+
+.sale-form-heading {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 190px);
+}
+
+.sale-form-heading h2 {
+  align-self: center;
+}
+
+.compact-date-field {
+  background: #fbf8f1;
+  border: 1px solid #eadfcb;
+  border-radius: 999px;
+  gap: 0.18rem;
+  padding: 8px 12px;
+}
+
+.compact-date-field input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  min-height: 32px;
+  padding: 0;
+}
+
+.compact-date-field input:focus {
+  box-shadow: none;
+}
+
 .filters-panel {
   align-items: end;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -353,6 +407,11 @@ h3 {
   overflow: auto;
 }
 
+.sales-history-panel {
+  max-height: none;
+  overflow: visible;
+}
+
 .muted-text {
   color: #776f64;
   font-size: 0.9rem;
@@ -362,6 +421,8 @@ h3 {
 .history-toggle,
 .history-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: flex-start;
   margin-top: 14px;
 }
@@ -421,6 +482,37 @@ h3 {
   color: #8a6d2e;
   font-size: 0.94rem;
   font-weight: 700;
+}
+
+.sales-day-cards {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 auto;
+  width: min(760px, 100%);
+}
+
+.sales-day-card {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #e8e0d3;
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(44, 36, 24, 0.07);
+  display: grid;
+  gap: 6px;
+  min-height: 86px;
+  padding: 14px 16px;
+}
+
+.sales-day-card span {
+  color: #776f64;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.sales-day-card strong {
+  color: #171412;
+  font-size: 1.35rem;
+  font-weight: 600;
 }
 
 .list-item,
@@ -627,6 +719,41 @@ h3 {
   border-color: #b8974c;
 }
 
+.client-detail-grid,
+.profile-edit-form {
+  display: grid;
+  gap: 12px;
+}
+
+.client-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.client-detail-grid div {
+  background: #fbf8f1;
+  border: 1px solid #eadfcb;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.client-detail-grid span {
+  color: #776f64;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.client-detail-grid strong,
+.client-detail-grid p {
+  color: #171412;
+  overflow-wrap: anywhere;
+}
+
+.wide-detail {
+  grid-column: 1 / -1;
+}
+
 .search-panel {
   display: grid;
   gap: 8px;
@@ -708,6 +835,66 @@ h3 {
   gap: 16px;
 }
 
+.import-panel,
+.import-result {
+  display: grid;
+  gap: 14px;
+}
+
+.import-controls {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 1fr) auto;
+}
+
+.progress-track {
+  background: #f2eadc;
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.progress-track span {
+  background: #c9aa63;
+  display: block;
+  height: 100%;
+  transition: width 0.25s ease;
+}
+
+.import-result {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.import-result article {
+  background: #fbf8f1;
+  border: 1px solid #eadfcb;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.import-result span {
+  color: #776f64;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.import-result strong {
+  color: #171412;
+  font-size: 1.35rem;
+}
+
+.import-errors {
+  grid-column: 1 / -1;
+}
+
+.import-errors p {
+  color: #8a3325;
+  font-size: 0.86rem;
+}
+
 .service-form {
   align-items: end;
   grid-template-columns: minmax(220px, 1fr) 160px auto auto;
@@ -719,6 +906,48 @@ h3 {
 
 .service-search-field {
   position: relative;
+}
+
+.sale-services-workflow,
+.sale-admin-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sale-services-workflow {
+  background: #fffaf2;
+  border: 1px solid #eadfcb;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.sale-admin-section {
+  border-top: 1px solid #eee6d8;
+  padding-top: 14px;
+}
+
+.service-search-primary {
+  color: #4f463b;
+  font-size: 0.95rem;
+}
+
+.service-search-primary input {
+  border-color: #d8c69a;
+  font-size: 1rem;
+  min-height: 54px;
+  padding: 0.85rem 1rem;
+}
+
+.custom-service-toggle {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.small-action-button {
+  font-size: 0.84rem;
+  min-height: 36px;
+  padding: 0.44rem 0.7rem;
 }
 
 .client-quick-actions {
@@ -816,6 +1045,10 @@ h3 {
   width: 100%;
 }
 
+.compact-custom-service {
+  padding: 12px;
+}
+
 .form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -846,6 +1079,36 @@ h3 {
 
 .wide-panel {
   grid-column: 1 / -1;
+}
+
+.channel-stats {
+  display: grid;
+  gap: 8px;
+}
+
+.channel-row {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #ebe4d8;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 1fr) minmax(110px, auto) minmax(90px, auto) minmax(150px, auto);
+  padding: 10px 12px;
+}
+
+.channel-row span {
+  color: #171412;
+  font-weight: 700;
+}
+
+.channel-row strong {
+  color: #8a6d2e;
+}
+
+.channel-row small {
+  color: #776f64;
+  font-size: 0.82rem;
 }
 
 .sales-day-table {
@@ -936,6 +1199,7 @@ h3 {
 
   .summary-grid,
   .cards-grid,
+  .import-result,
   .workspace,
   .two-column,
   .filters-panel,
@@ -946,6 +1210,14 @@ h3 {
   .sale-service-card,
   .loyalty-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sales-day-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sales-workspace {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -989,11 +1261,17 @@ h3 {
 
   .summary-grid,
   .cards-grid,
+  .import-controls,
+  .import-result,
   .workspace,
   .two-column,
   .field-row,
+  .sale-top-row,
+  .sale-form-heading,
   .filters-panel,
   .commission-card,
+  .channel-row,
+  .client-detail-grid,
   .calculated-row,
   .reset-panel,
   .reset-actions,
@@ -1036,6 +1314,15 @@ h3 {
     width: auto;
   }
 
+  .sale-services-workflow {
+    padding: 12px;
+  }
+
+  .custom-service-toggle,
+  .custom-service-toggle button {
+    width: 100%;
+  }
+
   .commission-card-numbers,
   .commission-status-control {
     justify-content: flex-start;
@@ -1043,6 +1330,10 @@ h3 {
   }
 
   .summary-grid.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-day-cards {
     grid-template-columns: 1fr;
   }
 

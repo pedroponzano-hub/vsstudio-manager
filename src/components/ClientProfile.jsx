@@ -10,21 +10,86 @@ function getSaleServices(sale) {
 }
 
 function ClientProfile({ client, sales, config, onUpdateClient }) {
-  const [observations, setObservations] = useState(client.observations || client.notes || "");
-  const [interests, setInterests] = useState(client.interests || "");
+  const [isEditing, setIsEditing] = useState(false);
+  const [form, setForm] = useState({
+    name: client.name || "",
+    lastName: client.lastName || client.apellidos || "",
+    phone: client.phone || "",
+    email: client.email || "",
+    observations: client.observations || client.notes || "",
+    interests: client.interests || "",
+  });
   const stamps = Number(client.loyaltyStamps || 0);
   const required = Number(config.loyaltyVisits || 5);
   const missing = Math.max(required - stamps, 0);
   const hasPrize = stamps >= required;
 
-  const save = () => onUpdateClient(client.id, { observations, interests });
+  const resetForm = () => {
+    setForm({
+      name: client.name || "",
+      lastName: client.lastName || client.apellidos || "",
+      phone: client.phone || "",
+      email: client.email || "",
+      observations: client.observations || client.notes || "",
+      interests: client.interests || "",
+    });
+  };
+
+  const updateField = (event) => setForm({ ...form, [event.target.name]: event.target.value });
+
+  const startEdit = () => {
+    resetForm();
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    resetForm();
+    setIsEditing(false);
+  };
+
+  const save = (event) => {
+    event.preventDefault();
+    if (!form.name.trim()) return;
+    onUpdateClient(client.id, form);
+    setIsEditing(false);
+  };
 
   return (
     <article className="panel profile">
       <div className="section-title">
-        <h2>{client.name}</h2>
-        <span>{client.phone}</span>
+        <div>
+          <h2>{client.name}</h2>
+          <span>{client.phone || "Sin telefono"}{client.email ? ` - ${client.email}` : ""}</span>
+        </div>
+        {!isEditing && <button className="secondary-button" type="button" onClick={startEdit}>Editar</button>}
       </div>
+      {isEditing ? (
+        <form className="profile-edit-form" onSubmit={save}>
+          <div className="field-row">
+            <label>Nombre<input name="name" value={form.name} onChange={updateField} /></label>
+            <label>Apellidos<input name="lastName" value={form.lastName} onChange={updateField} /></label>
+          </div>
+          <div className="field-row">
+            <label>Telefono<input name="phone" value={form.phone} onChange={updateField} /></label>
+            <label>Email<input name="email" value={form.email} onChange={updateField} /></label>
+          </div>
+          <label>Observaciones<textarea name="observations" value={form.observations} onChange={updateField} /></label>
+          <label>Intereses<textarea name="interests" value={form.interests} onChange={updateField} /></label>
+          <div className="row-actions">
+            <button type="submit">Guardar cambios</button>
+            <button className="secondary-button" type="button" onClick={cancelEdit}>Cancelar</button>
+          </div>
+        </form>
+      ) : (
+        <section className="client-detail-grid">
+          <div><span>Nombre</span><strong>{client.name || "-"}</strong></div>
+          <div><span>Apellidos</span><strong>{client.lastName || client.apellidos || "-"}</strong></div>
+          <div><span>Telefono</span><strong>{client.phone || "-"}</strong></div>
+          <div><span>Email</span><strong>{client.email || "-"}</strong></div>
+          <div className="wide-detail"><span>Observaciones</span><p>{client.observations || client.notes || "-"}</p></div>
+          <div className="wide-detail"><span>Intereses</span><p>{client.interests || "-"}</p></div>
+        </section>
+      )}
       <div className="summary-grid compact">
         <div className="metric"><span>Total visitas</span><strong>{client.visits || 0}</strong></div>
         <div className="metric"><span>Total gastado</span><strong>{money(client.totalSpent)}</strong></div>
@@ -38,9 +103,6 @@ function ClientProfile({ client, sales, config, onUpdateClient }) {
           <p>{hasPrize ? "🎁 Premio disponible" : `Faltan ${missing} para premio`}</p>
         </div>
       </section>
-      <label>Observaciones<textarea value={observations} onChange={(event) => setObservations(event.target.value)} /></label>
-      <label>Intereses<textarea value={interests} onChange={(event) => setInterests(event.target.value)} /></label>
-      <button type="button" onClick={save}>Guardar perfil</button>
       <h3>Historial</h3>
       <div className="list">
         {sales.map((sale) => (

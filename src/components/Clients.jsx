@@ -7,10 +7,8 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(clients[0]?.id || "");
   const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState("");
-  const filteredClients = clients.filter((client) => `${client.name} ${client.phone}`.toLowerCase().includes(query.toLowerCase()));
+  const filteredClients = clients.filter((client) => `${client.name} ${client.phone} ${client.email}`.toLowerCase().includes(query.toLowerCase()));
   const selectedClient = clients.find((client) => client.id === selectedId) || filteredClients[0] || clients[0];
-  const isEditing = Boolean(editingId);
 
   const updateField = (event) => setForm({ ...form, [event.target.name]: event.target.value });
 
@@ -18,29 +16,7 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
     event.preventDefault();
     if (!form.name.trim()) return;
 
-    if (isEditing) {
-      onUpdateClient(editingId, form);
-      setEditingId("");
-    } else {
-      onCreateClient(form);
-    }
-    setForm(emptyForm);
-  };
-
-  const startEdit = (client) => {
-    setEditingId(client.id);
-    setSelectedId(client.id);
-    setForm({
-      name: client.name || "",
-      phone: client.phone || "",
-      email: client.email || "",
-      observations: client.observations || client.notes || "",
-      interests: client.interests || "",
-    });
-  };
-
-  const cancelEdit = () => {
-    setEditingId("");
+    onCreateClient(form);
     setForm(emptyForm);
   };
 
@@ -49,37 +25,34 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
     if (!confirmed) return;
     onDeleteClient(client.id);
     if (selectedId === client.id) setSelectedId("");
-    if (editingId === client.id) cancelEdit();
   };
 
   return (
     <section className="two-column">
       <div className="panel">
         <h2>Clientes</h2>
-        <label>Buscar<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre o telefono" /></label>
+        <label>Buscar<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre, telefono o email" /></label>
         <div className="list">
           {filteredClients.map((client) => (
             <article className="client-row" key={client.id}>
               <button className="client-button" type="button" onClick={() => setSelectedId(client.id)}>
-                <span>{client.name}</span><small>{client.phone}</small>
+                <span>{client.name}</span><small>{client.phone || "Sin telefono"}{client.email ? ` - ${client.email}` : ""}</small>
               </button>
               <div className="row-actions">
-                <button type="button" onClick={() => startEdit(client)}>Editar</button>
                 <button className="danger-button" type="button" onClick={() => deleteClient(client)}>Eliminar</button>
               </div>
             </article>
           ))}
         </div>
         <form className="inline-form" onSubmit={submit}>
-          <h3>{isEditing ? "Editar cliente" : "Crear cliente"}</h3>
+          <h3>Crear cliente</h3>
           <input name="name" value={form.name} onChange={updateField} placeholder="Nombre" />
           <input name="phone" value={form.phone} onChange={updateField} placeholder="Telefono" />
           <input name="email" value={form.email} onChange={updateField} placeholder="Email" />
           <textarea name="observations" value={form.observations} onChange={updateField} placeholder="Observaciones" />
           <textarea name="interests" value={form.interests} onChange={updateField} placeholder="Intereses" />
           <div className="row-actions">
-            <button type="submit">{isEditing ? "Guardar cambios" : "Crear cliente"}</button>
-            {isEditing && <button className="secondary-button" type="button" onClick={cancelEdit}>Cancelar edicion</button>}
+            <button type="submit">Crear cliente</button>
           </div>
         </form>
       </div>

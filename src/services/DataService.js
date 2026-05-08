@@ -98,7 +98,7 @@ const defaultData = {
   config: {
     employees: ["Marianne", "Ambar", "Grace", "Leidys"],
     services: initialServices,
-    paymentMethods: ["Efectivo", "Tarjeta", "Bizum", "Tarjeta regalo", "Bonos"],
+    paymentMethods: ["Efectivo", "Tarjeta", "Bizum", "Bono", "Tarjeta regalo"],
     entryChannels: ["Walk-in/Calle", "Instagram", "Google", "Treatwell", "Booksy", "WhatsApp", "Recomendacion", "TikTok", "Cliente recurrente", "Academia", "Otro"],
     expenseCategories: [
       "Suministros",
@@ -187,7 +187,7 @@ async function syncConfigToFirestore(config) {
 }
 
 function saveDocumentToFirestore(collectionName, item, successMessage) {
-  setDoc(doc(db, collectionName, item.id), item)
+  setDoc(doc(db, collectionName, item.id), cleanFirestoreData(item))
     .then(() => {
       if (successMessage) console.log(successMessage);
     })
@@ -262,6 +262,10 @@ function normalizeSaleServices(sale) {
 
 function servicesSubtotal(services) {
   return services.reduce((total, service) => total + Number(service.price || 0) * Number(service.quantity || 1), 0);
+}
+
+function saleServicesCount(sale) {
+  return normalizeSaleServices(sale).reduce((total, service) => total + Number(service.quantity || 1), 0);
 }
 
 function saleAmount(sale) {
@@ -421,6 +425,24 @@ function serviceRankings(sales) {
   };
 }
 
+function channelStats(sales, configuredChannels = []) {
+  const grouped = Object.fromEntries((configuredChannels || []).map((channel) => [
+    channel,
+    { channel, amount: 0, count: 0, averageTicket: 0 },
+  ]));
+
+  sales.forEach((sale) => {
+    const channel = sale.entryChannel || "Sin especificar";
+    const current = grouped[channel] || { channel, amount: 0, count: 0, averageTicket: 0 };
+    current.amount += saleAmount(sale);
+    current.count += 1;
+    current.averageTicket = current.count ? current.amount / current.count : 0;
+    grouped[channel] = current;
+  });
+
+  return Object.values(grouped).sort((first, second) => second.amount - first.amount);
+}
+
 function normalizeServices(services) {
   return (services || []).map((service, index) => {
     if (typeof service === "string") {
@@ -496,11 +518,12 @@ function normalizeSale(sale) {
 function normalizeClient(client) {
   const { allergies, ...rest } = client || {};
   const observations = rest.observations ?? rest.notes ?? "";
+  const email = cleanText(rest.email);
 
-  return {
+  return cleanFirestoreData({
     ...rest,
     name: rest.name || "",
-    email: rest.email || "",
+    email,
     phone: rest.phone || "",
     observations,
     notes: observations,
@@ -509,7 +532,70 @@ function normalizeClient(client) {
     totalSpent: Number(rest.totalSpent || 0),
     lastVisit: rest.lastVisit || "",
     loyaltyStamps: Number(rest.loyaltyStamps || 0),
-  };
+  });
+}
+
+function cleanFirestoreData(item) {
+  return Object.fromEntries(Object.entries(item || {}).filter(([, value]) => value !== undefined));
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function firstValue(row, keys) {
+  const normalizedRow = Object.fromEntries(Object.entries(row || {}).map(([key, value]) => [
+    String(key).trim().toLowerCase(),
+    value,
+  ]));
+
+  return keys.reduce((found, key) => {
+    if (found !== undefined && found !== null && found !== "") return found;
+    return normalizedRow[String(key).trim().toLowerCase()];
+  }, "");
+}
+
+function cleanText(value) {
+  return String(value ?? "").trim();
+}
+
+function treatwellRowToClient(row) {
+  const firstName = firstValue(row, ["Nombre"]);
+  const lastName = firstValue(row, ["Apellidos"]);
+  const fullName = firstValue(row, ["Nombre completo"]) || `${firstName || ""} ${lastName || ""}`.trim();
+  const phone = firstValue(row, ["Telefono", "Teléfono"]);
+  const normalizedPhone = normalizePhone(firstValue(row, ["Telefono normalizado", "Teléfono normalizado"]) || phone);
+  const email = cleanText(row?.Email ?? firstValue(row, ["Email", "email", "correo", "Correo", "correo electrónico", "Correo electrónico", "e-mail", "E-mail"]));
+
+  return normalizeClient({
+    treatwellClientId: firstValue(row, ["ID cliente"]),
+    name: fullName || firstName || phone || "Cliente sin nombre",
+    lastName,
+    phone,
+    phoneNormalized: normalizedPhone,
+    email,
+    observations: firstValue(row, ["Notas"]),
+    marketingOptIn: firstValue(row, ["Opt-in marketing"]),
+    language: firstValue(row, ["Idioma"]),
+    birthDate: firstValue(row, ["Fecha nacimiento"]),
+    bookingCount: Number(firstValue(row, ["Nº reservas", "N reservas", "No reservas"]) || 0),
+    createdAtTreatwell: firstValue(row, ["Fecha creación", "Fecha creacion"]),
+  });
+}
+
+function mergeMissingClientData(existingClient, importedClient) {
+  const merged = { ...existingClient };
+  let changed = false;
+
+  Object.entries(importedClient).forEach(([key, value]) => {
+    if (key === "id" || value === undefined || value === null || value === "") return;
+    if (merged[key] === undefined || merged[key] === null || merged[key] === "") {
+      merged[key] = value;
+      changed = true;
+    }
+  });
+
+  return { client: normalizeClient(merged), changed };
 }
 
 function resetClientMetrics(client) {
@@ -526,13 +612,14 @@ function applySaleToClient(client, sale) {
   const visits = Number(client.visits || 0) + 1;
   const totalSpent = Number(client.totalSpent || 0) + saleAmount(sale);
   const lastVisit = !client.lastVisit || sale.date > client.lastVisit ? sale.date : client.lastVisit;
+  const loyaltyStamps = Number(client.loyaltyStamps || 0) + saleServicesCount(sale);
 
   return {
     ...client,
     visits,
     totalSpent,
     lastVisit,
-    loyaltyStamps: visits,
+    loyaltyStamps,
   };
 }
 
@@ -758,6 +845,75 @@ const DataService = {
     return { data: { ...this.getData(), clients }, client };
   },
 
+  importTreatwellClients(rows = []) {
+    const currentClients = this.getClients();
+    const phoneIndex = new Map(currentClients.map((client) => [
+      normalizePhone(client.phoneNormalized || client.phone),
+      client,
+    ]).filter(([phone]) => phone));
+    const importedPhones = new Set();
+    const errors = [];
+    let imported = 0;
+    let updated = 0;
+    let duplicates = 0;
+
+    const nextClients = [...currentClients];
+
+    rows.forEach((row, index) => {
+      try {
+        const importedClient = treatwellRowToClient(row);
+        const phoneKey = normalizePhone(importedClient.phoneNormalized || importedClient.phone);
+
+        if (!phoneKey) {
+          errors.push(`Fila ${index + 2}: telefono normalizado vacio`);
+          return;
+        }
+
+        if (importedPhones.has(phoneKey)) {
+          duplicates += 1;
+          return;
+        }
+        importedPhones.add(phoneKey);
+
+        const existingClient = phoneIndex.get(phoneKey);
+        if (existingClient) {
+          const { client, changed } = mergeMissingClientData(existingClient, importedClient);
+          const clientIndex = nextClients.findIndex((item) => item.id === existingClient.id);
+          if (clientIndex >= 0 && changed) {
+            nextClients[clientIndex] = client;
+            saveDocumentToFirestore("clients", client);
+            updated += 1;
+          }
+          duplicates += 1;
+          return;
+        }
+
+        const client = normalizeClient({
+          ...importedClient,
+          id: createId("client"),
+        });
+        nextClients.unshift(client);
+        phoneIndex.set(phoneKey, client);
+        saveDocumentToFirestore("clients", client);
+        imported += 1;
+      } catch (error) {
+        errors.push(`Fila ${index + 2}: ${error.message || "no se pudo importar"}`);
+      }
+    });
+
+    const clients = writeCollection("clients", nextClients);
+
+    return {
+      data: { ...this.getData(), clients },
+      result: {
+        imported,
+        updated,
+        duplicates,
+        errors,
+      },
+    };
+  },
+
   updateClient(clientId, updates) {
     const clients = writeCollection(
       "clients",
@@ -904,6 +1060,7 @@ const DataService = {
     };
     const sales = this.getSales().filter(inRange);
     const expenses = this.getExpenses().filter(inRange);
+    const config = this.getConfig();
     const summary = saleSummary(sales);
     const totalSales = summary.totalSales;
     const totalExpenses = sum(expenses, "amount");
@@ -914,6 +1071,7 @@ const DataService = {
       salesByEmployee: groupBySum(sales, "employee", "total"),
       salesByService: groupBySum(sales, "service", "total"),
       paymentMethods: groupBySum(sales, "paymentMethod", "total"),
+      salesByChannel: channelStats(sales, config.entryChannels),
       serviceRankings: serviceRankings(sales),
       employeeCommissions: employeeCommissions(sales),
       totalSales,

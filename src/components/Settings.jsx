@@ -14,7 +14,63 @@ function createServiceId() {
   return `service-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function Settings({ config, onSave, onRestoreBaseConfig }) {
+function parseCsv(text) {
+  const rows = [];
+  let current = "";
+  let row = [];
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const nextChar = text[index + 1];
+
+    if (char === '"' && quoted && nextChar === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(current);
+      current = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && nextChar === "\n") index += 1;
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  row.push(current);
+  rows.push(row);
+
+  const headers = (rows.shift() || []).map((header) => header.trim());
+  return rows
+    .filter((item) => item.some((value) => String(value || "").trim()))
+    .map((item) => Object.fromEntries(headers.map((header, index) => [header, item[index] || ""])));
+}
+
+async function readClientImportFile(file) {
+  const extension = file.name.split(".").pop().toLowerCase();
+
+  if (extension === "csv") {
+    return parseCsv(await file.text());
+  }
+
+  if (extension === "xlsx") {
+    const XLSX = await import("xlsx");
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+  }
+
+  throw new Error("Formato no soportado. Usa .xlsx o .csv");
+}
+
+function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
   const [form, setForm] = useState({
     employees: listToText(config.employees),
     paymentMethods: listToText(config.paymentMethods),
@@ -27,6 +83,10 @@ function Settings({ config, onSave, onRestoreBaseConfig }) {
   const [serviceForm, setServiceForm] = useState(emptyService);
   const [editingServiceId, setEditingServiceId] = useState("");
   const [serviceQuery, setServiceQuery] = useState("");
+  const [importFile, setImportFile] = useState(null);
+  const [importProgress, setImportProgress] = useState(0);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   const filteredServices = useMemo(() => {
     const query = serviceQuery.trim().toLowerCase();
@@ -116,12 +176,38 @@ function Settings({ config, onSave, onRestoreBaseConfig }) {
     onRestoreBaseConfig();
     setForm({
       employees: "Marianne\nAmbar\nGrace\nLeidys",
-      paymentMethods: "Efectivo\nTarjeta\nBizum\nTarjeta regalo\nBonos",
+      paymentMethods: "Efectivo\nTarjeta\nBizum\nBono\nTarjeta regalo",
       entryChannels: "Walk-in/Calle\nInstagram\nGoogle\nTreatwell\nBooksy\nWhatsApp\nRecomendacion\nTikTok\nCliente recurrente\nAcademia\nOtro",
       expenseCategories: "Suministros\nNominas\nAlquiler\nGestoria\nMateriales\nImpuestos\nComisiones bancarias\nMarketing\nMantenimiento\nServicios externos\nOtros",
       monthlyGoal: 4500,
       loyaltyVisits: 5,
     });
+  };
+
+  const importClients = async () => {
+    if (!importFile || isImporting) return;
+
+    setIsImporting(true);
+    setImportProgress(12);
+    setImportResult(null);
+
+    try {
+      const rows = await readClientImportFile(importFile);
+      setImportProgress(55);
+      const result = onImportClients(rows);
+      setImportProgress(100);
+      setImportResult(result);
+    } catch (error) {
+      setImportResult({
+        imported: 0,
+        updated: 0,
+        duplicates: 0,
+        errors: [error.message || "No se pudo importar el archivo"],
+      });
+      setImportProgress(100);
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -147,6 +233,46 @@ function Settings({ config, onSave, onRestoreBaseConfig }) {
           <button className="secondary-button" type="button" onClick={restoreBaseConfig}>Restaurar configuracion VS Studio</button>
         </div>
       </form>
+
+      <section className="panel import-panel">
+        <div className="section-title">
+          <h2>Importar clientes</h2>
+          <span>Treatwell Excel / CSV</span>
+        </div>
+        <div className="import-controls">
+          <label>
+            Archivo .xlsx o .csv
+            <input
+              type="file"
+              accept=".xlsx,.csv"
+              onChange={(event) => {
+                setImportFile(event.target.files?.[0] || null);
+                setImportProgress(0);
+                setImportResult(null);
+              }}
+            />
+          </label>
+          <button type="button" onClick={importClients} disabled={!importFile || isImporting}>
+            {isImporting ? "Importando..." : "Importar clientes"}
+          </button>
+        </div>
+        <div className="progress-track" aria-label="Progreso de importacion">
+          <span style={{ width: `${importProgress}%` }} />
+        </div>
+        {importResult && (
+          <div className="import-result">
+            <article><span>Clientes importados</span><strong>{importResult.imported}</strong></article>
+            <article><span>Duplicados omitidos</span><strong>{importResult.duplicates}</strong></article>
+            <article><span>Clientes actualizados</span><strong>{importResult.updated}</strong></article>
+            <article><span>Errores</span><strong>{importResult.errors.length}</strong></article>
+            {importResult.errors.length > 0 && (
+              <div className="import-errors">
+                {importResult.errors.slice(0, 8).map((error) => <p key={error}>{error}</p>)}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="panel services-panel">
         <div className="section-title">

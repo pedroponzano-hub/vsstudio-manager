@@ -24,6 +24,57 @@ const tabs = [
   { id: "settings", label: "Configuracion" },
 ];
 
+function money(value) {
+  return `${Number(value || 0).toFixed(2)} EUR`;
+}
+
+function paymentAmountForDay(sales, selectedDate, matcher) {
+  return sales
+    .filter((sale) => sale.date === selectedDate)
+    .filter((sale) => matcher(String(sale.paymentMethod || "").toLowerCase()))
+    .reduce((total, sale) => total + Number(sale.total || sale.amount || 0), 0);
+}
+
+function DailySalesCards({ sales, selectedDate }) {
+  const daySales = useMemo(() => sales.filter((sale) => sale.date === selectedDate), [sales, selectedDate]);
+  const total = daySales.reduce((sum, sale) => sum + Number(sale.total || sale.amount || 0), 0);
+  const commissions = daySales.reduce((sum, sale) => {
+    const saleTotal = Number(sale.total || sale.amount || 0);
+    return sum + saleTotal * (Number(sale.commissionPercent || 0) / 100);
+  }, 0);
+  const knownMatchers = [
+    (method) => method === "efectivo",
+    (method) => method === "tarjeta",
+    (method) => method === "bizum",
+    (method) => method === "bono" || method === "bonos",
+    (method) => method === "tarjeta regalo",
+  ];
+  const other = daySales
+    .filter((sale) => !knownMatchers.some((matcher) => matcher(String(sale.paymentMethod || "").toLowerCase())))
+    .reduce((sum, sale) => sum + Number(sale.total || sale.amount || 0), 0);
+  const cards = [
+    ["Total ventas del dia", total],
+    ["Efectivo", paymentAmountForDay(sales, selectedDate, (method) => method === "efectivo")],
+    ["Tarjeta", paymentAmountForDay(sales, selectedDate, (method) => method === "tarjeta")],
+    ["Bizum", paymentAmountForDay(sales, selectedDate, (method) => method === "bizum")],
+    ["Bono", paymentAmountForDay(sales, selectedDate, (method) => method === "bono" || method === "bonos")],
+    ["Tarjeta regalo", paymentAmountForDay(sales, selectedDate, (method) => method === "tarjeta regalo")],
+    ["Comisiones", commissions],
+    ["Otros", other],
+  ];
+
+  return (
+    <section className="sales-day-cards">
+      {cards.map(([label, value]) => (
+        <article className="sales-day-card" key={label}>
+          <span>{label}</span>
+          <strong>{money(value)}</strong>
+        </article>
+      ))}
+    </section>
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [data, setData] = useState(() => DataService.getData());
@@ -111,6 +162,11 @@ function App() {
   const addAppointment = (appointment) => setData(DataService.addAppointment(appointment));
   const updateConfig = (updates) => setData(DataService.updateConfig(updates));
   const restoreVSStudioConfig = () => setData(DataService.restoreVSStudioConfig());
+  const importTreatwellClients = (rows) => {
+    const result = DataService.importTreatwellClients(rows);
+    setData(result.data);
+    return result.result;
+  };
 
   const deleteSale = (id) => {
     setData(DataService.deleteSale(id));
@@ -174,28 +230,30 @@ function App() {
 
       {activeTab === "dashboard" && <Dashboard data={dashboardData} />}
       {activeTab === "sales" && (
-        <section className="workspace">
-          <SalesForm
-            clients={data.clients}
-            config={data.config}
-            editingSale={editingSale}
-            onSave={addSale}
-            onUpdate={updateSale}
-            onCreateClient={createClientFromSale}
-            onCancelEdit={() => setEditingSale(null)}
-            onDateChange={setSelectedSaleDate}
-          />
-          <SaleList
-            sales={data.sales}
-            clients={clientMap}
-            config={data.config}
-            selectedDate={selectedSaleDate}
-            onEditSale={(sale) => {
-              setEditingSale(sale);
-              setSelectedSaleDate(sale.date);
-            }}
-            onDeleteSale={deleteSale}
-          />
+        <section className="workspace sales-workspace">
+          <div className="sales-main-column">
+            <SalesForm
+              clients={data.clients}
+              config={data.config}
+              editingSale={editingSale}
+              onSave={addSale}
+              onUpdate={updateSale}
+              onCreateClient={createClientFromSale}
+              onCancelEdit={() => setEditingSale(null)}
+              onDateChange={setSelectedSaleDate}
+            />
+            <DailySalesCards sales={data.sales} selectedDate={selectedSaleDate} />
+            <SaleList
+              sales={data.sales}
+              clients={clientMap}
+              selectedDate={selectedSaleDate}
+              onEditSale={(sale) => {
+                setEditingSale(sale);
+                setSelectedSaleDate(sale.date);
+              }}
+              onDeleteSale={deleteSale}
+            />
+          </div>
         </section>
       )}
       {activeTab === "expenses" && (
@@ -218,7 +276,7 @@ function App() {
       {activeTab === "loyalty" && <Loyalty clients={data.clients} config={data.config} />}
       {activeTab === "agenda" && <Agenda clients={data.clients} config={data.config} onSave={addAppointment} />}
       {activeTab === "statistics" && <Statistics dataVersion={data} />}
-      {activeTab === "settings" && <Settings config={data.config} onSave={updateConfig} onRestoreBaseConfig={restoreVSStudioConfig} />}
+      {activeTab === "settings" && <Settings config={data.config} onSave={updateConfig} onRestoreBaseConfig={restoreVSStudioConfig} onImportClients={importTreatwellClients} />}
     </main>
   );
 }

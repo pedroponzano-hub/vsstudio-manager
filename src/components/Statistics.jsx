@@ -41,6 +41,25 @@ function RankingBlock({ title, rows, valueType }) {
   );
 }
 
+function ChannelStatsBlock({ rows }) {
+  return (
+    <article className="panel wide-panel">
+      <h3>Ventas por canal</h3>
+      <div className="channel-stats">
+        {rows.length === 0 && <p className="empty-state">Sin datos en el rango.</p>}
+        {rows.map((row) => (
+          <div className="channel-row" key={row.channel}>
+            <span>{row.channel}</span>
+            <strong>{money(row.amount)}</strong>
+            <small>{row.count} ventas</small>
+            <small>Ticket medio {money(row.averageTicket)}</small>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function EmployeeCommissions({ rows }) {
   return (
     <article className="panel wide-panel">
@@ -127,6 +146,7 @@ function Statistics({ dataVersion }) {
       </div>
 
       <SalesByDayTable data={stats.salesByDay} />
+      <ChannelStatsBlock rows={stats.salesByChannel} />
       <EmployeeCommissions rows={stats.employeeCommissions} />
 
       <div className="cards-grid">

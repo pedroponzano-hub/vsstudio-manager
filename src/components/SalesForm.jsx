@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 
-const CUSTOM_SERVICE = "custom-service";
 function serviceSearchText(service) {
   return `${service.name} ${service.category} ${service.duration}`.toLowerCase();
 }
@@ -30,6 +29,7 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
   const [showClientResults, setShowClientResults] = useState(false);
   const [serviceQuery, setServiceQuery] = useState("");
   const [showServiceResults, setShowServiceResults] = useState(false);
+  const [showCustomService, setShowCustomService] = useState(false);
   const [customServiceName, setCustomServiceName] = useState("");
   const [customServicePrice, setCustomServicePrice] = useState("");
   const [showQuickClientForm, setShowQuickClientForm] = useState(false);
@@ -42,10 +42,10 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
     setForm({
       date: nextDate,
       clientId: editingSale.clientId || "",
-      employee: editingSale.employee || config.employees[0] || "",
+      employee: editingSale.employee || "",
       extra: String(editingSale.extra ?? 0),
-      paymentMethod: editingSale.paymentMethod || config.paymentMethods[0] || "",
-      entryChannel: editingSale.entryChannel || config.entryChannels?.[0] || "",
+      paymentMethod: editingSale.paymentMethod || "",
+      entryChannel: editingSale.entryChannel || "",
       commissionPercent: String(editingSale.commissionPercent ?? 0),
       notes: editingSale.notes || "",
     });
@@ -62,10 +62,11 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
     })));
     setServiceQuery("");
     setShowServiceResults(false);
+    setShowCustomService(false);
     setCustomServiceName("");
     setCustomServicePrice("");
     onDateChange?.(nextDate);
-  }, [editingSale, clients, config.employees, config.paymentMethods, config.entryChannels, onDateChange]);
+  }, [editingSale, clients, onDateChange]);
 
   const filteredServices = useMemo(() => {
     const query = serviceQuery.trim().toLowerCase();
@@ -76,7 +77,7 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
   const filteredClients = useMemo(() => {
     const query = clientQuery.trim().toLowerCase();
     if (!query) return [];
-    return clients.filter((client) => `${client.name} ${client.phone || ""}`.toLowerCase().includes(query)).slice(0, 12);
+    return clients.filter((client) => `${client.name} ${client.phone || ""} ${client.email || ""}`.toLowerCase().includes(query)).slice(0, 12);
   }, [clientQuery, clients]);
 
   const totals = useMemo(() => {
@@ -176,6 +177,7 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
     });
     setCustomServiceName("");
     setCustomServicePrice("");
+    setShowCustomService(false);
   };
 
   const updateServiceLine = (lineId, updates) => {
@@ -195,6 +197,7 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
     setShowClientResults(false);
     setServiceQuery("");
     setShowServiceResults(false);
+    setShowCustomService(false);
     setCustomServiceName("");
     setCustomServicePrice("");
     setShowQuickClientForm(false);
@@ -245,9 +248,71 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
 
   return (
     <form className="panel form-grid" onSubmit={submit}>
-      <h2>{editingSale ? "Editar venta" : "Nueva venta"}</h2>
-      <div className="field-row">
-        <label>Fecha<input type="date" name="date" value={form.date} onChange={updateField} /></label>
+      <div className="sale-form-heading">
+        <h2>{editingSale ? "Editar venta" : "Nueva venta"}</h2>
+        <label className="compact-date-field">
+          Fecha
+          <input type="date" name="date" value={form.date} onChange={updateField} />
+        </label>
+      </div>
+
+      <section className="sale-services-workflow">
+        <label className="service-search-field service-search-primary">
+          Servicios
+          <input
+            value={serviceQuery}
+            onChange={(event) => { setServiceQuery(event.target.value); setShowServiceResults(Boolean(event.target.value.trim())); }}
+            placeholder="Busca y añade servicios"
+          />
+          {showServiceResults && serviceQuery.trim() && (
+            <div className="service-results">
+              {filteredServices.map((service) => (
+                <button className="service-result" type="button" key={service.id} onMouseDown={() => addServiceLine(service)}>
+                  <strong>{service.name}</strong>
+                  <span>{service.category} - {service.duration || "Sin duracion"} - {Number(service.price || 0).toFixed(2)} EUR</span>
+                </button>
+              ))}
+              {filteredServices.length === 0 && <p className="empty-state">Sin resultados.</p>}
+            </div>
+          )}
+        </label>
+
+        <div className="custom-service-toggle">
+          <button className="secondary-button small-action-button" type="button" onClick={() => setShowCustomService((current) => !current)}>
+            + Servicio personalizado
+          </button>
+        </div>
+
+        {showCustomService && (
+          <section className="custom-service-box compact-custom-service">
+            <div className="field-row">
+              <input value={customServiceName} onChange={(event) => setCustomServiceName(event.target.value)} placeholder="Nombre del servicio" />
+              <input type="number" min="0" step="0.01" value={customServicePrice} onChange={(event) => setCustomServicePrice(event.target.value)} placeholder="Precio" />
+            </div>
+            <button className="secondary-button" type="button" onClick={addCustomService}>Añadir</button>
+          </section>
+        )}
+
+        <section className="sale-services-list">
+          <h3>Servicios añadidos</h3>
+          {saleServices.length === 0 && <p className="empty-state">Aun no hay servicios en esta venta.</p>}
+          {saleServices.map((service) => (
+            <article className="sale-service-card" key={service.lineId}>
+              <div>
+                <strong>{service.serviceName}</strong>
+                <span>{service.category || "Sin categoria"} - {service.duration || "Sin duracion"}</span>
+              </div>
+              <label>Precio<input type="number" min="0" step="0.01" value={service.price} onChange={(event) => updateServiceLine(service.lineId, { price: Number(event.target.value || 0) })} /></label>
+              <label>Cantidad<input type="number" min="1" step="1" value={service.quantity} onChange={(event) => updateServiceLine(service.lineId, { quantity: Number(event.target.value || 1) })} /></label>
+              <b>{(Number(service.price || 0) * Number(service.quantity || 1)).toFixed(2)} EUR</b>
+              <button className="danger-button" type="button" onClick={() => removeServiceLine(service.lineId)}>Eliminar</button>
+            </article>
+          ))}
+        </section>
+      </section>
+
+      <section className="sale-admin-section">
+        <h3>Datos de la venta</h3>
         <label className="service-search-field">
           Cliente
           <input
@@ -272,81 +337,34 @@ function SalesForm({ clients, config, editingSale, onSave, onUpdate, onCreateCli
             </div>
           )}
         </label>
-      </div>
-      {showQuickClientForm && (
-        <section className="quick-client-box">
-          <h3>Crear cliente nuevo</h3>
-          <div className="field-row">
-            <input name="name" value={quickClient.name} onChange={updateQuickClientField} placeholder="Nombre" />
-            <input name="phone" value={quickClient.phone} onChange={updateQuickClientField} placeholder="Telefono" />
-          </div>
-          <div className="field-row">
-            <input name="email" type="email" value={quickClient.email} onChange={updateQuickClientField} placeholder="Email opcional" />
-            <input name="observations" value={quickClient.observations} onChange={updateQuickClientField} placeholder="Observaciones opcional" />
-          </div>
-          <div className="row-actions">
-            <button type="button" onClick={saveQuickClient}>Guardar cliente</button>
-            <button className="secondary-button" type="button" onClick={() => setShowQuickClientForm(false)}>Cancelar</button>
-          </div>
-        </section>
-      )}
-      <div className="field-row">
-        <label>Empleada<select name="employee" value={form.employee} onChange={updateField}>{config.employees.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label>Metodo pago<select name="paymentMethod" value={form.paymentMethod} onChange={updateField}>{config.paymentMethods.map((item) => <option key={item}>{item}</option>)}</select></label>
-      </div>
-      <label>Canal de entrada<select name="entryChannel" value={form.entryChannel} onChange={updateField}>{(config.entryChannels || []).map((item) => <option key={item}>{item}</option>)}</select></label>
-
-      <label className="service-search-field">
-        Servicio
-        <input
-          value={serviceQuery}
-          onChange={(event) => { setServiceQuery(event.target.value); setShowServiceResults(Boolean(event.target.value.trim())); }}
-          placeholder="Busca y anade servicios"
-        />
-        {showServiceResults && serviceQuery.trim() && (
-          <div className="service-results">
-            {filteredServices.map((service) => (
-              <button className="service-result" type="button" key={service.id} onMouseDown={() => addServiceLine(service)}>
-                <strong>{service.name}</strong>
-                <span>{service.category} - {service.duration || "Sin duracion"} - {Number(service.price || 0).toFixed(2)} EUR</span>
-              </button>
-            ))}
-            {filteredServices.length === 0 && <p className="empty-state">Sin resultados.</p>}
-          </div>
-        )}
-      </label>
-
-      <section className="custom-service-box">
-        <h3>Servicio personalizado</h3>
-        <div className="field-row">
-          <input value={customServiceName} onChange={(event) => setCustomServiceName(event.target.value)} placeholder="Nombre del servicio" />
-          <input type="number" min="0" step="0.01" value={customServicePrice} onChange={(event) => setCustomServicePrice(event.target.value)} placeholder="Precio" />
-        </div>
-        <button className="secondary-button" type="button" onClick={addCustomService}>Anadir personalizado</button>
-      </section>
-
-      <section className="sale-services-list">
-        <h3>Servicios añadidos</h3>
-        {saleServices.length === 0 && <p className="empty-state">Aun no hay servicios en esta venta.</p>}
-        {saleServices.map((service) => (
-          <article className="sale-service-card" key={service.lineId}>
-            <div>
-              <strong>{service.serviceName}</strong>
-              <span>{service.category || "Sin categoria"} - {service.duration || "Sin duracion"}</span>
+        {showQuickClientForm && (
+          <section className="quick-client-box">
+            <h3>Crear cliente nuevo</h3>
+            <div className="field-row">
+              <input name="name" value={quickClient.name} onChange={updateQuickClientField} placeholder="Nombre" />
+              <input name="phone" value={quickClient.phone} onChange={updateQuickClientField} placeholder="Telefono" />
             </div>
-            <label>Precio<input type="number" min="0" step="0.01" value={service.price} onChange={(event) => updateServiceLine(service.lineId, { price: Number(event.target.value || 0) })} /></label>
-            <label>Cantidad<input type="number" min="1" step="1" value={service.quantity} onChange={(event) => updateServiceLine(service.lineId, { quantity: Number(event.target.value || 1) })} /></label>
-            <b>{(Number(service.price || 0) * Number(service.quantity || 1)).toFixed(2)} EUR</b>
-            <button className="danger-button" type="button" onClick={() => removeServiceLine(service.lineId)}>Eliminar</button>
-          </article>
-        ))}
+            <div className="field-row">
+              <input name="email" type="email" value={quickClient.email} onChange={updateQuickClientField} placeholder="Email opcional" />
+              <input name="observations" value={quickClient.observations} onChange={updateQuickClientField} placeholder="Observaciones opcional" />
+            </div>
+            <div className="row-actions">
+              <button type="button" onClick={saveQuickClient}>Guardar cliente</button>
+              <button className="secondary-button" type="button" onClick={() => setShowQuickClientForm(false)}>Cancelar</button>
+            </div>
+          </section>
+        )}
+        <div className="field-row">
+          <label>Empleada<select name="employee" value={form.employee} onChange={updateField}><option value="">Seleccionar...</option>{(config.employees || []).map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label>Metodo pago<select name="paymentMethod" value={form.paymentMethod} onChange={updateField}><option value="">Seleccionar...</option>{(config.paymentMethods || []).map((item) => <option key={item}>{item}</option>)}</select></label>
+        </div>
+        <label>Canal de entrada<select name="entryChannel" value={form.entryChannel} onChange={updateField}><option value="">Seleccionar...</option>{(config.entryChannels || []).map((item) => <option key={item}>{item}</option>)}</select></label>
+        <div className="field-row">
+          <label>Extra<input type="number" min="0" step="0.01" name="extra" value={form.extra} onChange={updateField} /></label>
+          <label>Comision %<input type="number" min="0" step="0.01" name="commissionPercent" value={form.commissionPercent} onChange={updateField} /></label>
+        </div>
+        <label>Observaciones<textarea name="notes" value={form.notes} onChange={updateField} placeholder="Observaciones internas de la venta" /></label>
       </section>
-
-      <div className="field-row">
-        <label>Extra<input type="number" min="0" step="0.01" name="extra" value={form.extra} onChange={updateField} /></label>
-        <label>Comision %<input type="number" min="0" step="0.01" name="commissionPercent" value={form.commissionPercent} onChange={updateField} /></label>
-      </div>
-      <label>Observaciones<textarea name="notes" value={form.notes} onChange={updateField} placeholder="Observaciones internas de la venta" /></label>
 
       <div className="calculated-row operational-total-row">
         <span>Subtotal servicios: <b>{totals.subtotalServices.toFixed(2)} EUR</b></span>

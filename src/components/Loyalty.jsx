@@ -3,15 +3,15 @@ import { useState } from "react";
 function Loyalty({ clients, config }) {
   const [query, setQuery] = useState("");
   const required = Number(config.loyaltyVisits || 5);
-  const filteredClients = clients.filter((client) =>
-    `${client.name} ${client.phone}`.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredClients = clients
+    .filter((client) => `${client.name} ${client.phone}`.toLowerCase().includes(query.toLowerCase()))
+    .sort((first, second) => Number(second.loyaltyStamps || 0) - Number(first.loyaltyStamps || 0));
 
   return (
     <section className="module">
       <div className="section-title">
         <h2>Fidelizacion</h2>
-        <span>1 visita = 1 sello</span>
+        <span>1 servicio = 1 sello</span>
       </div>
       <label className="panel search-panel">
         Buscar cliente
