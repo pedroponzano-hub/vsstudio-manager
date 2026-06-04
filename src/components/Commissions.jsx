@@ -54,10 +54,12 @@ function Commissions({ data, onStatusChange }) {
                   <span className={row.status === "pagada" ? "status-badge paid" : "status-badge pending"}>
                     {row.status}
                   </span>
-                  <select value={row.status} onChange={(event) => onStatusChange(row.saleId, event.target.value)}>
-                    <option value="pendiente">pendiente</option>
-                    <option value="pagada">pagada</option>
-                  </select>
+                  {onStatusChange && (
+                    <select value={row.status} onChange={(event) => onStatusChange(row.saleId, event.target.value)}>
+                      <option value="pendiente">pendiente</option>
+                      <option value="pagada">pagada</option>
+                    </select>
+                  )}
                 </div>
               </article>
             ))}

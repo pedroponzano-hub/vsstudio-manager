@@ -1,5 +1,14 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
 import { db } from "../firebase.js";
+import {
+  getMadridDateString,
+  getMadridDayOfMonth,
+  getMadridDaysInCurrentMonth,
+  getMadridTimeString,
+  getMadridTimestamp,
+  getTechnicalTimestamp,
+  getTodayLocalDateString,
+} from "../utils/date.js";
 
 const STORAGE_KEYS = {
   sales: "business-dashboard:sales",
@@ -8,9 +17,29 @@ const STORAGE_KEYS = {
   config: "business-dashboard:config",
   appointments: "business-dashboard:appointments",
   commissions: "business-dashboard:commissions",
+  cashClosings: "business-dashboard:cashClosings",
+  monthlyClosings: "business-dashboard:monthlyClosings",
 };
 
-const today = new Date().toISOString().slice(0, 10);
+function todayLocal() {
+  return getMadridDateString();
+}
+
+function saleOperationalDate(sale = {}) {
+  if (sale.fechaOperativa || sale.operationalDate) return sale.fechaOperativa || sale.operationalDate;
+  const localCreatedDate = String(sale.horaCreacion || "").match(/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2})?$/)?.[1];
+  if (localCreatedDate && sale.date && localCreatedDate > sale.date) return localCreatedDate;
+  return sale.fechaOperativa || sale.operationalDate || sale.date || sale.fecha || todayLocal();
+}
+
+function itemOperationalDate(item = {}) {
+  return item.fechaOperativa || item.operationalDate || item.date || item.fecha || "";
+}
+
+function localTimeFromTimestamp(value = "") {
+  const match = String(value || "").match(/T(\d{2}:\d{2})/);
+  return match ? match[1] : "";
+}
 
 const initialServices = [
   ["DEPILACION FACIAL CON CERA", "Mujer - Diseno de cejas con cera", "15 min", 10],
@@ -85,9 +114,14 @@ const initialServices = [
   category,
   name,
   duration,
+  durationMinutes: 0,
   price,
   active: true,
 }));
+
+initialServices.forEach((service) => {
+  service.durationMinutes = durationToMinutes(service.duration);
+});
 
 const defaultData = {
   sales: [],
@@ -95,6 +129,8 @@ const defaultData = {
   clients: [],
   appointments: [],
   commissions: [],
+  cashClosings: [],
+  monthlyClosings: [],
   config: {
     employees: ["Marianne", "Ambar", "Grace", "Leidys"],
     services: initialServices,
@@ -128,7 +164,7 @@ const vsStudioBaseConfig = {
   loyaltyVisits: defaultData.config.loyaltyVisits,
 };
 
-const FIRESTORE_COLLECTIONS = ["sales", "expenses", "clients", "appointments", "commissions"];
+const FIRESTORE_COLLECTIONS = ["sales", "expenses", "clients", "appointments", "commissions", "cashClosings", "monthlyClosings"];
 const CONFIG_DOC_ID = "main";
 
 function clone(value) {
@@ -231,7 +267,7 @@ async function readFirestoreConfig() {
 }
 
 function getDateParts(date) {
-  const value = date || today;
+  const value = date || todayLocal();
   return { day: value, month: value.slice(0, 7) };
 }
 
@@ -274,6 +310,21 @@ function saleAmount(sale) {
   return Number(sale.total ?? (Number(subtotalServices || 0) + Number(sale.extra || 0)) ?? sale.amount ?? 0);
 }
 
+function normalizeSalePayments(sale) {
+  if (Array.isArray(sale.payments) && sale.payments.length > 0) {
+    return sale.payments
+      .map((payment) => ({
+        method: payment.method || payment.paymentMethod || "",
+        amount: Number(payment.amount || 0),
+      }))
+      .filter((payment) => payment.method && payment.amount > 0);
+  }
+
+  const method = sale.paymentMethod || sale.metodoPago || "";
+  const amount = saleAmount(sale);
+  return method ? [{ method, amount }] : [];
+}
+
 function saleVatFields(sale) {
   const total = saleAmount(sale);
   const ivaPercent = Number(sale.ivaPercent ?? 21);
@@ -281,7 +332,10 @@ function saleVatFields(sale) {
   const netWithoutVat = sale.netWithoutVat ?? total - ivaAmount;
   const commissionPercent = Number(sale.commissionPercent || 0);
   const commissionAmount = sale.commissionAmount ?? total * (commissionPercent / 100);
+  const treatwellCommissionPercent = Number(sale.treatwellCommissionPercent || 0);
+  const treatwellCommissionAmount = Number(sale.treatwellCommissionAmount ?? (total * (treatwellCommissionPercent / 100)));
   const netAfterCommission = sale.netAfterCommission ?? netWithoutVat - commissionAmount;
+  const netAfterTreatwellAndCommission = sale.netAfterTreatwellAndCommission ?? total - treatwellCommissionAmount - commissionAmount;
 
   return {
     total,
@@ -290,7 +344,10 @@ function saleVatFields(sale) {
     netWithoutVat: Number(netWithoutVat || 0),
     commissionPercent,
     commissionAmount: Number(commissionAmount || 0),
+    treatwellCommissionPercent,
+    treatwellCommissionAmount: Number(treatwellCommissionAmount || 0),
     netAfterCommission: Number(netAfterCommission || 0),
+    netAfterTreatwellAndCommission: Number(netAfterTreatwellAndCommission || 0),
   };
 }
 
@@ -305,6 +362,12 @@ function groupBySum(items, keyField, amountField) {
         const key = service.serviceName || "Sin servicio";
         const amount = Number(service.price || 0) * Number(service.quantity || 1);
         groups[key] = (groups[key] || 0) + amount;
+      });
+      return groups;
+    }
+    if (keyField === "paymentMethod") {
+      normalizeSalePayments(item).forEach((payment) => {
+        groups[payment.method] = (groups[payment.method] || 0) + Number(payment.amount || 0);
       });
       return groups;
     }
@@ -323,14 +386,18 @@ function saleSummary(sales) {
     summary.ivaAmount += fields.ivaAmount;
     summary.netWithoutVat += fields.netWithoutVat;
     summary.commissionAmount += fields.commissionAmount;
+    summary.treatwellCommissionAmount += fields.treatwellCommissionAmount;
     summary.netAfterCommission += fields.netAfterCommission;
+    summary.netAfterTreatwellAndCommission += fields.netAfterTreatwellAndCommission;
     return summary;
   }, {
     totalSales: 0,
     ivaAmount: 0,
     netWithoutVat: 0,
     commissionAmount: 0,
+    treatwellCommissionAmount: 0,
     netAfterCommission: 0,
+    netAfterTreatwellAndCommission: 0,
   });
 }
 
@@ -361,19 +428,112 @@ function saleServicesText(sale) {
   return normalizeSaleServices(sale).map((service) => service.serviceName).filter(Boolean).join(", ") || sale.service || "Sin servicio";
 }
 
+function saleStatus(sale) {
+  const status = String(sale.status || sale.estado || "cobrado").toLowerCase();
+  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada") return status;
+  if (status === "editada") return "cobrado";
+  return "cobrado";
+}
+
+function saleIsEdited(sale) {
+  return Boolean(sale.editada || sale.editedAt || String(sale.status || "").toLowerCase() === "editada");
+}
+
+function isCollectedSale(sale) {
+  return saleStatus(sale) === "cobrado";
+}
+
+function normalizeExpense(expense) {
+  const status = String(expense.status || "pagado").toLowerCase() === "pendiente" ? "pendiente" : "pagado";
+  const documentType = expense.documentType || "Otro";
+  const isInvoice = documentType === "Factura";
+  const vatRate = isInvoice ? Number(expense.vatRate ?? expense.ivaRate ?? 21) : 0;
+  const amount = Number(expense.amount || 0);
+  const taxableBase = isInvoice && vatRate > 0 ? amount / (1 + vatRate / 100) : amount;
+  const supportedVat = isInvoice && vatRate > 0 ? amount - taxableBase : 0;
+
+  return {
+    ...expense,
+    date: expense.date || todayLocal(),
+    category: expense.category || "General",
+    concept: expense.concept || "",
+    amount,
+    paymentMethod: expense.paymentMethod || "",
+    status,
+    documentType,
+    vatRate,
+    taxableBase: Number(taxableBase || 0),
+    supportedVat: Number(supportedVat || 0),
+  };
+}
+
+function normalizeCashClosing(closing) {
+  const date = closing.date || todayLocal();
+
+  return cleanFirestoreData({
+    id: closing.id || `cash-closing-${date}`,
+    date,
+    responsible: closing.responsible || "",
+    realAmounts: closing.realAmounts || {},
+    summary: closing.summary || {},
+    observations: closing.observations || "",
+    savedAt: closing.savedAt || "",
+    reportGeneratedAt: closing.reportGeneratedAt || "",
+  });
+}
+
+function normalizeMonthlyClosing(closing) {
+  const date = todayLocal();
+  const month = Number(closing.month || date.slice(5, 7));
+  const year = Number(closing.year || date.slice(0, 4));
+
+  return cleanFirestoreData({
+    id: closing.id || `monthly-closing-${year}-${String(month).padStart(2, "0")}`,
+    month,
+    year,
+    periodKey: closing.periodKey || `${year}-${String(month).padStart(2, "0")}`,
+    createdAt: closing.createdAt || "",
+    updatedAt: closing.updatedAt || "",
+    responsible: closing.responsible || "",
+    salesTotal: Number(closing.salesTotal || 0),
+    collectionsByMethod: closing.collectionsByMethod || {},
+    expensesTotal: Number(closing.expensesTotal || 0),
+    paidExpensesTotal: Number(closing.paidExpensesTotal || 0),
+    pendingExpensesTotal: Number(closing.pendingExpensesTotal || 0),
+    expensesByMethod: closing.expensesByMethod || {},
+    paidCommissionsTotal: Number(closing.paidCommissionsTotal || 0),
+    pendingCommissionsTotal: Number(closing.pendingCommissionsTotal || 0),
+    treatwellCommissionTotal: Number(closing.treatwellCommissionTotal || 0),
+    outputVat: Number(closing.outputVat || 0),
+    inputVat: Number(closing.inputVat || 0),
+    estimatedVat: Number(closing.estimatedVat || 0),
+    operatingProfit: Number(closing.operatingProfit || 0),
+    theoreticalTreasury: Number(closing.theoreticalTreasury || 0),
+    bankTheoretical: Number(closing.bankTheoretical || 0),
+    bankReal: Number(closing.bankReal || 0),
+    bankDifference: Number(closing.bankDifference || 0),
+    cashTheoretical: Number(closing.cashTheoretical || 0),
+    cashReal: Number(closing.cashReal || 0),
+    cashDifference: Number(closing.cashDifference || 0),
+    observations: closing.observations || "",
+  });
+}
+
 function commissionRows(sales, commissionStatuses) {
   const statusBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item.status || "pendiente"]));
+  const detailsBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item]));
 
   return sales
-    .filter((sale) => Number(sale.commissionPercent || 0) > 0)
+    .filter((sale) => isCollectedSale(sale) && Number(sale.commissionPercent || 0) > 0)
     .map((sale) => {
       const commissionPercent = Number(sale.commissionPercent || 0);
       const total = saleAmount(sale);
+      const details = detailsBySale[sale.id] || {};
 
       return {
         id: sale.id,
         saleId: sale.id,
-        date: sale.date,
+        date: saleOperationalDate(sale),
         employee: sale.employee || "Sin empleada",
         client: sale.clientName || "Sin cliente",
         services: saleServicesText(sale),
@@ -381,6 +541,8 @@ function commissionRows(sales, commissionStatuses) {
         commissionPercent,
         commissionAmount: total * (commissionPercent / 100),
         status: statusBySale[sale.id] || "pendiente",
+        paymentDate: details.paymentDate || "",
+        paymentMethod: details.paymentMethod || "",
       };
     })
     .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")));
@@ -425,6 +587,53 @@ function serviceRankings(sales) {
   };
 }
 
+const businessAreas = ["Manicura / Pedicura", "Cejas / Pestañas", "Corporal", "Facial", "Cursos", "Productos"];
+
+function normalizeBusinessText(value = "") {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function includesAny(text, terms) {
+  return terms.some((term) => text.includes(term));
+}
+
+function serviceBusinessArea(service) {
+  const category = normalizeBusinessText(service.category || "");
+  const name = normalizeBusinessText(service.serviceName || service.name || "");
+  const text = `${category} ${name}`;
+
+  if (includesAny(text, ["curso", "formacion", "academia", "masterclass"])) return "Cursos";
+  if (service.type === "product" || service.isProduct === true || includesAny(text, ["producto", "retail"])) return "Productos";
+  if (includesAny(text, ["manicura", "pedicura", "unas", "soft gel", "acrilic", "rubber", "retirada unas"])) return "Manicura / Pedicura";
+  if (includesAny(text, ["ceja", "cejas", "pestana", "pestanas", "lifting", "extension", "extensiones", "laminado", "henna", "microblading", "micropigmentacion", "micropigment", "powder brows", "volumen ruso"])) return "Cejas / Pestañas";
+  if (includesAny(text, ["corporal", "masaje", "maderoterapia", "drenaje", "presoterapia", "cavitacion", "radiofrecuencia corporal"])) return "Corporal";
+  if (includesAny(text, ["facial", "limpieza facial", "tratamiento facial", "depilacion facial", "dermapen", "peeling"])) return "Facial";
+  return "";
+}
+
+function salesByBusinessArea(sales) {
+  const grouped = Object.fromEntries(businessAreas.map((area) => [area, { area, amount: 0, servicesCount: 0, percent: 0 }]));
+
+  sales.forEach((sale) => {
+    normalizeSaleServices(sale).forEach((service) => {
+      const area = serviceBusinessArea(service);
+      if (!area || !grouped[area]) return;
+      const amount = Number(service.price || 0) * Number(service.quantity || 1);
+      grouped[area].amount += amount;
+      grouped[area].servicesCount += Number(service.quantity || 1);
+    });
+  });
+
+  const total = sales.reduce((sum, sale) => sum + saleAmount(sale), 0);
+  return businessAreas.map((area) => ({
+    ...grouped[area],
+    percent: total ? (grouped[area].amount / total) * 100 : 0,
+  }));
+}
+
 function channelStats(sales, configuredChannels = []) {
   const grouped = Object.fromEntries((configuredChannels || []).map((channel) => [
     channel,
@@ -443,6 +652,28 @@ function channelStats(sales, configuredChannels = []) {
   return Object.values(grouped).sort((first, second) => second.amount - first.amount);
 }
 
+function durationToMinutes(duration = "") {
+  if (typeof duration === "number") return duration;
+  const text = String(duration || "").toLowerCase();
+  const hours = text.match(/(\d+(?:[.,]\d+)?)\s*h/);
+  const minutes = text.match(/(\d+)\s*min/);
+  const hourMinutes = hours ? Number(hours[1].replace(",", ".")) * 60 : 0;
+  const extraMinutes = minutes ? Number(minutes[1]) : 0;
+  const directMinutes = !hours && !minutes ? Number(text) : 0;
+
+  return Math.round(hourMinutes + extraMinutes + (Number.isFinite(directMinutes) ? directMinutes : 0));
+}
+
+function formatDuration(minutes) {
+  const value = Number(minutes || 0);
+  if (!value) return "";
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
+  if (!hours) return `${rest} min`;
+  if (!rest) return `${hours} h`;
+  return `${hours} h ${rest} min`;
+}
+
 function normalizeServices(services) {
   return (services || []).map((service, index) => {
     if (typeof service === "string") {
@@ -451,16 +682,19 @@ function normalizeServices(services) {
         category: "Sin categoria",
         name: service,
         duration: "",
+        durationMinutes: 0,
         price: 0,
         active: true,
       };
     }
+    const durationMinutes = Number(service.durationMinutes || service.durationInMinutes || durationToMinutes(service.duration || service.duracion));
 
     return {
       id: service.id || createId("service"),
       category: service.category || service.categoria || "Sin categoria",
       name: service.name || service.nombre || "",
-      duration: service.duration || service.duracion || "",
+      duration: formatDuration(durationMinutes) || service.duration || service.duracion || "",
+      durationMinutes,
       price: Number(service.price ?? service.basePrice ?? service.precioBase ?? 0),
       active: service.active !== false,
     };
@@ -473,25 +707,40 @@ function normalizeConfig(config) {
     typeof service === "string" || (!service.category && !service.duration && service.price === undefined && service.basePrice !== undefined)
   ));
 
+  const normalizedServices = hasLegacyServices ? clone(initialServices) : normalizeServices(rawServices);
+  const serviceCategories = Array.from(new Set([
+    ...(config.serviceCategories || []),
+    ...normalizedServices.map((service) => service.category).filter(Boolean),
+  ]));
+
   return {
     ...config,
     paymentMethods: config.paymentMethods || defaultData.config.paymentMethods,
     entryChannels: config.entryChannels || defaultData.config.entryChannels,
-    services: hasLegacyServices ? clone(initialServices) : normalizeServices(rawServices),
+    serviceCategories,
+    services: normalizedServices,
   };
 }
 
 function normalizeSale(sale) {
   const services = normalizeSaleServices(sale);
+  const fechaOperativa = saleOperationalDate(sale);
   const subtotalServices = Number(sale.subtotalServices ?? servicesSubtotal(services));
   const extra = Number(sale.extra || 0);
   const total = subtotalServices + extra;
   const fields = saleVatFields({ ...sale, total, commissionPercent: sale.commissionPercent });
   const primaryService = services[0] || {};
+  const payments = normalizeSalePayments({ ...sale, total });
+  const status = saleStatus(sale);
+  const editada = saleIsEdited(sale);
 
   return {
     id: sale.id,
-    date: sale.date || today,
+    date: fechaOperativa,
+    fechaOperativa,
+    status,
+    estadoVenta: status,
+    editada,
     clientId: sale.clientId,
     clientName: sale.clientName || "",
     employee: sale.employee || sale.empleada || "",
@@ -506,12 +755,35 @@ function normalizeSale(sale) {
     ivaPercent: fields.ivaPercent,
     ivaAmount: fields.ivaAmount,
     netWithoutVat: fields.netWithoutVat,
-    paymentMethod: sale.paymentMethod || sale.metodoPago || "",
+    paymentMethod: sale.paymentMethod || sale.metodoPago || payments.map((payment) => payment.method).join(" + "),
+    payments,
     entryChannel: sale.entryChannel || sale.channel || "",
+    referralClientId: sale.referralClientId || "",
+    referralClientName: sale.referralClientName || "",
+    cardTipAmount: Number(sale.cardTipAmount || 0),
     commissionPercent: fields.commissionPercent,
     commissionAmount: fields.commissionAmount,
+    treatwellCommissionPercent: fields.treatwellCommissionPercent,
+    treatwellCommissionAmount: fields.treatwellCommissionAmount,
     netAfterCommission: fields.netAfterCommission,
+    netAfterTreatwellAndCommission: fields.netAfterTreatwellAndCommission,
     notes: sale.notes || "",
+    horaCreacionLocal: sale.horaCreacionLocal || localTimeFromTimestamp(sale.horaCreacion || sale.createdAt),
+    horaCierreLocal: sale.horaCierreLocal || localTimeFromTimestamp(sale.horaCierre || sale.closedAt),
+    horaCreacion: sale.horaCreacion || sale.createdAt || "",
+    horaCierre: sale.horaCierre || sale.closedAt || "",
+    createdAt: sale.createdAt || "",
+    updatedAt: sale.updatedAt || "",
+    fechaCierre: sale.fechaCierre || "",
+    fechaCancelacion: sale.fechaCancelacion || "",
+    horaCancelacion: sale.horaCancelacion || "",
+    cancelReason: sale.cancelReason || "",
+    editedAt: sale.editedAt || (editada && sale.updatedAt ? sale.updatedAt : ""),
+    editedBy: sale.editedBy || "",
+    previousVersions: sale.previousVersions || [],
+    voidedAt: sale.voidedAt || "",
+    voidedBy: sale.voidedBy || "",
+    voidReason: sale.voidReason || "",
   };
 }
 
@@ -532,6 +804,7 @@ function normalizeClient(client) {
     totalSpent: Number(rest.totalSpent || 0),
     lastVisit: rest.lastVisit || "",
     loyaltyStamps: Number(rest.loyaltyStamps || 0),
+    referralStamps: Number(rest.referralStamps || 0),
   });
 }
 
@@ -541,6 +814,21 @@ function cleanFirestoreData(item) {
 
 function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "");
+}
+
+function normalizeEmail(value) {
+  return cleanText(value).toLowerCase();
+}
+
+function findExistingClient(clients, clientInput = {}) {
+  const phone = normalizePhone(clientInput.phoneNormalized || clientInput.phone);
+  const email = normalizeEmail(clientInput.email);
+
+  return clients.find((client) => {
+    const clientPhone = normalizePhone(client.phoneNormalized || client.phone);
+    const clientEmail = normalizeEmail(client.email);
+    return (phone && clientPhone === phone) || (email && clientEmail === email);
+  });
 }
 
 function firstValue(row, keys) {
@@ -605,13 +893,15 @@ function resetClientMetrics(client) {
     totalSpent: 0,
     lastVisit: "",
     loyaltyStamps: 0,
+    referralStamps: 0,
   };
 }
 
 function applySaleToClient(client, sale) {
   const visits = Number(client.visits || 0) + 1;
   const totalSpent = Number(client.totalSpent || 0) + saleAmount(sale);
-  const lastVisit = !client.lastVisit || sale.date > client.lastVisit ? sale.date : client.lastVisit;
+  const visitDate = saleOperationalDate(sale);
+  const lastVisit = !client.lastVisit || visitDate > client.lastVisit ? visitDate : client.lastVisit;
   const loyaltyStamps = Number(client.loyaltyStamps || 0) + saleServicesCount(sale);
 
   return {
@@ -619,6 +909,18 @@ function applySaleToClient(client, sale) {
     visits,
     totalSpent,
     lastVisit,
+    loyaltyStamps,
+  };
+}
+
+function applyReferralToClient(client, sale) {
+  const stamps = saleServicesCount(sale);
+  const referralStamps = Number(client.referralStamps || 0) + stamps;
+  const loyaltyStamps = Number(client.loyaltyStamps || 0) + stamps;
+
+  return {
+    ...client,
+    referralStamps,
     loyaltyStamps,
   };
 }
@@ -631,7 +933,9 @@ const DataService = {
   },
 
   getExpenses() {
-    return readCollection("expenses");
+    const expenses = readCollection("expenses").map(normalizeExpense);
+    writeCollection("expenses", expenses);
+    return expenses;
   },
 
   getClients() {
@@ -646,6 +950,18 @@ const DataService = {
 
   getCommissionStatuses() {
     return readCollection("commissions");
+  },
+
+  getCashClosings() {
+    const closings = readCollection("cashClosings").map(normalizeCashClosing);
+    writeCollection("cashClosings", closings);
+    return closings;
+  },
+
+  getMonthlyClosings() {
+    const closings = readCollection("monthlyClosings").map(normalizeMonthlyClosing);
+    writeCollection("monthlyClosings", closings);
+    return closings;
   },
 
   getCommissions() {
@@ -672,6 +988,8 @@ const DataService = {
       clients: this.getClients(),
       appointments: this.getAppointments(),
       commissions: this.getCommissionStatuses(),
+      cashClosings: this.getCashClosings(),
+      monthlyClosings: this.getMonthlyClosings(),
       services: config.services,
       config,
     };
@@ -679,12 +997,14 @@ const DataService = {
 
   async initializeRemoteData() {
     try {
-      const [sales, expenses, clients, appointments, commissions, services, remoteConfig] = await Promise.all([
+      const [sales, expenses, clients, appointments, commissions, cashClosings, monthlyClosings, services, remoteConfig] = await Promise.all([
         readFirestoreCollection("sales"),
         readFirestoreCollection("expenses"),
         readFirestoreCollection("clients"),
         readFirestoreCollection("appointments"),
         readFirestoreCollection("commissions"),
+        readFirestoreCollection("cashClosings"),
+        readFirestoreCollection("monthlyClosings"),
         readFirestoreCollection("services"),
         readFirestoreConfig(),
       ]);
@@ -701,6 +1021,8 @@ const DataService = {
       writeCollection("clients", clients.map(normalizeClient));
       writeCollection("appointments", appointments);
       writeCollection("commissions", commissions);
+      writeCollection("cashClosings", cashClosings.map(normalizeCashClosing));
+      writeCollection("monthlyClosings", monthlyClosings.map(normalizeMonthlyClosing));
       writeCollection("config", config);
       if (!remoteConfig || services.length === 0) {
         await syncConfigToFirestore(config);
@@ -752,6 +1074,16 @@ const DataService = {
         writeCollection("commissions", commissions);
         refreshFromLocal();
       }, handleError),
+      onSnapshot(collection(db, "cashClosings"), (snapshot) => {
+        const cashClosings = snapshot.docs.map((document) => normalizeCashClosing({ id: document.id, ...document.data() }));
+        writeCollection("cashClosings", cashClosings);
+        refreshFromLocal();
+      }, handleError),
+      onSnapshot(collection(db, "monthlyClosings"), (snapshot) => {
+        const monthlyClosings = snapshot.docs.map((document) => normalizeMonthlyClosing({ id: document.id, ...document.data() }));
+        writeCollection("monthlyClosings", monthlyClosings);
+        refreshFromLocal();
+      }, handleError),
       onSnapshot(collection(db, "services"), (snapshot) => {
         const services = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
         writeCollection("config", normalizeConfig({ ...this.getConfig(), services }));
@@ -770,7 +1102,27 @@ const DataService = {
   addSale(arg1, arg2) {
     const currentSales = Array.isArray(arg1) ? arg1 : this.getSales();
     const saleInput = arg2 || arg1;
-    const sale = { ...normalizeSale(saleInput), id: createId("sale") };
+    const technicalTimestamp = getTechnicalTimestamp();
+    const localTimestamp = getMadridTimestamp();
+    const localTime = getMadridTimeString();
+    const date = saleInput.fechaOperativa || saleInput.date || todayLocal();
+    const status = saleStatus(saleInput);
+    const sale = {
+      ...normalizeSale({
+        ...saleInput,
+        date,
+        fechaOperativa: date,
+        status,
+        createdAt: technicalTimestamp,
+        updatedAt: technicalTimestamp,
+      }),
+      id: createId("sale"),
+      horaCreacion: localTimestamp,
+      horaCreacionLocal: localTime,
+      horaCierre: status === "cobrado" ? localTimestamp : "",
+      horaCierreLocal: status === "cobrado" ? localTime : "",
+      fechaCierre: status === "cobrado" ? date : "",
+    };
     writeCollection("sales", [sale, ...currentSales]);
     saveDocumentToFirestore("sales", sale, "Venta guardada en Firestore");
     const clients = this.recalculateClientData();
@@ -783,7 +1135,43 @@ const DataService = {
     const existingSale = currentSales.find((sale) => sale.id === saleId);
     if (!existingSale) return this.getData();
 
-    const updatedSale = normalizeSale({ ...existingSale, ...updates, id: saleId });
+    const nextStatus = saleStatus({ ...existingSale, ...updates });
+    const technicalTimestamp = getTechnicalTimestamp();
+    const now = getMadridTimestamp();
+    const localTime = getMadridTimeString();
+    const date = updates.fechaOperativa || updates.date || existingSale.fechaOperativa || existingSale.date || todayLocal();
+    const wasCollected = saleStatus(existingSale) === "cobrado";
+    const isCollected = nextStatus === "cobrado";
+    const isVoid = nextStatus === "anulada";
+    const isClosedEdit = wasCollected && isCollected && !updates.skipEditAudit;
+    const previousVersions = isClosedEdit
+      ? [...(existingSale.previousVersions || []), { savedAt: now, data: existingSale }]
+      : existingSale.previousVersions || [];
+    const updatedSale = normalizeSale({
+      ...existingSale,
+      ...updates,
+      date,
+      fechaOperativa: date,
+      id: saleId,
+      status: nextStatus,
+      estadoVenta: nextStatus,
+      editada: isClosedEdit ? true : saleIsEdited(existingSale),
+      horaCreacion: existingSale.horaCreacion || existingSale.createdAt || now,
+      horaCreacionLocal: existingSale.horaCreacionLocal || localTimeFromTimestamp(existingSale.horaCreacion || existingSale.createdAt) || localTime,
+      horaCierre: nextStatus === "cobrado" ? (updates.horaCierre || (wasCollected ? existingSale.horaCierre : "") || now) : "",
+      horaCierreLocal: nextStatus === "cobrado" ? (updates.horaCierreLocal || (wasCollected ? existingSale.horaCierreLocal : "") || localTime) : "",
+      fechaCierre: nextStatus === "cobrado" ? (updates.fechaCierre || date) : "",
+      fechaCancelacion: nextStatus === "cancelado" ? (updates.fechaCancelacion || todayLocal()) : existingSale.fechaCancelacion,
+      horaCancelacion: nextStatus === "cancelado" ? (updates.horaCancelacion || now) : existingSale.horaCancelacion,
+      createdAt: existingSale.createdAt || technicalTimestamp,
+      updatedAt: technicalTimestamp,
+      editedAt: isClosedEdit ? now : existingSale.editedAt,
+      editedBy: isClosedEdit ? (updates.editedBy || existingSale.editedBy || "") : existingSale.editedBy,
+      previousVersions,
+      voidedAt: isVoid ? (updates.voidedAt || now) : existingSale.voidedAt,
+      voidedBy: isVoid ? (updates.voidedBy || existingSale.voidedBy || "") : existingSale.voidedBy,
+      voidReason: isVoid ? (updates.voidReason || existingSale.voidReason || "") : existingSale.voidReason,
+    });
     const sales = writeCollection(
       "sales",
       currentSales.map((sale) => (sale.id === saleId ? updatedSale : sale)),
@@ -797,14 +1185,17 @@ const DataService = {
   addExpense(arg1, arg2) {
     const currentExpenses = Array.isArray(arg1) ? arg1 : this.getExpenses();
     const expenseInput = arg2 || arg1;
-    const expense = {
-      date: expenseInput.date || today,
+    const expense = normalizeExpense({
+      date: expenseInput.date || todayLocal(),
       category: expenseInput.category || "General",
       concept: expenseInput.concept || "",
       amount: Number(expenseInput.amount || 0),
       paymentMethod: expenseInput.paymentMethod || "",
+      status: String(expenseInput.status || "pagado").toLowerCase() === "pendiente" ? "pendiente" : "pagado",
+      documentType: expenseInput.documentType || "Otro",
+      vatRate: expenseInput.vatRate,
       id: createId("expense"),
-    };
+    });
     const expenses = writeCollection("expenses", [expense, ...currentExpenses]);
     saveDocumentToFirestore("expenses", expense);
     return Array.isArray(arg1) ? expenses : this.getData();
@@ -813,8 +1204,7 @@ const DataService = {
   addClient(arg1, arg2) {
     const currentClients = Array.isArray(arg1) ? arg1 : this.getClients();
     const clientInput = arg2 || arg1;
-    const phone = String(clientInput.phone || "").trim();
-    const existingClient = phone ? currentClients.find((client) => String(client.phone || "").trim() === phone) : null;
+    const existingClient = findExistingClient(currentClients, clientInput);
     if (existingClient) return Array.isArray(arg1) ? currentClients : this.getData();
 
     const client = normalizeClient({
@@ -829,8 +1219,7 @@ const DataService = {
 
   createClientFromSale(clientInput) {
     const currentClients = this.getClients();
-    const phone = String(clientInput.phone || "").trim();
-    const existingClient = phone ? currentClients.find((client) => String(client.phone || "").trim() === phone) : null;
+    const existingClient = findExistingClient(currentClients, clientInput);
     if (existingClient) {
       return { data: this.getData(), client: existingClient };
     }
@@ -933,6 +1322,41 @@ const DataService = {
     return { ...this.getData(), config };
   },
 
+  createService(serviceInput) {
+    const currentConfig = this.getConfig();
+    const categoryName = cleanText(serviceInput.category);
+    const existingCategory = (currentConfig.serviceCategories || []).find((category) => normalizeEmail(category) === normalizeEmail(categoryName));
+    const category = existingCategory || categoryName;
+    const durationMinutes = Number(serviceInput.durationMinutes || durationToMinutes(serviceInput.duration));
+    const service = normalizeServices([{
+      id: createId("service"),
+      category,
+      name: cleanText(serviceInput.name),
+      durationMinutes,
+      price: Number(serviceInput.price || 0),
+      active: serviceInput.active !== false,
+    }])[0];
+
+    if (!service?.name || !service.category || !service.durationMinutes || service.price <= 0) {
+      return { data: this.getData(), service: null };
+    }
+
+    const serviceCategories = existingCategory || !category
+      ? currentConfig.serviceCategories
+      : [...(currentConfig.serviceCategories || []), category].sort((first, second) => first.localeCompare(second));
+    const config = writeCollection("config", normalizeConfig({
+      ...currentConfig,
+      serviceCategories,
+      services: [service, ...(currentConfig.services || [])],
+    }));
+    syncConfigToFirestore(config).catch((error) => {
+      console.warn("Firestore service save failed", error);
+      console.log("Usando localStorage fallback");
+    });
+
+    return { data: { ...this.getData(), config }, service };
+  },
+
   restoreVSStudioConfig() {
     const config = writeCollection("config", normalizeConfig({
       ...this.getConfig(),
@@ -987,7 +1411,7 @@ const DataService = {
     return writeCollection("expenses", expenses.filter((expense) => expense.id !== id));
   },
 
-  updateCommissionStatus(saleId, status) {
+  updateCommissionStatus(saleId, status, details = {}) {
     const safeStatus = status === "pagada" ? "pagada" : "pendiente";
     const currentStatuses = this.getCommissionStatuses();
     const existingStatus = currentStatuses.find((item) => (item.saleId || item.id) === saleId);
@@ -996,7 +1420,9 @@ const DataService = {
       id: saleId,
       saleId,
       status: safeStatus,
-      updatedAt: new Date().toISOString(),
+      paymentDate: safeStatus === "pagada" ? (details.paymentDate || existingStatus?.paymentDate || todayLocal()) : "",
+      paymentMethod: safeStatus === "pagada" ? (details.paymentMethod || existingStatus?.paymentMethod || "Transferencia") : "",
+      updatedAt: getMadridTimestamp(),
     };
     const commissions = writeCollection(
       "commissions",
@@ -1006,6 +1432,54 @@ const DataService = {
     );
     saveDocumentToFirestore("commissions", nextStatus);
     return { ...this.getData(), commissions };
+  },
+
+  saveCashClosing(closingInput) {
+    const date = closingInput.date || todayLocal();
+    const currentClosings = this.getCashClosings();
+    const existingClosing = currentClosings.find((closing) => closing.date === date);
+    const closing = normalizeCashClosing({
+      ...(existingClosing || {}),
+      ...closingInput,
+      id: existingClosing?.id || `cash-closing-${date}`,
+      date,
+      savedAt: getMadridTimestamp(),
+    });
+    const cashClosings = writeCollection(
+      "cashClosings",
+      existingClosing
+        ? currentClosings.map((item) => (item.id === existingClosing.id ? closing : item))
+        : [closing, ...currentClosings],
+    );
+    saveDocumentToFirestore("cashClosings", closing);
+    return { ...this.getData(), cashClosings };
+  },
+
+  saveMonthlyClosing(closingInput) {
+    const month = Number(closingInput.month || todayLocal().slice(5, 7));
+    const year = Number(closingInput.year || todayLocal().slice(0, 4));
+    const periodKey = `${year}-${String(month).padStart(2, "0")}`;
+    const currentClosings = this.getMonthlyClosings();
+    const existingClosing = currentClosings.find((closing) => closing.periodKey === periodKey);
+    const now = getMadridTimestamp();
+    const closing = normalizeMonthlyClosing({
+      ...(existingClosing || {}),
+      ...closingInput,
+      id: existingClosing?.id || `monthly-closing-${periodKey}`,
+      month,
+      year,
+      periodKey,
+      createdAt: existingClosing?.createdAt || now,
+      updatedAt: now,
+    });
+    const monthlyClosings = writeCollection(
+      "monthlyClosings",
+      existingClosing
+        ? currentClosings.map((item) => (item.id === existingClosing.id ? closing : item))
+        : [closing, ...currentClosings],
+    );
+    saveDocumentToFirestore("monthlyClosings", closing);
+    return { ...this.getData(), monthlyClosings };
   },
 
   deleteClient(arg1, arg2) {
@@ -1018,15 +1492,17 @@ const DataService = {
 
   getDashboardData() {
     this.recalculateClientData();
-    const sales = this.getSales();
+    const allSales = this.getSales();
+    const sales = allSales.filter(isCollectedSale);
+    const current = getDateParts(todayLocal());
+    const pendingSales = allSales.filter((sale) => saleStatus(sale) === "pendiente_pago" && itemOperationalDate(sale) === current.day);
     const expenses = this.getExpenses();
     const clients = this.getClients();
     const config = this.getConfig();
-    const current = getDateParts(today);
-    const todaySales = sales.filter((sale) => sale.date === current.day);
-    const todayExpenses = expenses.filter((expense) => expense.date === current.day);
-    const monthSales = sales.filter((sale) => sale.date?.startsWith(current.month));
-    const monthExpenses = expenses.filter((expense) => expense.date?.startsWith(current.month));
+    const todaySales = sales.filter((sale) => itemOperationalDate(sale) === current.day);
+    const todayExpenses = expenses.filter((expense) => itemOperationalDate(expense) === current.day);
+    const monthSales = sales.filter((sale) => itemOperationalDate(sale)?.startsWith(current.month));
+    const monthExpenses = expenses.filter((expense) => itemOperationalDate(expense)?.startsWith(current.month));
     const todaySalesTotal = todaySales.reduce((total, sale) => total + saleAmount(sale), 0);
     const todayExpensesTotal = sum(todayExpenses, "amount");
     const monthSalesTotal = monthSales.reduce((total, sale) => total + saleAmount(sale), 0);
@@ -1034,8 +1510,8 @@ const DataService = {
     const todaySummary = saleSummary(todaySales);
     const monthSummary = saleSummary(monthSales);
     const monthProfit = monthSummary.totalSales - monthSummary.ivaAmount - monthSummary.commissionAmount - monthExpensesTotal;
-    const dayOfMonth = new Date().getDate();
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const dayOfMonth = getMadridDayOfMonth();
+    const daysInMonth = getMadridDaysInCurrentMonth();
     const predictedClose = dayOfMonth ? (monthSalesTotal / dayOfMonth) * daysInMonth : monthSalesTotal;
 
     return {
@@ -1065,6 +1541,10 @@ const DataService = {
         completion: config.monthlyGoal ? (monthSalesTotal / Number(config.monthlyGoal)) * 100 : 0,
         predictedClose,
       },
+      pending: {
+        count: pendingSales.length,
+        total: pendingSales.reduce((total, sale) => total + saleAmount(sale), 0),
+      },
       clients,
     };
   },
@@ -1073,12 +1553,16 @@ const DataService = {
     this.recalculateClientData();
     const from = filters.from || "";
     const to = filters.to || "";
+    const statusFilter = filters.status || "cobrado";
     const inRange = (item) => {
-      if (from && item.date < from) return false;
-      if (to && item.date > to) return false;
+      const date = itemOperationalDate(item);
+      if (from && date < from) return false;
+      if (to && date > to) return false;
       return true;
     };
-    const sales = this.getSales().filter(inRange);
+    const sales = this.getSales()
+      .filter(inRange)
+      .filter((sale) => !statusFilter || saleStatus(sale) === statusFilter);
     const expenses = this.getExpenses().filter(inRange);
     const config = this.getConfig();
     const summary = saleSummary(sales);
@@ -1092,6 +1576,7 @@ const DataService = {
       salesByService: groupBySum(sales, "service", "total"),
       paymentMethods: groupBySum(sales, "paymentMethod", "total"),
       salesByChannel: channelStats(sales, config.entryChannels),
+      salesByBusinessArea: salesByBusinessArea(sales),
       serviceRankings: serviceRankings(sales),
       employeeCommissions: employeeCommissions(sales),
       totalSales,
@@ -1099,21 +1584,33 @@ const DataService = {
       totalIva: summary.ivaAmount,
       totalNetWithoutVat: summary.netWithoutVat,
       totalCommissions: summary.commissionAmount,
+      totalTreatwellCommissions: summary.treatwellCommissionAmount,
       netAfterVatAndCommissions: summary.netAfterCommission,
+      netAfterTreatwellAndCommissions: summary.netAfterTreatwellAndCommission,
       profit: summary.netAfterCommission - totalExpenses,
       averageTicket: sales.length ? totalSales / sales.length : 0,
     };
   },
 
   recalculateClientData(syncRemote = false) {
-    const sales = this.getSales();
+    const sales = this.getSales().filter(isCollectedSale);
     const resetClients = this.getClients().map(resetClientMetrics);
     const clients = sales.reduce((currentClients, sale) => {
-      if (!sale.clientId) return currentClients;
+      let nextClients = currentClients;
 
-      return currentClients.map((client) =>
-        client.id === sale.clientId ? applySaleToClient(client, sale) : client
-      );
+      if (sale.clientId) {
+        nextClients = nextClients.map((client) =>
+          client.id === sale.clientId ? applySaleToClient(client, sale) : client
+        );
+      }
+
+      if (sale.clientId && sale.referralClientId && sale.referralClientId !== sale.clientId) {
+        nextClients = nextClients.map((client) =>
+          client.id === sale.referralClientId ? applyReferralToClient(client, sale) : client
+        );
+      }
+
+      return nextClients;
     }, resetClients);
 
     return writeCollection("clients", clients, syncRemote);
@@ -1124,6 +1621,8 @@ const DataService = {
     writeCollection("expenses", [], true);
     writeCollection("appointments", [], true);
     writeCollection("commissions", [], true);
+    writeCollection("cashClosings", [], true);
+    writeCollection("monthlyClosings", [], true);
 
     if (mode === "all") {
       writeCollection("clients", [], true);

@@ -1,8 +1,27 @@
 import { useMemo, useState } from "react";
+import SaleList from "./SaleList.jsx";
 import DataService from "../services/DataService.js";
+import { getLocalStartOfWeek, getTodayLocalDateString } from "../utils/date.js";
 
 function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
+}
+
+const periodOptions = [
+  { value: "today", label: "Hoy" },
+  { value: "week", label: "Semana" },
+  { value: "month", label: "Mes" },
+  { value: "year", label: "Año" },
+  { value: "custom", label: "Rango personalizado" },
+];
+
+function getStatsRange(period) {
+  const today = getTodayLocalDateString();
+  if (period === "today") return { from: today, to: today };
+  if (period === "week") return { from: getLocalStartOfWeek(today), to: today };
+  if (period === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
+  if (period === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today };
+  return { from: "", to: "" };
 }
 
 function StatBlock({ title, data }) {
@@ -104,9 +123,41 @@ function SalesByDayTable({ data }) {
   );
 }
 
-function Statistics({ dataVersion }) {
-  const [draftFilters, setDraftFilters] = useState({ from: "", to: "" });
-  const [filters, setFilters] = useState({ from: "", to: "" });
+function BusinessAreaSales({ rows }) {
+  const max = Math.max(...rows.map((row) => row.amount), 1);
+
+  return (
+    <article className="panel wide-panel">
+      <h3>Ventas por área de negocio</h3>
+      <div className="finance-table">
+        <div className="finance-header business-area-row">
+          <span>Área</span>
+          <span>Ventas</span>
+          <span>Nº servicios</span>
+          <span>% sobre total</span>
+        </div>
+        {rows.length === 0 && <p className="empty-state">Sin ventas en el rango.</p>}
+        {rows.map((row) => (
+          <div className="finance-row business-area-row" key={row.area}>
+            <span className="business-area-name">
+              <span>{row.area}</span>
+              <div className="day-bar"><span style={{ width: `${(row.amount / max) * 100}%` }} /></div>
+            </span>
+            <strong>{money(row.amount)}</strong>
+            <span>{row.servicesCount}</span>
+            <strong>{row.percent.toFixed(1)}%</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function Statistics({ dataVersion, clients, selectedSaleDate, onDateSelect, onEditSale, onDeleteSale }) {
+  const initialFilters = getStatsRange("month");
+  const [periodFilter, setPeriodFilter] = useState("month");
+  const [draftFilters, setDraftFilters] = useState(initialFilters);
+  const [filters, setFilters] = useState(initialFilters);
   const stats = useMemo(() => DataService.getStats(filters), [filters, dataVersion]);
 
   const applyFilters = (event) => {
@@ -114,8 +165,17 @@ function Statistics({ dataVersion }) {
     setFilters(draftFilters);
   };
 
+  const changePeriod = (period) => {
+    setPeriodFilter(period);
+    if (period === "custom") return;
+    const range = getStatsRange(period);
+    setDraftFilters(range);
+    setFilters(range);
+  };
+
   const clearFilters = () => {
     const empty = { from: "", to: "" };
+    setPeriodFilter("custom");
     setDraftFilters(empty);
     setFilters(empty);
   };
@@ -128,8 +188,17 @@ function Statistics({ dataVersion }) {
       </div>
 
       <form className="panel filters-panel" onSubmit={applyFilters}>
-        <label>Fecha desde<input type="date" value={draftFilters.from} onChange={(event) => setDraftFilters({ ...draftFilters, from: event.target.value })} /></label>
-        <label>Fecha hasta<input type="date" value={draftFilters.to} onChange={(event) => setDraftFilters({ ...draftFilters, to: event.target.value })} /></label>
+        <label>Periodo<select value={periodFilter} onChange={(event) => changePeriod(event.target.value)}>
+          {periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select></label>
+        <label>Fecha desde<input type="date" value={draftFilters.from} onChange={(event) => {
+          setPeriodFilter("custom");
+          setDraftFilters({ ...draftFilters, from: event.target.value });
+        }} /></label>
+        <label>Fecha hasta<input type="date" value={draftFilters.to} onChange={(event) => {
+          setPeriodFilter("custom");
+          setDraftFilters({ ...draftFilters, to: event.target.value });
+        }} /></label>
         <button type="submit">Aplicar filtro</button>
         <button className="secondary-button" type="button" onClick={clearFilters}>Limpiar filtro</button>
       </form>
@@ -146,6 +215,15 @@ function Statistics({ dataVersion }) {
       </div>
 
       <SalesByDayTable data={stats.salesByDay} />
+      <BusinessAreaSales rows={stats.salesByBusinessArea} />
+      <SaleList
+        sales={dataVersion.sales || []}
+        clients={clients}
+        selectedDate={selectedSaleDate}
+        onDateSelect={onDateSelect}
+        onEditSale={onEditSale}
+        onDeleteSale={onDeleteSale}
+      />
       <ChannelStatsBlock rows={stats.salesByChannel} />
       <EmployeeCommissions rows={stats.employeeCommissions} />
 

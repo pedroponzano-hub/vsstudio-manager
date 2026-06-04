@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 
+import { getTodayLocalDateString } from "../utils/date.js";
+
 function todayDate() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayLocalDateString();
 }
 
 function emptyAppointmentForm() {
@@ -34,19 +36,36 @@ function calculateEndTime(startTime, duration) {
   const [hours, mins] = startTime.split(":").map(Number);
   if (Number.isNaN(hours) || Number.isNaN(mins)) return "";
 
-  const date = new Date();
-  date.setHours(hours, mins + minutes, 0, 0);
+  const totalMinutes = (hours * 60) + mins + minutes;
+  const endHours = Math.floor(totalMinutes / 60) % 24;
+  const endMinutes = totalMinutes % 60;
 
-  return date.toTimeString().slice(0, 5);
+  return `${String(endHours).padStart(2, "0")}:${String(endMinutes).padStart(2, "0")}`;
 }
 
-function Agenda({ clients, config, appointments, onSave, onUpdate, onDelete }) {
+const emptyQuickClient = { name: "", lastName: "", phone: "", email: "", observations: "" };
+
+function Agenda({ clients, config, appointments, onSave, onUpdate, onDelete, onCreateClient }) {
   const services = (config.services || []).filter((service) => service.active !== false);
   const appointmentList = appointments || config.agenda || [];
   const clientNames = useMemo(() => Object.fromEntries(clients.map((client) => [client.id, client.name])), [clients]);
   const [form, setForm] = useState(() => emptyAppointmentForm());
+  const [clientQuery, setClientQuery] = useState("");
+  const [showClientResults, setShowClientResults] = useState(false);
+  const [showQuickClientForm, setShowQuickClientForm] = useState(false);
+  const [quickClient, setQuickClient] = useState(emptyQuickClient);
   const [editingId, setEditingId] = useState("");
   const [error, setError] = useState("");
+
+  const filteredClients = useMemo(() => {
+    const query = clientQuery.trim().toLowerCase();
+    if (!query) return [];
+    return clients.filter((client) => (
+      `${client.name || ""} ${client.lastName || ""} ${client.phone || ""} ${client.email || ""}`
+        .toLowerCase()
+        .includes(query)
+    )).slice(0, 12);
+  }, [clientQuery, clients]);
 
   const updateField = (event) => {
     setForm({ ...form, [event.target.name]: event.target.value });
@@ -64,8 +83,56 @@ function Agenda({ clients, config, appointments, onSave, onUpdate, onDelete }) {
     setError("");
   };
 
+  const updateClientQuery = (event) => {
+    const value = event.target.value;
+    setClientQuery(value);
+    setShowClientResults(Boolean(value.trim()));
+    setError("");
+    setForm((current) => ({ ...current, clientId: "" }));
+  };
+
+  const selectClient = (client) => {
+    setForm((current) => ({ ...current, clientId: client.id }));
+    setClientQuery(`${client.name || ""}${client.lastName ? ` ${client.lastName}` : ""}`.trim());
+    setShowClientResults(false);
+    setShowQuickClientForm(false);
+    setError("");
+  };
+
+  const openQuickClientForm = () => {
+    setShowClientResults(false);
+    setShowQuickClientForm(true);
+  };
+
+  const updateQuickClientField = (event) => {
+    setQuickClient({ ...quickClient, [event.target.name]: event.target.value });
+  };
+
+  const saveQuickClient = () => {
+    if (!quickClient.name.trim()) {
+      setError("Introduce el nombre del cliente.");
+      return;
+    }
+
+    const client = onCreateClient?.({
+      name: quickClient.name.trim(),
+      lastName: quickClient.lastName.trim(),
+      phone: quickClient.phone.trim(),
+      email: quickClient.email.trim(),
+      observations: quickClient.observations.trim(),
+    });
+    if (!client) return;
+
+    selectClient(client);
+    setQuickClient(emptyQuickClient);
+  };
+
   const resetForm = () => {
     setForm(emptyAppointmentForm());
+    setClientQuery("");
+    setShowClientResults(false);
+    setShowQuickClientForm(false);
+    setQuickClient(emptyQuickClient);
     setEditingId("");
     setError("");
   };
@@ -75,6 +142,7 @@ function Agenda({ clients, config, appointments, onSave, onUpdate, onDelete }) {
     const service = services.find((item) => item.id === serviceId);
 
     setEditingId(appointment.id);
+    setClientQuery(appointment.clientName || clients.find((client) => client.id === appointment.clientId)?.name || "");
     setForm({
       date: appointment.date || todayDate(),
       time: appointment.startTime || appointment.time || "",
@@ -136,13 +204,49 @@ function Agenda({ clients, config, appointments, onSave, onUpdate, onDelete }) {
           <label>Fecha<input type="date" name="date" value={form.date} onChange={updateField} /></label>
           <label>Hora<input type="time" name="time" value={form.time} onChange={updateField} /></label>
         </div>
-        <label>
+        <label className="service-search-field">
           Cliente
-          <select name="clientId" value={form.clientId} onChange={updateField}>
-            <option value="">Seleccionar...</option>
-            {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-          </select>
+          <input
+            value={clientQuery}
+            onChange={updateClientQuery}
+            onFocus={() => setShowClientResults(Boolean(clientQuery.trim()))}
+            placeholder="Buscar por nombre, telefono o email"
+          />
+          {onCreateClient && (
+            <div className="client-quick-actions">
+              <button className="secondary-button" type="button" onClick={openQuickClientForm}>+ Crear cliente nuevo</button>
+            </div>
+          )}
+          {showClientResults && (
+            <div className="service-results">
+              {filteredClients.map((client) => (
+                <button className="service-result" type="button" key={client.id} onMouseDown={() => selectClient(client)}>
+                  <strong>{client.name}{client.lastName ? ` ${client.lastName}` : ""}</strong>
+                  <span>{client.phone || "Sin telefono"}{client.email ? ` - ${client.email}` : ""}</span>
+                </button>
+              ))}
+              {filteredClients.length === 0 && <p className="empty-state">Sin clientes con esa busqueda.</p>}
+            </div>
+          )}
         </label>
+        {showQuickClientForm && onCreateClient && (
+          <section className="quick-client-box">
+            <h3>Crear cliente nuevo</h3>
+            <div className="field-row">
+              <input name="name" value={quickClient.name} onChange={updateQuickClientField} placeholder="Nombre" />
+              <input name="lastName" value={quickClient.lastName} onChange={updateQuickClientField} placeholder="Apellidos" />
+            </div>
+            <div className="field-row">
+              <input name="phone" value={quickClient.phone} onChange={updateQuickClientField} placeholder="Telefono" />
+              <input name="email" type="email" value={quickClient.email} onChange={updateQuickClientField} placeholder="Email" />
+            </div>
+            <textarea name="observations" value={quickClient.observations} onChange={updateQuickClientField} placeholder="Observaciones" />
+            <div className="row-actions">
+              <button type="button" onClick={saveQuickClient}>Guardar cliente</button>
+              <button className="secondary-button" type="button" onClick={() => setShowQuickClientForm(false)}>Cancelar</button>
+            </div>
+          </section>
+        )}
         <label>
           Servicio
           <select value={form.serviceId} onChange={updateService}>

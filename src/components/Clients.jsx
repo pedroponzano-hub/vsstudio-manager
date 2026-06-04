@@ -3,7 +3,7 @@ import ClientProfile from "./ClientProfile.jsx";
 
 const emptyForm = { name: "", phone: "", email: "", observations: "", interests: "" };
 
-function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDeleteClient }) {
+function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDeleteClient, readOnly = false }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(clients[0]?.id || "");
   const [form, setForm] = useState(emptyForm);
@@ -16,6 +16,7 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
     event.preventDefault();
     if (!form.name.trim()) return;
 
+    if (readOnly) return;
     onCreateClient(form);
     setForm(emptyForm);
   };
@@ -23,6 +24,7 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
   const deleteClient = (client) => {
     const confirmed = window.confirm("¿Seguro que deseas eliminar este cliente? Esta acción no se puede deshacer.");
     if (!confirmed) return;
+    if (readOnly) return;
     onDeleteClient(client.id);
     if (selectedId === client.id) setSelectedId("");
   };
@@ -38,31 +40,37 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
               <button className="client-button" type="button" onClick={() => setSelectedId(client.id)}>
                 <span>{client.name}</span><small>{client.phone || "Sin telefono"}{client.email ? ` - ${client.email}` : ""}</small>
               </button>
-              <div className="row-actions">
-                <button className="danger-button" type="button" onClick={() => deleteClient(client)}>Eliminar</button>
-              </div>
+              {!readOnly && (
+                <div className="row-actions">
+                  <button className="danger-button" type="button" onClick={() => deleteClient(client)}>Eliminar</button>
+                </div>
+              )}
             </article>
           ))}
         </div>
-        <form className="inline-form" onSubmit={submit}>
-          <h3>Crear cliente</h3>
-          <input name="name" value={form.name} onChange={updateField} placeholder="Nombre" />
-          <input name="phone" value={form.phone} onChange={updateField} placeholder="Telefono" />
-          <input name="email" value={form.email} onChange={updateField} placeholder="Email" />
-          <textarea name="observations" value={form.observations} onChange={updateField} placeholder="Observaciones" />
-          <textarea name="interests" value={form.interests} onChange={updateField} placeholder="Intereses" />
-          <div className="row-actions">
-            <button type="submit">Crear cliente</button>
-          </div>
-        </form>
+        {!readOnly && (
+          <form className="inline-form" onSubmit={submit}>
+            <h3>Crear cliente</h3>
+            <input name="name" value={form.name} onChange={updateField} placeholder="Nombre" />
+            <input name="phone" value={form.phone} onChange={updateField} placeholder="Telefono" />
+            <input name="email" value={form.email} onChange={updateField} placeholder="Email" />
+            <textarea name="observations" value={form.observations} onChange={updateField} placeholder="Observaciones" />
+            <textarea name="interests" value={form.interests} onChange={updateField} placeholder="Intereses" />
+            <div className="row-actions">
+              <button type="submit">Crear cliente</button>
+            </div>
+          </form>
+        )}
       </div>
       {selectedClient && (
         <ClientProfile
           key={selectedClient.id}
           client={selectedClient}
           sales={sales.filter((sale) => sale.clientId === selectedClient.id)}
+          referralSales={sales.filter((sale) => sale.referralClientId === selectedClient.id)}
           config={config}
           onUpdateClient={onUpdateClient}
+          readOnly={readOnly}
         />
       )}
     </section>

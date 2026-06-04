@@ -1,6 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const emptyService = { category: "", name: "", duration: "", price: "", active: true };
+const durationOptions = [
+  { label: "15 min", value: 15 },
+  { label: "20 min", value: 20 },
+  { label: "30 min", value: 30 },
+  { label: "45 min", value: 45 },
+  { label: "1 h", value: 60 },
+  { label: "1 h 15 min", value: 75 },
+  { label: "1 h 30 min", value: 90 },
+  { label: "2 h", value: 120 },
+];
 
 function listToText(items) {
   return (items || []).join("\n");
@@ -12,6 +22,31 @@ function textToList(text) {
 
 function createServiceId() {
   return `service-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeCategory(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
+function formatDuration(minutes) {
+  const value = Number(minutes || 0);
+  if (!value) return "";
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
+  if (!hours) return `${rest} min`;
+  if (!rest) return `${hours} h`;
+  return `${hours} h ${rest} min`;
+}
+
+function durationToMinutes(duration = "") {
+  if (typeof duration === "number") return duration;
+  const text = String(duration || "").toLowerCase();
+  const hours = text.match(/(\d+(?:[.,]\d+)?)\s*h/);
+  const minutes = text.match(/(\d+)\s*min/);
+  const hourMinutes = hours ? Number(hours[1].replace(",", ".")) * 60 : 0;
+  const extraMinutes = minutes ? Number(minutes[1]) : 0;
+  const directMinutes = !hours && !minutes ? Number(text) : 0;
+  return Math.round(hourMinutes + extraMinutes + (Number.isFinite(directMinutes) ? directMinutes : 0));
 }
 
 function parseCsv(text) {
@@ -80,19 +115,58 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
     loyaltyVisits: config.loyaltyVisits,
   });
   const [services, setServices] = useState(config.services || []);
+  const [serviceCategories, setServiceCategories] = useState(() => {
+    const categories = [...(config.serviceCategories || []), ...(config.services || []).map((service) => service.category)];
+    return Array.from(new Set(categories.filter(Boolean)));
+  });
   const [serviceForm, setServiceForm] = useState(emptyService);
   const [editingServiceId, setEditingServiceId] = useState("");
   const [serviceQuery, setServiceQuery] = useState("");
+  const [showCategoryResults, setShowCategoryResults] = useState(false);
+  const [serviceError, setServiceError] = useState("");
+  const [editingCategory, setEditingCategory] = useState("");
+  const [categoryDraft, setCategoryDraft] = useState("");
   const [importFile, setImportFile] = useState(null);
   const [importProgress, setImportProgress] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const categoryDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const closeCategoryDropdown = (event) => {
+      if (event.key === "Escape") {
+        setShowCategoryResults(false);
+        return;
+      }
+      if (event.type === "mousedown" && categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target)) {
+        setShowCategoryResults(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeCategoryDropdown);
+    document.addEventListener("keydown", closeCategoryDropdown);
+
+    return () => {
+      document.removeEventListener("mousedown", closeCategoryDropdown);
+      document.removeEventListener("keydown", closeCategoryDropdown);
+    };
+  }, []);
 
   const filteredServices = useMemo(() => {
     const query = serviceQuery.trim().toLowerCase();
     if (!query) return services;
-    return services.filter((service) => `${service.name} ${service.category} ${service.duration}`.toLowerCase().includes(query));
+    return services.filter((service) => (
+      `${service.name} ${service.category} ${service.duration} ${formatDuration(service.durationMinutes)} ${service.price}`
+        .toLowerCase()
+        .includes(query)
+    ));
   }, [serviceQuery, services]);
+
+  const filteredCategories = useMemo(() => {
+    const query = serviceForm.category.trim().toLowerCase();
+    if (!query) return serviceCategories;
+    return serviceCategories.filter((category) => category.toLowerCase().includes(query));
+  }, [serviceForm.category, serviceCategories]);
 
   const groupedServices = useMemo(() => {
     return filteredServices.reduce((groups, service) => {
@@ -107,26 +181,134 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
   const updateServiceField = (event) => {
     const { name, value, type, checked } = event.target;
     setServiceForm({ ...serviceForm, [name]: type === "checkbox" ? checked : value });
+    setServiceError("");
+  };
+
+  const buildConfigPayload = (nextServices = services, nextCategories = serviceCategories) => ({
+    employees: textToList(form.employees),
+    services: nextServices,
+    serviceCategories: nextCategories,
+    paymentMethods: textToList(form.paymentMethods),
+    entryChannels: textToList(form.entryChannels),
+    expenseCategories: textToList(form.expenseCategories),
+    monthlyGoal: Number(form.monthlyGoal || 0),
+    loyaltyVisits: Number(form.loyaltyVisits || 5),
+  });
+
+  const persistServices = (nextServices, nextCategories = serviceCategories) => {
+    setServices(nextServices);
+    setServiceCategories(nextCategories);
+    onSave(buildConfigPayload(nextServices, nextCategories));
+  };
+
+  const selectCategory = (category) => {
+    setServiceForm((current) => ({ ...current, category }));
+    setShowCategoryResults(false);
+    setServiceError("");
+  };
+
+  const createCategory = () => {
+    const category = serviceForm.category.trim();
+    if (!category) return;
+
+    const exists = serviceCategories.some((item) => normalizeCategory(item) === normalizeCategory(category));
+    const nextCategories = exists ? serviceCategories : [...serviceCategories, category].sort((a, b) => a.localeCompare(b));
+    setServiceCategories(nextCategories);
+    setServiceForm((current) => ({ ...current, category }));
+    setShowCategoryResults(false);
+    onSave(buildConfigPayload(services, nextCategories));
+  };
+
+  const startEditCategory = (category) => {
+    setEditingCategory(category);
+    setCategoryDraft(category);
+    setServiceError("");
+    setShowCategoryResults(false);
+  };
+
+  const cancelEditCategory = () => {
+    setEditingCategory("");
+    setCategoryDraft("");
+  };
+
+  const saveCategoryEdit = () => {
+    const nextName = categoryDraft.trim();
+    if (!editingCategory || !nextName) return;
+    const duplicate = serviceCategories.some((category) => (
+      normalizeCategory(category) === normalizeCategory(nextName) &&
+      normalizeCategory(category) !== normalizeCategory(editingCategory)
+    ));
+
+    if (duplicate) {
+      setServiceError("Ya existe una categoria con ese nombre.");
+      return;
+    }
+
+    const nextCategories = serviceCategories
+      .map((category) => (category === editingCategory ? nextName : category))
+      .sort((a, b) => a.localeCompare(b));
+    const nextServices = services.map((service) => (
+      service.category === editingCategory ? { ...service, category: nextName } : service
+    ));
+
+    persistServices(nextServices, nextCategories);
+    setServiceForm((current) => ({
+      ...current,
+      category: current.category === editingCategory ? nextName : current.category,
+    }));
+    cancelEditCategory();
+  };
+
+  const deleteCategory = (category) => {
+    const hasServices = services.some((service) => service.category === category);
+    if (hasServices) {
+      setServiceError("No se puede eliminar esta categoria porque tiene servicios asociados");
+      return;
+    }
+
+    const confirmed = window.confirm("Seguro que deseas eliminar esta categoria?");
+    if (!confirmed) return;
+
+    const nextCategories = serviceCategories.filter((item) => item !== category);
+    persistServices(services, nextCategories);
+    if (serviceForm.category === category) {
+      setServiceForm((current) => ({ ...current, category: "" }));
+    }
   };
 
   const saveService = (event) => {
     event.preventDefault();
-    if (!serviceForm.name.trim()) return;
+    const category = serviceForm.category.trim();
+    const name = serviceForm.name.trim();
+    const durationMinutes = Number(serviceForm.duration || 0);
+    const price = Number(serviceForm.price);
+
+    if (!category || !name || !durationMinutes || Number.isNaN(price) || price <= 0) {
+      setServiceError("Completa categoria, nombre, duracion y precio para guardar el servicio.");
+      return;
+    }
 
     const service = {
       id: editingServiceId || createServiceId(),
-      category: serviceForm.category.trim() || "Sin categoria",
-      name: serviceForm.name.trim(),
-      duration: serviceForm.duration.trim(),
-      price: Number(serviceForm.price || 0),
+      category,
+      name,
+      duration: formatDuration(durationMinutes),
+      durationMinutes,
+      price,
       active: serviceForm.active !== false,
     };
 
-    setServices((current) =>
-      editingServiceId ? current.map((item) => (item.id === editingServiceId ? service : item)) : [service, ...current]
-    );
+    const nextCategories = serviceCategories.some((item) => normalizeCategory(item) === normalizeCategory(category))
+      ? serviceCategories
+      : [...serviceCategories, category].sort((a, b) => a.localeCompare(b));
+    const nextServices = editingServiceId
+      ? services.map((item) => (item.id === editingServiceId ? service : item))
+      : [service, ...services];
+
+    persistServices(nextServices, nextCategories);
     setServiceForm(emptyService);
     setEditingServiceId("");
+    setServiceError("");
   };
 
   const editService = (service) => {
@@ -134,25 +316,33 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
     setServiceForm({
       category: service.category || "",
       name: service.name || "",
-      duration: service.duration || "",
-      price: String(service.price || 0),
+      duration: String(service.durationMinutes || durationToMinutes(service.duration)),
+      price: String(service.price || ""),
       active: service.active !== false,
     });
+    setServiceError("");
+  };
+
+  const cancelServiceEdit = () => {
+    setEditingServiceId("");
+    setServiceForm(emptyService);
+    setServiceError("");
   };
 
   const toggleService = (serviceId) => {
-    setServices((current) => current.map((service) => (
+    const nextServices = services.map((service) => (
       service.id === serviceId ? { ...service, active: service.active === false } : service
-    )));
+    ));
+    persistServices(nextServices);
   };
 
   const deleteService = (serviceId) => {
     const confirmed = window.confirm("Seguro que deseas eliminar este servicio? Esta accion no se puede deshacer.");
     if (!confirmed) return;
-    setServices((current) => current.filter((service) => service.id !== serviceId));
+    const nextServices = services.filter((service) => service.id !== serviceId);
+    persistServices(nextServices);
     if (editingServiceId === serviceId) {
-      setEditingServiceId("");
-      setServiceForm(emptyService);
+      cancelServiceEdit();
     }
   };
 
@@ -161,6 +351,7 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
     onSave({
       employees: textToList(form.employees),
       services,
+      serviceCategories,
       paymentMethods: textToList(form.paymentMethods),
       entryChannels: textToList(form.entryChannels),
       expenseCategories: textToList(form.expenseCategories),
@@ -280,15 +471,82 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
           <span>{services.length} servicios</span>
         </div>
         <form className="service-form advanced" onSubmit={saveService}>
-          <label>Categoria<input name="category" value={serviceForm.category} onChange={updateServiceField} placeholder="Manicuras y tratamientos" /></label>
-          <label>Nombre<input name="name" value={serviceForm.name} onChange={updateServiceField} placeholder="Manicura semipermanente" /></label>
-          <label>Duracion<input name="duration" value={serviceForm.duration} onChange={updateServiceField} placeholder="45 min" /></label>
-          <label>Precio<input type="number" min="0" step="0.01" name="price" value={serviceForm.price} onChange={updateServiceField} placeholder="20" /></label>
+          <label className="service-search-field" ref={categoryDropdownRef}>
+            Categoria
+            <input
+              name="category"
+              value={serviceForm.category}
+              onChange={(event) => {
+                updateServiceField(event);
+                setShowCategoryResults(Boolean(event.target.value.trim()));
+              }}
+              onFocus={() => setShowCategoryResults(true)}
+              onBlur={() => window.setTimeout(() => setShowCategoryResults(false), 120)}
+              placeholder="Buscar o crear categoria"
+            />
+            {showCategoryResults && (
+              <div className="service-results">
+                {filteredCategories.map((category) => (
+                  <button className="service-result" type="button" key={category} onMouseDown={() => selectCategory(category)}>
+                    <strong>{category}</strong>
+                    <span>Categoria existente</span>
+                  </button>
+                ))}
+                {serviceForm.category.trim() && !serviceCategories.some((category) => normalizeCategory(category) === normalizeCategory(serviceForm.category)) && (
+                  <button className="service-result custom-result" type="button" onMouseDown={createCategory}>
+                    <strong>+ Crear categoria</strong>
+                    <span>{serviceForm.category.trim()}</span>
+                  </button>
+                )}
+                {filteredCategories.length === 0 && !serviceForm.category.trim() && <p className="empty-state">Escribe para buscar categorias.</p>}
+              </div>
+            )}
+          </label>
+          <label>Nombre<input name="name" value={serviceForm.name} onChange={updateServiceField} placeholder="Nombre exacto del servicio" /></label>
+          <label>
+            Duracion
+            <select name="duration" value={serviceForm.duration} onChange={updateServiceField}>
+              <option value="">Seleccionar...</option>
+              {durationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label>Precio<input type="number" min="0" step="0.01" name="price" value={serviceForm.price} onChange={updateServiceField} placeholder="0.00" /></label>
           <label className="check-field"><input type="checkbox" name="active" checked={serviceForm.active} onChange={updateServiceField} /> Activo</label>
-          <button type="submit">{editingServiceId ? "Guardar servicio" : "Crear servicio"}</button>
-          {editingServiceId && <button className="secondary-button" type="button" onClick={() => { setEditingServiceId(""); setServiceForm(emptyService); }}>Cancelar</button>}
+          <button type="submit">{editingServiceId ? "Guardar cambios" : "Crear servicio"}</button>
+          {editingServiceId && <button className="secondary-button" type="button" onClick={cancelServiceEdit}>Cancelar edicion</button>}
         </form>
-        <label>Buscar servicio<input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="mani, cejas, lifting..." /></label>
+        {serviceError && <p className="auth-error">{serviceError}</p>}
+        <section className="service-category">
+          <h3>Categorias de servicios</h3>
+          <div className="list">
+            {serviceCategories.length === 0 && <p className="empty-state">Aun no hay categorias creadas.</p>}
+            {serviceCategories.map((category) => (
+              <article className="list-item" key={category}>
+                {editingCategory === category ? (
+                  <>
+                    <input value={categoryDraft} onChange={(event) => setCategoryDraft(event.target.value)} />
+                    <div className="row-actions">
+                      <button type="button" onClick={saveCategoryEdit}>Guardar</button>
+                      <button className="secondary-button" type="button" onClick={cancelEditCategory}>Cancelar</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <strong>{category}</strong>
+                      <span>{services.filter((service) => service.category === category).length} servicios asociados</span>
+                    </div>
+                    <div className="row-actions">
+                      <button type="button" onClick={() => startEditCategory(category)}>Editar</button>
+                      <button className="danger-button" type="button" onClick={() => deleteCategory(category)}>Eliminar</button>
+                    </div>
+                  </>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+        <label>Buscar servicio<input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="categoria, nombre, precio o duracion..." /></label>
         <div className="service-category-list">
           {Object.entries(groupedServices).map(([category, categoryServices]) => (
             <section className="service-category" key={category}>
@@ -298,7 +556,7 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
                   <article className={service.active === false ? "list-item muted-item" : "list-item"} key={service.id}>
                     <div>
                       <strong>{service.name}</strong>
-                      <span>{service.duration || "Sin duracion"} - {Number(service.price || 0).toFixed(2)} EUR - {service.active === false ? "Inactivo" : "Activo"}</span>
+                      <span>{service.duration || formatDuration(service.durationMinutes) || "Sin duracion"} - {Number(service.price || 0).toFixed(2)} EUR - {service.active === false ? "Inactivo" : "Activo"}</span>
                     </div>
                     <div className="row-actions">
                       <button type="button" onClick={() => editService(service)}>Editar</button>

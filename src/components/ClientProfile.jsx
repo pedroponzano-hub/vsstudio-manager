@@ -9,7 +9,15 @@ function getSaleServices(sale) {
   return [{ serviceName: sale.service || sale.concept || "Sin servicio", price: sale.price || sale.amount || sale.total, quantity: 1 }];
 }
 
-function ClientProfile({ client, sales, config, onUpdateClient }) {
+function operationalDate(item = {}) {
+  return item.fechaOperativa || item.date || "";
+}
+
+function servicesCount(sale) {
+  return getSaleServices(sale).reduce((total, service) => total + Number(service.quantity || 1), 0);
+}
+
+function ClientProfile({ client, sales, referralSales = [], config, onUpdateClient, readOnly = false }) {
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
     name: client.name || "",
@@ -20,6 +28,7 @@ function ClientProfile({ client, sales, config, onUpdateClient }) {
     interests: client.interests || "",
   });
   const stamps = Number(client.loyaltyStamps || 0);
+  const referralStamps = Number(client.referralStamps || 0);
   const required = Number(config.loyaltyVisits || 5);
   const missing = Math.max(required - stamps, 0);
   const hasPrize = stamps >= required;
@@ -50,6 +59,7 @@ function ClientProfile({ client, sales, config, onUpdateClient }) {
   const save = (event) => {
     event.preventDefault();
     if (!form.name.trim()) return;
+    if (readOnly) return;
     onUpdateClient(client.id, form);
     setIsEditing(false);
   };
@@ -61,7 +71,7 @@ function ClientProfile({ client, sales, config, onUpdateClient }) {
           <h2>{client.name}</h2>
           <span>{client.phone || "Sin telefono"}{client.email ? ` - ${client.email}` : ""}</span>
         </div>
-        {!isEditing && <button className="secondary-button" type="button" onClick={startEdit}>Editar</button>}
+        {!readOnly && !isEditing && <button className="secondary-button" type="button" onClick={startEdit}>Editar</button>}
       </div>
       {isEditing ? (
         <form className="profile-edit-form" onSubmit={save}>
@@ -103,13 +113,32 @@ function ClientProfile({ client, sales, config, onUpdateClient }) {
           <p>{hasPrize ? "🎁 Premio disponible" : `Faltan ${missing} para premio`}</p>
         </div>
       </section>
+      <h3>Referidos</h3>
+      <div className="list">
+        {referralSales.length === 0 && <p className="empty-state">Sin referidos registrados.</p>}
+        {referralSales.map((sale) => (
+          <div className="list-item" key={sale.id}>
+            <div>
+              <strong>{sale.clientName || "Cliente sin nombre"}</strong>
+              <span>{operationalDate(sale)} - {getSaleServices(sale).map((service) => service.serviceName).join(", ")}</span>
+            </div>
+            <b>{servicesCount(sale)} sellos</b>
+          </div>
+        ))}
+        {referralStamps > 0 && (
+          <div className="stat-row">
+            <span>Sellos ganados por referidos</span>
+            <strong>{referralStamps}</strong>
+          </div>
+        )}
+      </div>
       <h3>Historial</h3>
       <div className="list">
         {sales.map((sale) => (
           <div className="list-item" key={sale.id}>
             <div>
               <strong>{getSaleServices(sale).map((service) => service.serviceName).join(", ")}</strong>
-              <span>{sale.date} - {sale.employee || "Sin empleada"}</span>
+              <span>{operationalDate(sale)} - {sale.employee || "Sin empleada"}</span>
               <span>{getSaleServices(sale).map((service) => `${service.serviceName} x${service.quantity || 1}`).join(" | ")}</span>
             </div>
             <b>{money(sale.total || sale.amount)}</b>
