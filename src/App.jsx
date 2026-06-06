@@ -213,7 +213,7 @@ function App() {
   const [editingSale, setEditingSale] = useState(null);
   const [editingExpense, setEditingExpense] = useState(null);
   const [salesFormHighlight, setSalesFormHighlight] = useState(false);
-  const [appVersionSignature, setAppVersionSignature] = useState("");
+  const [loadedAppVersion, setLoadedAppVersion] = useState("");
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
   const salesFormRef = useRef(null);
@@ -299,17 +299,18 @@ function App() {
   useEffect(() => {
     let isMounted = true;
 
-    const readVersionSignature = async () => {
+    const readAppVersion = async () => {
       try {
-        const response = await fetch(`/index.html?version-check=${Date.now()}`, { cache: "no-store" });
+        const response = await fetch(`/version.json?version-check=${Date.now()}`, { cache: "no-store" });
         if (!response.ok) return;
-        const text = await response.text();
-        const signature = `${text.length}:${text.slice(0, 160)}:${text.slice(-160)}`;
+        const payload = await response.json();
+        const remoteVersion = String(payload.version || "").trim();
+        if (!remoteVersion) return;
 
         if (!isMounted) return;
-        setAppVersionSignature((current) => {
-          if (!current) return signature;
-          if (current !== signature) setHasNewVersion(true);
+        setLoadedAppVersion((current) => {
+          if (!current) return remoteVersion;
+          if (current !== remoteVersion) setHasNewVersion(true);
           return current;
         });
       } catch {
@@ -317,14 +318,34 @@ function App() {
       }
     };
 
-    readVersionSignature();
-    const intervalId = window.setInterval(readVersionSignature, 60000);
+    readAppVersion();
+    const intervalId = window.setInterval(readAppVersion, 60000);
 
     return () => {
       isMounted = false;
       window.clearInterval(intervalId);
     };
   }, []);
+
+  const reloadLatestVersion = async () => {
+    try {
+      if ("caches" in window) {
+        const cacheNames = await window.caches.keys();
+        await Promise.all(cacheNames.map((cacheName) => window.caches.delete(cacheName)));
+      }
+
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+      }
+    } catch {
+      // Cache cleanup is best-effort; the cache-busted navigation below still fetches the newest app.
+    } finally {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set("appVersion", String(Date.now()));
+      window.location.replace(nextUrl.toString());
+    }
+  };
 
   const refresh = () => setData(DataService.getData());
 
@@ -535,8 +556,8 @@ function App() {
 
       {hasNewVersion && (
         <section className="version-notice" aria-live="polite">
-          <span>Nueva version disponible</span>
-          <button type="button" onClick={() => window.location.reload()}>Actualizar</button>
+          <span>Nueva actualizacion disponible. Recarga la aplicacion para aplicar los cambios.</span>
+          <button type="button" onClick={reloadLatestVersion}>Actualizar ahora</button>
         </section>
       )}
 
