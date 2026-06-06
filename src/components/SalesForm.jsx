@@ -111,6 +111,12 @@ function normalizePaymentOption(method = "") {
   return value;
 }
 
+function saleStatus(sale) {
+  const status = String(sale?.status || "cobrado").toLowerCase();
+  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada") return status;
+  return "cobrado";
+}
+
 function emptySaleForm() {
   return {
     date: getMadridDateString(),
@@ -514,7 +520,17 @@ function SalesForm({
 
   const savePayload = (payload) => {
     if (editingSale) {
-      onUpdate(editingSale.id, payload);
+      const editsCollectedSale = saleStatus(editingSale) === "cobrado" && payload.status === "cobrado";
+      if (editsCollectedSale) {
+        const editReason = window.prompt("Motivo de la edicion\n\nEjemplos: Error en metodo de pago, servicio incorrecto, cliente cambio servicio, error de importe, error de empleada, otro.");
+        if (!editReason || !editReason.trim()) {
+          setSaleError("Debes indicar el motivo de la edicion para guardar cambios.");
+          return;
+        }
+        onUpdate(editingSale.id, { ...payload, editReason: editReason.trim() });
+      } else {
+        onUpdate(editingSale.id, payload);
+      }
     } else {
       onSave(payload);
     }

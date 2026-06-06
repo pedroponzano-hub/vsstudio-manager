@@ -4,8 +4,8 @@ const permissionsByRole = {
     actions: ["manageSales", "manageExpenses", "manageClients", "manageAppointments", "manageCommissions", "manageSettings", "manageServices", "restoreData", "importClients", "viewFinance", "manageCashClosing"],
   },
   direccion: {
-    tabs: ["dashboard", "sales", "commissions", "clients", "loyalty", "agenda", "statistics", "finance", "cashClosing"],
-    actions: ["manageSales", "manageClients", "manageAppointments", "manageCommissions", "manageServices", "viewFinance", "manageCashClosing"],
+    tabs: ["dashboard", "sales", "expenses", "clients", "loyalty", "agenda", "cashClosing"],
+    actions: ["manageSales", "manageExpenses", "manageClients", "manageAppointments", "manageServices", "manageCashClosing"],
   },
   recepcion: {
     tabs: ["sales", "clients", "loyalty", "agenda", "cashClosing"],
@@ -22,9 +22,7 @@ const permissionsByRole = {
   },
 };
 
-const userRoleOverrides = {
-  "vsbarriodelpilar@gmail.com": "operador_centro",
-};
+const userRoleOverrides = {};
 
 function effectiveRoleForUser(user) {
   const email = String(user?.email || "").trim().toLowerCase();

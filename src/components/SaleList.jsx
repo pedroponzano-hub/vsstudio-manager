@@ -13,6 +13,12 @@ function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
 }
 
+function compactValue(value) {
+  if (Array.isArray(value)) return value.map((item) => item.serviceName || item.method || JSON.stringify(item)).join(", ");
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return String(value ?? "");
+}
+
 function saleStatus(sale) {
   const status = String(sale.status || "cobrado").toLowerCase();
   if (status === "pendiente_pago" || status === "cancelado" || status === "anulada") return status;
@@ -26,11 +32,23 @@ function saleIsEdited(sale) {
 
 function matchesStatusFilter(sale, filter) {
   if (filter === "editada") return saleIsEdited(sale);
+  if (filter === "cobrado") return saleStatus(sale) === "cobrado";
   return saleStatus(sale) === filter;
 }
 
 function operationalDate(item = {}) {
   return item.fechaOperativa || item.date || "";
+}
+
+function saleEditHistory(sale) {
+  if (Array.isArray(sale.editHistory) && sale.editHistory.length > 0) return sale.editHistory;
+  return (sale.previousVersions || []).map((version, index) => ({
+    id: `legacy-${index}`,
+    editedAt: version.savedAt || sale.editedAt || "",
+    editedBy: sale.editedBy || "",
+    reason: version.reason || sale.editReason || "Edicion anterior sin motivo registrado",
+    changes: [],
+  }));
 }
 
 function todayDate() {
@@ -46,25 +64,50 @@ function startOfWeek(date) {
 }
 
 function SaleItem({ sale, clients, onEditSale, onDeleteSale }) {
-  const statusLabel = saleStatus(sale) === "cobrado" && saleIsEdited(sale) ? "Cobrada · Editada" : {
+  const statusLabel = saleStatus(sale) === "cobrado" && saleIsEdited(sale) ? "Cobrada - Editada" : {
     cobrado: "Cobrada",
     anulada: "Anulada",
     pendiente_pago: "Pendiente de pago",
     cancelado: "Cancelada",
   }[saleStatus(sale)] || "Cobrada";
+  const viewHistory = () => {
+    const history = saleEditHistory(sale);
+    const lines = [
+      `Fecha creacion: ${sale.createdAt || sale.horaCreacion || operationalDate(sale) || "Sin dato"}`,
+      `Fecha operativa: ${operationalDate(sale) || "Sin dato"}`,
+      "",
+      history.length === 0 ? "Sin ediciones registradas." : "Ediciones:",
+      ...history.flatMap((entry, index) => [
+        `${index + 1}. ${entry.editedAt || "Sin fecha"} - ${entry.editedBy || "Sin usuario"}`,
+        `Motivo: ${entry.reason || "Sin motivo registrado"}`,
+        ...(entry.changes || []).length > 0
+          ? (entry.changes || []).map((change) => `- ${change.field}: ${compactValue(change.before)} -> ${compactValue(change.after)}`)
+          : ["- Cambios no detallados en esta version"],
+        "",
+      ]),
+    ];
+    window.alert(lines.join("\n"));
+  };
 
   return (
     <article className="list-item sale-card">
       <div className="sale-card-main">
         <strong>{saleServicesText(sale)}</strong>
         <span>{clients[sale.clientId] || sale.clientName || "Cliente eliminado"} - {operationalDate(sale)} - {sale.employee || "Sin empleada"}</span>
-        <span>{statusLabel}</span>
+        <span>
+          {statusLabel}
+          {saleIsEdited(sale) && <b className="sale-tag edited">[EDITADA]</b>}
+          {saleStatus(sale) === "anulada" && <b className="sale-tag voided">[ANULADA]</b>}
+        </span>
       </div>
       <div className="item-actions sale-card-actions">
-        <b>{Number(sale.total || sale.amount || 0).toFixed(2)} EUR</b>
+        <b>{money(sale.total || sale.amount)}</b>
         <div className="sale-card-buttons">
           <button type="button" onClick={() => onEditSale(sale)} aria-label="Editar venta">
             Editar
+          </button>
+          <button className="secondary-button" type="button" onClick={viewHistory} aria-label="Ver historial de venta">
+            Ver historial
           </button>
           <button type="button" onClick={() => onDeleteSale(sale.id)} aria-label="Eliminar venta">
             Eliminar
@@ -122,11 +165,11 @@ function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDe
         </select></label>
         <label>Fecha del dia<input type="date" value={selectedDate} onChange={(event) => { onDateSelect?.(event.target.value || todayDate()); setPeriodFilter("custom"); }} /></label>
         <label>Estado<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-          <option value="cobrado">Cobrada</option>
-          <option value="editada">Editada</option>
-          <option value="anulada">Anulada</option>
+          <option value="cobrado">Cobradas</option>
+          <option value="editada">Editadas</option>
+          <option value="anulada">Anuladas</option>
           <option value="pendiente_pago">Pendiente de pago</option>
-          <option value="cancelado">Cancelada</option>
+          <option value="cancelado">Canceladas</option>
         </select></label>
       </div>
       {periodFilter === "custom" && (

@@ -211,6 +211,7 @@ function App() {
   const [currentMadridDate, setCurrentMadridDate] = useState(getTodayLocalDateString());
   const [selectedSaleDate, setSelectedSaleDate] = useState(getTodayLocalDateString());
   const [editingSale, setEditingSale] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [salesFormHighlight, setSalesFormHighlight] = useState(false);
   const [appVersionSignature, setAppVersionSignature] = useState("");
   const [hasNewVersion, setHasNewVersion] = useState(false);
@@ -342,6 +343,12 @@ function App() {
   const addExpense = (expense) => {
     if (!canPerform(effectiveRole, "manageExpenses")) return;
     setData(DataService.addExpense(expense));
+    setEditingExpense(null);
+  };
+  const updateExpense = (expenseId, updates) => {
+    if (!canPerform(effectiveRole, "manageExpenses")) return;
+    setData(DataService.updateExpense(expenseId, updates));
+    setEditingExpense(null);
   };
   const addClient = (client) => {
     if (!canPerform(effectiveRole, "manageClients")) return;
@@ -483,6 +490,7 @@ function App() {
     if (!canPerform(effectiveRole, "manageExpenses")) return;
     setData((current) => ({ ...current, expenses: DataService.deleteExpense(current.expenses, id) }));
   };
+  const canDeleteExpense = (expense) => effectiveRole === "admin" || expense.date === getTodayLocalDateString();
   const updateCommissionStatus = (saleId, status, details) => {
     if (!canPerform(effectiveRole, "manageCommissions")) return;
     setData(DataService.updateCommissionStatus(saleId, status, details));
@@ -591,8 +599,19 @@ function App() {
       )}
       {activeTab === "expenses" && canAccessTab(effectiveRole, "expenses") && (
         <section className="workspace">
-          <ExpenseForm config={scopedData.config} onAddExpense={addExpense} />
-          <ExpenseList expenses={scopedData.expenses} onDeleteExpense={deleteExpense} />
+          <ExpenseForm
+            config={scopedData.config}
+            editingExpense={editingExpense}
+            onAddExpense={addExpense}
+            onUpdateExpense={updateExpense}
+            onCancelEdit={() => setEditingExpense(null)}
+          />
+          <ExpenseList
+            expenses={scopedData.expenses}
+            onEditExpense={setEditingExpense}
+            onDeleteExpense={deleteExpense}
+            canDeleteExpense={canDeleteExpense}
+          />
         </section>
       )}
       {activeTab === "commissions" && canAccessTab(effectiveRole, "commissions") && <Commissions data={commissionsData} onStatusChange={roleCanManageCommissions ? updateCommissionStatus : null} />}

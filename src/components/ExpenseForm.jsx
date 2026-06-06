@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getTodayLocalDateString } from "../utils/date.js";
 
-const documentTypes = ["Factura", "Ticket", "Recibo", "Nómina", "Comisión bancaria", "Otro"];
+const documentTypes = ["Factura", "Ticket", "Recibo", "Nomina", "Comision bancaria", "Otro"];
 const vatOptions = ["21", "10", "4", "0", "personalizado"];
 
-function ExpenseForm({ config = {}, onAddExpense }) {
+function baseForm(config = {}) {
   const categories = config.expenseCategories || ["General"];
   const paymentMethods = config.paymentMethods || ["Tarjeta"];
-  const [form, setForm] = useState({
+
+  return {
     date: getTodayLocalDateString(),
     category: categories[0] || "General",
     concept: "",
@@ -17,7 +18,30 @@ function ExpenseForm({ config = {}, onAddExpense }) {
     documentType: "Otro",
     vatOption: "21",
     customVatRate: "",
-  });
+  };
+}
+
+function expenseToForm(expense, config = {}) {
+  const vatRate = Number(expense.vatRate || 0);
+  const vatOption = ["21", "10", "4", "0"].includes(String(vatRate)) ? String(vatRate) : "personalizado";
+
+  return {
+    ...baseForm(config),
+    ...expense,
+    amount: String(expense.amount ?? ""),
+    vatOption,
+    customVatRate: vatOption === "personalizado" ? String(vatRate || "") : "",
+  };
+}
+
+function ExpenseForm({ config = {}, editingExpense = null, onAddExpense, onUpdateExpense, onCancelEdit }) {
+  const categories = config.expenseCategories || ["General"];
+  const paymentMethods = config.paymentMethods || ["Tarjeta"];
+  const [form, setForm] = useState(() => baseForm(config));
+
+  useEffect(() => {
+    setForm(editingExpense ? expenseToForm(editingExpense, config) : baseForm(config));
+  }, [editingExpense, config]);
 
   const updateField = (event) => setForm({ ...form, [event.target.name]: event.target.value });
   const isInvoice = form.documentType === "Factura";
@@ -29,19 +53,25 @@ function ExpenseForm({ config = {}, onAddExpense }) {
   const submit = (event) => {
     event.preventDefault();
     if (!form.concept.trim() || !form.amount) return;
-    onAddExpense({
+    const payload = {
       ...form,
       amount,
       vatRate,
       taxableBase,
       supportedVat,
-    });
-    setForm({ ...form, concept: "", amount: "" });
+    };
+
+    if (editingExpense) {
+      onUpdateExpense?.(editingExpense.id, payload);
+    } else {
+      onAddExpense?.(payload);
+    }
+    setForm({ ...baseForm(config), date: form.date });
   };
 
   return (
     <form className="panel" onSubmit={submit}>
-      <h2>Nuevo gasto</h2>
+      <h2>{editingExpense ? "Editar gasto" : "Nuevo gasto"}</h2>
       <div className="field-row">
         <label>Fecha<input name="date" type="date" value={form.date} onChange={updateField} /></label>
         <label>Categoria<select name="category" value={form.category} onChange={updateField}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -64,7 +94,10 @@ function ExpenseForm({ config = {}, onAddExpense }) {
         </div>
       )}
       <label>Estado<select name="status" value={form.status} onChange={updateField}><option value="pagado">Pagado</option><option value="pendiente">Pendiente</option></select></label>
-      <button type="submit">Guardar gasto</button>
+      <div className="row-actions">
+        <button type="submit">{editingExpense ? "Guardar cambios" : "Guardar gasto"}</button>
+        {editingExpense && <button className="secondary-button" type="button" onClick={onCancelEdit}>Cancelar edicion</button>}
+      </div>
     </form>
   );
 }

@@ -439,8 +439,57 @@ function saleIsEdited(sale) {
   return Boolean(sale.editada || sale.editedAt || String(sale.status || "").toLowerCase() === "editada");
 }
 
+function saleEditHistory(sale) {
+  const history = Array.isArray(sale.editHistory) ? sale.editHistory : [];
+  if (history.length > 0) return history;
+  const legacy = (sale.previousVersions || []).map((version, index) => ({
+    id: version.id || `legacy-edit-${index}`,
+    editedAt: version.savedAt || "",
+    editedBy: sale.editedBy || "",
+    reason: version.reason || sale.editReason || "Edicion anterior sin motivo registrado",
+    previousValues: version.data || {},
+    newValues: {},
+    changes: [],
+  }));
+
+  return [...legacy, ...history];
+}
+
 function isCollectedSale(sale) {
   return saleStatus(sale) === "cobrado";
+}
+
+function comparableSaleSnapshot(sale) {
+  return {
+    fechaOperativa: saleOperationalDate(sale),
+    clientId: sale.clientId || "",
+    clientName: sale.clientName || "",
+    employee: sale.employee || "",
+    services: normalizeSaleServices(sale),
+    extra: Number(sale.extra || 0),
+    total: Number(sale.total || 0),
+    payments: normalizeSalePayments(sale),
+    paymentMethod: sale.paymentMethod || "",
+    entryChannel: sale.entryChannel || "",
+    commissionPercent: Number(sale.commissionPercent || 0),
+    commissionAmount: Number(sale.commissionAmount || 0),
+    treatwellCommissionPercent: Number(sale.treatwellCommissionPercent || 0),
+    treatwellCommissionAmount: Number(sale.treatwellCommissionAmount || 0),
+    cardTipAmount: Number(sale.cardTipAmount || 0),
+    notes: sale.notes || "",
+  };
+}
+
+function saleChanges(previousSale, nextSale) {
+  const previousValues = comparableSaleSnapshot(previousSale);
+  const newValues = comparableSaleSnapshot(nextSale);
+
+  return Object.keys(newValues).reduce((changes, field) => {
+    if (JSON.stringify(previousValues[field]) !== JSON.stringify(newValues[field])) {
+      changes.push({ field, before: previousValues[field], after: newValues[field] });
+    }
+    return changes;
+  }, []);
 }
 
 function normalizeExpense(expense) {
@@ -475,6 +524,10 @@ function normalizeCashClosing(closing) {
     date,
     responsible: closing.responsible || "",
     realAmounts: closing.realAmounts || {},
+    cardTips: Number(closing.cardTips || closing.summary?.cardTips || 0),
+    expectedTerminalTotal: Number(closing.expectedTerminalTotal || closing.summary?.expectedTerminalTotal || 0),
+    cardRealConfirmed: Number(closing.cardRealConfirmed || closing.summary?.card?.realConfirmed || 0),
+    cardDifference: Number(closing.cardDifference || closing.summary?.card?.difference || 0),
     summary: closing.summary || {},
     observations: closing.observations || "",
     savedAt: closing.savedAt || "",
@@ -780,6 +833,8 @@ function normalizeSale(sale) {
     cancelReason: sale.cancelReason || "",
     editedAt: sale.editedAt || (editada && sale.updatedAt ? sale.updatedAt : ""),
     editedBy: sale.editedBy || "",
+    editReason: sale.editReason || "",
+    editHistory: saleEditHistory(sale),
     previousVersions: sale.previousVersions || [],
     voidedAt: sale.voidedAt || "",
     voidedBy: sale.voidedBy || "",
@@ -1147,7 +1202,7 @@ const DataService = {
     const previousVersions = isClosedEdit
       ? [...(existingSale.previousVersions || []), { savedAt: now, data: existingSale }]
       : existingSale.previousVersions || [];
-    const updatedSale = normalizeSale({
+    const updateInput = {
       ...existingSale,
       ...updates,
       date,
@@ -1171,6 +1226,26 @@ const DataService = {
       voidedAt: isVoid ? (updates.voidedAt || now) : existingSale.voidedAt,
       voidedBy: isVoid ? (updates.voidedBy || existingSale.voidedBy || "") : existingSale.voidedBy,
       voidReason: isVoid ? (updates.voidReason || existingSale.voidReason || "") : existingSale.voidReason,
+    };
+    const draftSale = normalizeSale(updateInput);
+    const editHistory = isClosedEdit
+      ? [
+        ...saleEditHistory(existingSale),
+        {
+          id: createId("sale-edit"),
+          editedAt: now,
+          editedBy: updates.editedBy || existingSale.editedBy || "",
+          reason: updates.editReason || "Sin motivo registrado",
+          previousValues: comparableSaleSnapshot(existingSale),
+          newValues: comparableSaleSnapshot(draftSale),
+          changes: saleChanges(existingSale, draftSale),
+        },
+      ]
+      : saleEditHistory(existingSale);
+    const updatedSale = normalizeSale({
+      ...draftSale,
+      editReason: isClosedEdit ? (updates.editReason || "") : draftSale.editReason,
+      editHistory,
     });
     const sales = writeCollection(
       "sales",
@@ -1199,6 +1274,24 @@ const DataService = {
     const expenses = writeCollection("expenses", [expense, ...currentExpenses]);
     saveDocumentToFirestore("expenses", expense);
     return Array.isArray(arg1) ? expenses : this.getData();
+  },
+
+  updateExpense(expenseId, updates) {
+    const currentExpenses = this.getExpenses();
+    const existingExpense = currentExpenses.find((expense) => expense.id === expenseId);
+    if (!existingExpense) return this.getData();
+
+    const updatedExpense = normalizeExpense({
+      ...existingExpense,
+      ...updates,
+      id: expenseId,
+    });
+    const expenses = writeCollection(
+      "expenses",
+      currentExpenses.map((expense) => (expense.id === expenseId ? updatedExpense : expense)),
+    );
+    saveDocumentToFirestore("expenses", updatedExpense);
+    return { ...this.getData(), expenses };
   },
 
   addClient(arg1, arg2) {
