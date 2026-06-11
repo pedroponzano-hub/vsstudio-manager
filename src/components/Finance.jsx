@@ -394,7 +394,7 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
   );
 }
 
-function Finance({ data, commissionsData, user, canManageMonthlyClosing = false, onSaveControls, onSaveMonthlyClosing }) {
+function Finance({ data, commissionsData, user, canManageMonthlyClosing = false, onSaveControls, onSaveMonthlyClosing, view = "treasury" }) {
   const [filter, setFilter] = useState("month");
   const [customRange, setCustomRange] = useState({ from: `${todayDate().slice(0, 7)}-01`, to: todayDate() });
   const [showDetail, setShowDetail] = useState(false);
@@ -424,6 +424,9 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
     const pendingExpensesTotal = expenses.filter((expense) => expense.status === "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const paidCommissionsTotal = commissions.filter((commission) => commission.status === "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
     const pendingCommissionsTotal = commissions.filter((commission) => commission.status !== "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+    const internalCommissionsTotal = commissions
+      .filter((commission) => commission.operationType === "servicio_interno")
+      .reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
     const treatwellTotal = sales.reduce((total, sale) => total + Number(sale.treatwellCommissionAmount || 0), 0);
     const taxes = vatSummary(sales, expenses);
     const operatingProfit = salesTotal - treatwellTotal - expensesTotal - pendingCommissionsTotal - paidCommissionsTotal;
@@ -446,7 +449,7 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
     const detailRows = [
       ...sales.map((sale) => ({ date: operationalDate(sale), type: "Venta", concept: sale.service || "Venta", amount: Number(sale.total || 0) })),
       ...expenses.map((expense) => ({ date: expense.date, type: "Gasto", concept: expense.concept, amount: -Number(expense.amount || 0) })),
-      ...commissions.map((commission) => ({ date: commission.date, type: "Comision", concept: commission.employee, amount: -Number(commission.commissionAmount || 0) })),
+      ...commissions.map((commission) => ({ date: commission.date, type: commission.operationType === "servicio_interno" ? "Comision interna" : "Comision", concept: commission.employee, amount: -Number(commission.commissionAmount || 0) })),
     ].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
     return {
@@ -458,6 +461,7 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
       pendingExpensesTotal,
       paidCommissionsTotal,
       pendingCommissionsTotal,
+      internalCommissionsTotal,
       treatwellTotal,
       taxes,
       operatingProfit,
@@ -470,6 +474,20 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
       detailRows,
     };
   }, [data, commissionsData, range.from, range.to, realControls]);
+
+  if (view === "monthlyClosing") {
+    return (
+      <section className="module">
+        <MonthlyClosing
+          data={data}
+          commissionsData={commissionsData}
+          user={user}
+          canManage={canManageMonthlyClosing}
+          onSave={onSaveMonthlyClosing}
+        />
+      </section>
+    );
+  }
 
   const updateRealControl = (method, value) => {
     setRealControls((current) => ({ ...current, [method]: value }));
@@ -510,6 +528,7 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
         <article className="metric"><span>Gastos pagados</span><strong>{money(finance.paidExpensesTotal)}</strong></article>
         <article className="metric"><span>Comisiones pendientes</span><strong>{money(finance.pendingCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisiones pagadas</span><strong>{money(finance.paidCommissionsTotal)}</strong></article>
+        <article className="metric"><span>Comisiones internas</span><strong>{money(finance.internalCommissionsTotal)}</strong></article>
         <article className="metric"><span>Beneficio operativo</span><strong>{money(finance.operatingProfit)}</strong></article>
         <article className="metric"><span>Tesoreria real</span><strong>{money(finance.realTreasury)}</strong></article>
       </section>
@@ -524,7 +543,7 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
         </div>
       </section>
 
-      {canManageMonthlyClosing && (
+      {view === "overview" && canManageMonthlyClosing && (
         <MonthlyClosing
           data={data}
           commissionsData={commissionsData}

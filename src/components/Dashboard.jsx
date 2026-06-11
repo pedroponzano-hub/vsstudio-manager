@@ -12,17 +12,19 @@ const dashboardViews = {
   administrador: ["today", "month"],
 };
 
-function Dashboard({ data, viewMode = "administrador" }) {
+function Dashboard({ data, viewMode = "administrador", section = "all" }) {
   const visibleSections = dashboardViews[viewMode] || dashboardViews.administrador;
+  const showToday = section === "all" || section === "today";
+  const showMonth = section === "all" || section === "month";
 
   return (
     <section className="module">
       <div className="section-title">
-        <h2>Dashboard</h2>
-        <span>Resumen operativo</span>
+        <h2>{section === "month" ? "Resumen mensual" : "Resumen diario"}</h2>
+        <span>Dashboard operativo</span>
       </div>
 
-      {visibleSections.includes("today") && (
+      {showToday && visibleSections.includes("today") && (
         <>
           <h3>Hoy</h3>
           <div className="summary-grid">
@@ -39,13 +41,17 @@ function Dashboard({ data, viewMode = "administrador" }) {
         </>
       )}
 
-      <h3>Pendientes</h3>
-      <div className="summary-grid compact">
-        <article className="metric"><span>Pendientes de cobro</span><strong>{data.pending?.count || 0}</strong></article>
-        <article className="metric"><span>Importe pendiente</span><strong>{money(data.pending?.total || 0)}</strong></article>
-      </div>
+      {showToday && (
+        <>
+          <h3>Pendientes</h3>
+          <div className="summary-grid compact">
+            <article className="metric"><span>Pendientes de cobro</span><strong>{data.pending?.count || 0}</strong></article>
+            <article className="metric"><span>Importe pendiente</span><strong>{money(data.pending?.total || 0)}</strong></article>
+          </div>
+        </>
+      )}
 
-      {visibleSections.includes("month") && (
+      {showMonth && visibleSections.includes("month") && (
         <>
           <h3>Mes</h3>
           <div className="summary-grid">

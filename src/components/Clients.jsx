@@ -3,7 +3,7 @@ import ClientProfile from "./ClientProfile.jsx";
 
 const emptyForm = { name: "", phone: "", email: "", observations: "", interests: "" };
 
-function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDeleteClient, readOnly = false }) {
+function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDeleteClient, readOnly = false, canManageLoyalty = false, currentUser }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(clients[0]?.id || "");
   const [form, setForm] = useState(emptyForm);
@@ -71,6 +71,8 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
           config={config}
           onUpdateClient={onUpdateClient}
           readOnly={readOnly}
+          canManageLoyalty={canManageLoyalty}
+          currentUser={currentUser}
         />
       )}
     </section>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getMadridTimestamp } from "../utils/date.js";
 
 function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
@@ -17,7 +18,7 @@ function servicesCount(sale) {
   return getSaleServices(sale).reduce((total, service) => total + Number(service.quantity || 1), 0);
 }
 
-function ClientProfile({ client, sales, referralSales = [], config, onUpdateClient, readOnly = false }) {
+function ClientProfile({ client, sales, referralSales = [], config, onUpdateClient, readOnly = false, canManageLoyalty = false, currentUser }) {
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
     name: client.name || "",
@@ -32,6 +33,7 @@ function ClientProfile({ client, sales, referralSales = [], config, onUpdateClie
   const required = Number(config.loyaltyVisits || 5);
   const missing = Math.max(required - stamps, 0);
   const hasPrize = stamps >= required;
+  const loyaltyHistory = Array.isArray(client.loyaltyAdjustmentHistory) ? client.loyaltyAdjustmentHistory : [];
 
   const resetForm = () => {
     setForm({
@@ -62,6 +64,46 @@ function ClientProfile({ client, sales, referralSales = [], config, onUpdateClie
     if (readOnly) return;
     onUpdateClient(client.id, form);
     setIsEditing(false);
+  };
+
+  const saveLoyaltyAdjustment = (nextStamps) => {
+    if (!canManageLoyalty) return;
+    const before = Number(client.loyaltyStamps || 0);
+    const after = Math.max(0, Number(nextStamps || 0));
+    if (after === before) return;
+
+    const reason = window.prompt("Motivo obligatorio del ajuste de sellos");
+    if (!reason || !reason.trim()) {
+      window.alert("Debes indicar un motivo para modificar los sellos.");
+      return;
+    }
+
+    const delta = after - before;
+    const historyItem = {
+      id: `loyalty-${Date.now()}`,
+      date: getMadridTimestamp(),
+      user: currentUser?.email || currentUser?.nombre || "Usuario no identificado",
+      reason: reason.trim(),
+      before,
+      after,
+    };
+
+    onUpdateClient(client.id, {
+      loyaltyStamps: after,
+      loyaltyManualAdjustment: Number(client.loyaltyManualAdjustment || 0) + delta,
+      loyaltyAdjustmentHistory: [historyItem, ...loyaltyHistory],
+    });
+  };
+
+  const editLoyaltyBalance = () => {
+    const value = window.prompt("Nuevo saldo de sellos", String(stamps));
+    if (value === null) return;
+    const nextStamps = Number(value);
+    if (!Number.isFinite(nextStamps) || nextStamps < 0) {
+      window.alert("Introduce un numero valido de sellos.");
+      return;
+    }
+    saveLoyaltyAdjustment(nextStamps);
   };
 
   return (
@@ -113,6 +155,35 @@ function ClientProfile({ client, sales, referralSales = [], config, onUpdateClie
           <p>{hasPrize ? "🎁 Premio disponible" : `Faltan ${missing} para premio`}</p>
         </div>
       </section>
+      <section className="panel loyalty-manual-panel">
+        <h3>Fidelizacion</h3>
+        <div className="stat-row">
+          <span>Sellos actuales</span>
+          <strong>{stamps}</strong>
+        </div>
+        {canManageLoyalty ? (
+          <div className="row-actions">
+            <button type="button" onClick={() => saveLoyaltyAdjustment(stamps + 1)}>Añadir sello</button>
+            <button className="secondary-button" type="button" onClick={() => saveLoyaltyAdjustment(stamps - 1)}>Quitar sello</button>
+            <button className="secondary-button" type="button" onClick={editLoyaltyBalance}>Editar saldo de sellos</button>
+          </div>
+        ) : (
+          <p className="empty-state">Solo administracion puede modificar sellos.</p>
+        )}
+      </section>
+      <h3>Historial de modificaciones de fidelizacion</h3>
+      <div className="list">
+        {loyaltyHistory.length === 0 && <p className="empty-state">Sin ajustes manuales registrados.</p>}
+        {loyaltyHistory.map((item) => (
+          <div className="list-item" key={item.id || `${item.date}-${item.before}-${item.after}`}>
+            <div>
+              <strong>{item.reason || "Ajuste manual"}</strong>
+              <span>{item.date || "-"} - {item.user || "Usuario no identificado"}</span>
+            </div>
+            <b>{item.before} -&gt; {item.after}</b>
+          </div>
+        ))}
+      </div>
       <h3>Referidos</h3>
       <div className="list">
         {referralSales.length === 0 && <p className="empty-state">Sin referidos registrados.</p>}

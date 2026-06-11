@@ -19,9 +19,23 @@ function compactValue(value) {
   return String(value ?? "");
 }
 
+function paymentText(sale) {
+  if (Array.isArray(sale.payments) && sale.payments.length > 0) {
+    return sale.payments.map((payment) => `${payment.method}: ${money(payment.amount)}`).join(" | ");
+  }
+  return sale.paymentMethod || "Sin pago";
+}
+
+function servicesDetailText(sale) {
+  if (Array.isArray(sale.services) && sale.services.length > 0) {
+    return sale.services.map((service) => `${service.serviceName || service.name || "Servicio"} x${service.quantity || 1} (${money(Number(service.price || 0) * Number(service.quantity || 1))})`).join(" | ");
+  }
+  return saleServicesText(sale);
+}
+
 function saleStatus(sale) {
   const status = String(sale.status || "cobrado").toLowerCase();
-  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada") return status;
+  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada" || status === "servicio_interno") return status;
   if (status === "editada") return "cobrado";
   return "cobrado";
 }
@@ -63,32 +77,14 @@ function startOfWeek(date) {
   return getLocalStartOfWeek(date);
 }
 
-function SaleItem({ sale, clients, onEditSale, onDeleteSale }) {
+function SaleItem({ sale, clients, onEditSale, onDeleteSale, onViewHistory }) {
   const statusLabel = saleStatus(sale) === "cobrado" && saleIsEdited(sale) ? "Cobrada - Editada" : {
     cobrado: "Cobrada",
     anulada: "Anulada",
     pendiente_pago: "Pendiente de pago",
     cancelado: "Cancelada",
+    servicio_interno: "Servicio interno",
   }[saleStatus(sale)] || "Cobrada";
-  const viewHistory = () => {
-    const history = saleEditHistory(sale);
-    const lines = [
-      `Fecha creacion: ${sale.createdAt || sale.horaCreacion || operationalDate(sale) || "Sin dato"}`,
-      `Fecha operativa: ${operationalDate(sale) || "Sin dato"}`,
-      "",
-      history.length === 0 ? "Sin ediciones registradas." : "Ediciones:",
-      ...history.flatMap((entry, index) => [
-        `${index + 1}. ${entry.editedAt || "Sin fecha"} - ${entry.editedBy || "Sin usuario"}`,
-        `Motivo: ${entry.reason || "Sin motivo registrado"}`,
-        ...(entry.changes || []).length > 0
-          ? (entry.changes || []).map((change) => `- ${change.field}: ${compactValue(change.before)} -> ${compactValue(change.after)}`)
-          : ["- Cambios no detallados en esta version"],
-        "",
-      ]),
-    ];
-    window.alert(lines.join("\n"));
-  };
-
   return (
     <article className="list-item sale-card">
       <div className="sale-card-main">
@@ -98,6 +94,7 @@ function SaleItem({ sale, clients, onEditSale, onDeleteSale }) {
           {statusLabel}
           {saleIsEdited(sale) && <b className="sale-tag edited">[EDITADA]</b>}
           {saleStatus(sale) === "anulada" && <b className="sale-tag voided">[ANULADA]</b>}
+          {saleStatus(sale) === "servicio_interno" && <b className="sale-tag edited">[SERVICIO INTERNO]</b>}
         </span>
       </div>
       <div className="item-actions sale-card-actions">
@@ -106,7 +103,7 @@ function SaleItem({ sale, clients, onEditSale, onDeleteSale }) {
           <button type="button" onClick={() => onEditSale(sale)} aria-label="Editar venta">
             Editar
           </button>
-          <button className="secondary-button" type="button" onClick={viewHistory} aria-label="Ver historial de venta">
+          <button className="secondary-button" type="button" onClick={() => onViewHistory(sale)} aria-label="Ver historial de venta">
             Ver historial
           </button>
           <button type="button" onClick={() => onDeleteSale(sale.id)} aria-label="Eliminar venta">
@@ -118,11 +115,12 @@ function SaleItem({ sale, clients, onEditSale, onDeleteSale }) {
   );
 }
 
-function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDeleteSale }) {
+function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDeleteSale, initialStatusFilter = "cobrado", title = "Historial de Ventas", subtitle = "Consulta de ventas por dia o rango" }) {
   const [periodFilter, setPeriodFilter] = useState("today");
-  const [statusFilter, setStatusFilter] = useState("cobrado");
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const [historyFrom, setHistoryFrom] = useState("");
   const [historyTo, setHistoryTo] = useState("");
+  const [historySale, setHistorySale] = useState(null);
 
   const daySales = useMemo(() => (
     sales.filter((sale) => operationalDate(sale) === selectedDate && matchesStatusFilter(sale, statusFilter))
@@ -150,8 +148,8 @@ function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDe
     <section className="panel list-panel sales-history-panel">
       <div className="section-title">
         <div>
-          <h2>Historial de Ventas</h2>
-          <span>Consulta de ventas por dia o rango</span>
+          <h2>{title}</h2>
+          <span>{subtitle}</span>
         </div>
       </div>
 
@@ -170,6 +168,7 @@ function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDe
           <option value="anulada">Anuladas</option>
           <option value="pendiente_pago">Pendiente de pago</option>
           <option value="cancelado">Canceladas</option>
+          <option value="servicio_interno">Servicio interno</option>
         </select></label>
       </div>
       {periodFilter === "custom" && (
@@ -188,12 +187,62 @@ function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDe
       <section className="sales-history">
         <h3>{periodFilter === "custom" ? "Ventas del rango" : "Ventas filtradas"}</h3>
         <div className="list">
-          {filteredPeriodSales.length === 0 && <p className="empty-state">Sin ventas en el periodo seleccionado.</p>}
+          {filteredPeriodSales.length === 0 && <p className="empty-state">No hay ventas para el periodo seleccionado.</p>}
           {filteredPeriodSales.map((sale) => (
-            <SaleItem key={sale.id} sale={sale} clients={clients} onEditSale={onEditSale} onDeleteSale={onDeleteSale} />
+            <SaleItem key={sale.id} sale={sale} clients={clients} onEditSale={onEditSale} onDeleteSale={onDeleteSale} onViewHistory={setHistorySale} />
           ))}
         </div>
       </section>
+      {historySale && (
+        <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Historial completo de venta">
+          <article className="sale-history-dialog">
+            <div className="section-title">
+              <div>
+                <h2>Historial de venta</h2>
+                <span>{saleServicesText(historySale)}</span>
+              </div>
+              <button className="secondary-button" type="button" onClick={() => setHistorySale(null)}>Cerrar</button>
+            </div>
+            <div className="client-detail-grid">
+              <div><span>Fecha creacion</span><strong>{historySale.createdAt || historySale.horaCreacion || "-"}</strong></div>
+              <div><span>Fecha operativa</span><strong>{operationalDate(historySale) || "-"}</strong></div>
+              <div><span>Hora cierre</span><strong>{historySale.horaCierreLocal || historySale.horaCierre || "-"}</strong></div>
+              <div><span>Cliente</span><strong>{clients[historySale.clientId] || historySale.clientName || "Cliente eliminado"}</strong></div>
+              <div><span>Profesional</span><strong>{historySale.employee || "Sin profesional"}</strong></div>
+              <div><span>Importe total</span><strong>{money(historySale.total || historySale.amount)}</strong></div>
+              <div><span>Metodos de pago</span><strong>{paymentText(historySale)}</strong></div>
+              <div><span>Canal de origen</span><strong>{historySale.entryChannel || "Sin canal"}</strong></div>
+              <div><span>Estado de la venta</span><strong>{saleStatus(historySale)}</strong></div>
+              <div><span>Comision empleada</span><strong>{money(historySale.commissionAmount)}</strong></div>
+              <div><span>% comision empleada</span><strong>{Number(historySale.commissionPercent || 0).toFixed(2)}%</strong></div>
+              <div><span>Comision Treatwell</span><strong>{money(historySale.treatwellCommissionAmount)}</strong></div>
+              <div><span>% comision Treatwell</span><strong>{Number(historySale.treatwellCommissionPercent || 0).toFixed(2)}%</strong></div>
+              <div className="wide-detail"><span>Servicios vendidos</span><p>{servicesDetailText(historySale)}</p></div>
+            </div>
+            <h3>Historial de ediciones</h3>
+            <div className="list">
+              {saleEditHistory(historySale).length === 0 && <p className="empty-state">Sin ediciones registradas.</p>}
+              {saleEditHistory(historySale).map((entry, index) => (
+                <article className="list-item" key={entry.id || `${entry.editedAt}-${index}`}>
+                  <div>
+                    <strong>{index + 1}. {entry.reason || "Sin motivo registrado"}</strong>
+                    <span>{entry.editedAt || "Sin fecha"} - {entry.editedBy || "Sin usuario"}</span>
+                    {(entry.changes || []).length > 0 ? (
+                      (entry.changes || []).map((change) => (
+                        <small key={`${change.field}-${compactValue(change.before)}-${compactValue(change.after)}`}>
+                          {change.field}: {compactValue(change.before)} -&gt; {compactValue(change.after)}
+                        </small>
+                      ))
+                    ) : (
+                      <small>Valores anteriores: {compactValue(entry.previousValues || {})}</small>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </article>
+        </section>
+      )}
     </section>
   );
 }

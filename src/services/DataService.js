@@ -133,6 +133,12 @@ const defaultData = {
   monthlyClosings: [],
   config: {
     employees: ["Marianne", "Ambar", "Grace", "Leidys"],
+    employeeSettings: [
+      { name: "Marianne", active: true, commissionPercent: 0, commissionHistory: [] },
+      { name: "Ambar", active: true, commissionPercent: 0, commissionHistory: [] },
+      { name: "Grace", active: true, commissionPercent: 0, commissionHistory: [] },
+      { name: "Leidys", active: true, commissionPercent: 0, commissionHistory: [] },
+    ],
     services: initialServices,
     paymentMethods: ["Efectivo", "Tarjeta", "Bizum", "Bono", "Tarjeta regalo"],
     entryChannels: ["Walk-in/Calle", "Instagram", "Google", "Treatwell", "Booksy", "WhatsApp", "Recomendacion", "TikTok", "Cliente recurrente", "Academia", "Otro"],
@@ -311,6 +317,8 @@ function saleAmount(sale) {
 }
 
 function normalizeSalePayments(sale) {
+  if (String(sale.operationType || sale.tipoOperacion || "").toLowerCase() === "servicio_interno") return [];
+
   if (Array.isArray(sale.payments) && sale.payments.length > 0) {
     return sale.payments
       .map((payment) => ({
@@ -327,13 +335,14 @@ function normalizeSalePayments(sale) {
 
 function saleVatFields(sale) {
   const total = saleAmount(sale);
+  const isInternalService = String(sale.operationType || sale.tipoOperacion || "").toLowerCase() === "servicio_interno";
   const ivaPercent = Number(sale.ivaPercent ?? 21);
-  const ivaAmount = sale.ivaAmount ?? (total * ivaPercent) / (100 + ivaPercent);
-  const netWithoutVat = sale.netWithoutVat ?? total - ivaAmount;
   const commissionPercent = Number(sale.commissionPercent || 0);
   const commissionAmount = sale.commissionAmount ?? total * (commissionPercent / 100);
   const treatwellCommissionPercent = Number(sale.treatwellCommissionPercent || 0);
   const treatwellCommissionAmount = Number(sale.treatwellCommissionAmount ?? (total * (treatwellCommissionPercent / 100)));
+  const ivaAmount = isInternalService ? 0 : sale.ivaAmount ?? (total * ivaPercent) / (100 + ivaPercent);
+  const netWithoutVat = isInternalService ? 0 : sale.netWithoutVat ?? total - ivaAmount;
   const netAfterCommission = sale.netAfterCommission ?? netWithoutVat - commissionAmount;
   const netAfterTreatwellAndCommission = sale.netAfterTreatwellAndCommission ?? total - treatwellCommissionAmount - commissionAmount;
 
@@ -430,7 +439,7 @@ function saleServicesText(sale) {
 
 function saleStatus(sale) {
   const status = String(sale.status || sale.estado || "cobrado").toLowerCase();
-  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada") return status;
+  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada" || status === "servicio_interno") return status;
   if (status === "editada") return "cobrado";
   return "cobrado";
 }
@@ -457,6 +466,10 @@ function saleEditHistory(sale) {
 
 function isCollectedSale(sale) {
   return saleStatus(sale) === "cobrado";
+}
+
+function isInternalServiceSale(sale) {
+  return saleStatus(sale) === "servicio_interno" || String(sale.operationType || "").toLowerCase() === "servicio_interno";
 }
 
 function comparableSaleSnapshot(sale) {
@@ -577,25 +590,31 @@ function commissionRows(sales, commissionStatuses) {
   const detailsBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item]));
 
   return sales
-    .filter((sale) => isCollectedSale(sale) && Number(sale.commissionPercent || 0) > 0)
+    .filter((sale) => (isCollectedSale(sale) || isInternalServiceSale(sale)) && Number(sale.commissionPercent || 0) > 0)
     .map((sale) => {
-      const commissionPercent = Number(sale.commissionPercent || 0);
-      const total = saleAmount(sale);
       const details = detailsBySale[sale.id] || {};
+      const commissionPercent = Number(details.commissionPercent ?? sale.commissionPercent ?? 0);
+      const total = saleAmount(sale);
+      const commissionAmount = Number(details.commissionAmount ?? (total * (commissionPercent / 100)));
 
       return {
         id: sale.id,
         saleId: sale.id,
         date: saleOperationalDate(sale),
-        employee: sale.employee || "Sin empleada",
+        hour: sale.horaCierreLocal || sale.horaCreacionLocal || localTimeFromTimestamp(sale.horaCierre || sale.horaCreacion || sale.createdAt),
+        employee: details.employee || sale.employee || "Sin empleada",
+        originalEmployee: sale.employee || "Sin empleada",
         client: sale.clientName || "Sin cliente",
         services: saleServicesText(sale),
         saleTotal: total,
+        operationType: isInternalServiceSale(sale) ? "servicio_interno" : "venta",
         commissionPercent,
-        commissionAmount: total * (commissionPercent / 100),
+        commissionAmount,
         status: statusBySale[sale.id] || "pendiente",
         paymentDate: details.paymentDate || "",
         paymentMethod: details.paymentMethod || "",
+        correctionReason: details.correctionReason || "",
+        correctionHistory: Array.isArray(details.correctionHistory) ? details.correctionHistory : [],
       };
     })
     .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")));
@@ -754,6 +773,26 @@ function normalizeServices(services) {
   }).filter((service) => service.name);
 }
 
+function normalizeEmployeeSettings(config) {
+  const rawSettings = Array.isArray(config.employeeSettings) ? config.employeeSettings : [];
+  const names = [
+    ...(Array.isArray(config.employees) ? config.employees : []),
+    ...rawSettings.map((employee) => employee.name),
+  ].filter(Boolean);
+  const uniqueNames = Array.from(new Set(names.map((name) => String(name).trim()).filter(Boolean)));
+
+  return uniqueNames.map((name) => {
+    const existing = rawSettings.find((employee) => String(employee.name || "").trim().toLowerCase() === name.toLowerCase());
+    return {
+      id: existing?.id || `employee-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      active: existing?.active !== false,
+      commissionPercent: Number(existing?.commissionPercent || 0),
+      commissionHistory: Array.isArray(existing?.commissionHistory) ? existing.commissionHistory : [],
+    };
+  });
+}
+
 function normalizeConfig(config) {
   const rawServices = config.services;
   const hasLegacyServices = (rawServices || []).some((service) => (
@@ -768,6 +807,8 @@ function normalizeConfig(config) {
 
   return {
     ...config,
+    employeeSettings: normalizeEmployeeSettings(config),
+    employees: normalizeEmployeeSettings(config).filter((employee) => employee.active !== false).map((employee) => employee.name),
     paymentMethods: config.paymentMethods || defaultData.config.paymentMethods,
     entryChannels: config.entryChannels || defaultData.config.entryChannels,
     serviceCategories,
@@ -778,19 +819,22 @@ function normalizeConfig(config) {
 function normalizeSale(sale) {
   const services = normalizeSaleServices(sale);
   const fechaOperativa = saleOperationalDate(sale);
+  const operationType = String(sale.operationType || sale.tipoOperacion || "").toLowerCase() === "servicio_interno" ? "servicio_interno" : "venta";
   const subtotalServices = Number(sale.subtotalServices ?? servicesSubtotal(services));
   const extra = Number(sale.extra || 0);
   const total = subtotalServices + extra;
-  const fields = saleVatFields({ ...sale, total, commissionPercent: sale.commissionPercent });
+  const fields = saleVatFields({ ...sale, operationType, total, commissionPercent: sale.commissionPercent });
   const primaryService = services[0] || {};
-  const payments = normalizeSalePayments({ ...sale, total });
-  const status = saleStatus(sale);
+  const payments = operationType === "servicio_interno" ? [] : normalizeSalePayments({ ...sale, total });
+  const status = operationType === "servicio_interno" ? "servicio_interno" : saleStatus(sale);
   const editada = saleIsEdited(sale);
 
   return {
     id: sale.id,
     date: fechaOperativa,
     fechaOperativa,
+    operationType,
+    internalService: operationType === "servicio_interno",
     status,
     estadoVenta: status,
     editada,
@@ -808,7 +852,7 @@ function normalizeSale(sale) {
     ivaPercent: fields.ivaPercent,
     ivaAmount: fields.ivaAmount,
     netWithoutVat: fields.netWithoutVat,
-    paymentMethod: sale.paymentMethod || sale.metodoPago || payments.map((payment) => payment.method).join(" + "),
+    paymentMethod: operationType === "servicio_interno" ? "" : sale.paymentMethod || sale.metodoPago || payments.map((payment) => payment.method).join(" + "),
     payments,
     entryChannel: sale.entryChannel || sale.channel || "",
     referralClientId: sale.referralClientId || "",
@@ -858,8 +902,10 @@ function normalizeClient(client) {
     visits: Number(rest.visits || 0),
     totalSpent: Number(rest.totalSpent || 0),
     lastVisit: rest.lastVisit || "",
+    loyaltyManualAdjustment: Number(rest.loyaltyManualAdjustment || 0),
     loyaltyStamps: Number(rest.loyaltyStamps || 0),
     referralStamps: Number(rest.referralStamps || 0),
+    loyaltyAdjustmentHistory: Array.isArray(rest.loyaltyAdjustmentHistory) ? rest.loyaltyAdjustmentHistory : [],
   });
 }
 
@@ -942,12 +988,13 @@ function mergeMissingClientData(existingClient, importedClient) {
 }
 
 function resetClientMetrics(client) {
+  const manualAdjustment = Number(client.loyaltyManualAdjustment || 0);
   return {
     ...client,
     visits: 0,
     totalSpent: 0,
     lastVisit: "",
-    loyaltyStamps: 0,
+    loyaltyStamps: manualAdjustment,
     referralStamps: 0,
   };
 }
@@ -1508,15 +1555,52 @@ const DataService = {
     const safeStatus = status === "pagada" ? "pagada" : "pendiente";
     const currentStatuses = this.getCommissionStatuses();
     const existingStatus = currentStatuses.find((item) => (item.saleId || item.id) === saleId);
-    const nextStatus = {
-      ...(existingStatus || {}),
-      id: saleId,
-      saleId,
+    const currentRow = commissionRows(this.getSales(), currentStatuses).find((row) => row.saleId === saleId);
+    const hasCorrection = Boolean(details.correctionReason);
+    const previousValues = currentRow ? {
+      employee: currentRow.employee,
+      commissionPercent: Number(currentRow.commissionPercent || 0),
+      commissionAmount: Number(currentRow.commissionAmount || 0),
+      status: currentRow.status || "pendiente",
+      paymentDate: currentRow.paymentDate || "",
+      paymentMethod: currentRow.paymentMethod || "",
+    } : {};
+    const newValues = {
+      employee: details.employee ?? existingStatus?.employee ?? previousValues.employee,
+      commissionPercent: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : existingStatus?.commissionPercent,
+      commissionAmount: details.commissionAmount !== undefined ? Number(details.commissionAmount || 0) : existingStatus?.commissionAmount,
       status: safeStatus,
       paymentDate: safeStatus === "pagada" ? (details.paymentDate || existingStatus?.paymentDate || todayLocal()) : "",
       paymentMethod: safeStatus === "pagada" ? (details.paymentMethod || existingStatus?.paymentMethod || "Transferencia") : "",
-      updatedAt: getMadridTimestamp(),
     };
+    const correctionHistory = hasCorrection
+      ? [
+        ...(Array.isArray(existingStatus?.correctionHistory) ? existingStatus.correctionHistory : []),
+        {
+          id: createId("commission-edit"),
+          editedAt: getMadridTimestamp(),
+          editedBy: details.editedBy || "",
+          reason: details.correctionReason,
+          previousValues,
+          newValues,
+        },
+      ]
+      : (existingStatus?.correctionHistory || []);
+    const nextStatus = cleanFirestoreData({
+      ...(existingStatus || {}),
+      id: saleId,
+      saleId,
+      employee: newValues.employee,
+      commissionPercent: newValues.commissionPercent,
+      commissionAmount: newValues.commissionAmount,
+      status: safeStatus,
+      paymentDate: newValues.paymentDate,
+      paymentMethod: newValues.paymentMethod,
+      correctionReason: details.correctionReason || existingStatus?.correctionReason || "",
+      correctionHistory,
+      editedBy: details.editedBy || existingStatus?.editedBy || "",
+      updatedAt: getMadridTimestamp(),
+    });
     const commissions = writeCollection(
       "commissions",
       existingStatus

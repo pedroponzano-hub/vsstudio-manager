@@ -15,6 +15,10 @@ const permissionsByRole = {
     tabs: ["dashboard", "sales", "clients", "loyalty", "agenda", "cashClosing"],
     actions: ["manageSales", "manageClients", "manageAppointments", "manageCashClosing"],
   },
+  caja: {
+    tabs: ["sales", "expenses", "cashClosing"],
+    actions: ["manageSales", "manageExpenses", "manageCashClosing"],
+  },
   profesional: {
     tabs: ["agenda", "commissions", "clients"],
     actions: ["manageOwnAppointments", "viewOwnCommissions", "readClients"],

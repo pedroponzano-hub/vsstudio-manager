@@ -24,6 +24,10 @@ function createServiceId() {
   return `service-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function createEmployeeId(name = "") {
+  return `employee-${String(name || Date.now()).toLowerCase().replace(/\s+/g, "-")}-${Math.random().toString(16).slice(2, 7)}`;
+}
+
 function normalizeCategory(value = "") {
   return String(value).trim().toLowerCase();
 }
@@ -105,15 +109,32 @@ async function readClientImportFile(file) {
   throw new Error("Formato no soportado. Usa .xlsx o .csv");
 }
 
-function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
+function normalizeEmployeeSettings(config) {
+  const settings = Array.isArray(config.employeeSettings) ? config.employeeSettings : [];
+  const names = [...(config.employees || []), ...settings.map((employee) => employee.name)].filter(Boolean);
+  const uniqueNames = Array.from(new Set(names.map((name) => String(name).trim()).filter(Boolean)));
+  return uniqueNames.map((name) => {
+    const existing = settings.find((employee) => String(employee.name || "").trim().toLowerCase() === name.toLowerCase());
+    return {
+      id: existing?.id || createEmployeeId(name),
+      name,
+      active: existing?.active !== false,
+      commissionPercent: Number(existing?.commissionPercent || 0),
+      commissionHistory: Array.isArray(existing?.commissionHistory) ? existing.commissionHistory : [],
+    };
+  });
+}
+
+function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, currentUser, canManageEmployeeCommissions = false }) {
   const [form, setForm] = useState({
-    employees: listToText(config.employees),
     paymentMethods: listToText(config.paymentMethods),
     entryChannels: listToText(config.entryChannels),
     expenseCategories: listToText(config.expenseCategories),
     monthlyGoal: config.monthlyGoal,
     loyaltyVisits: config.loyaltyVisits,
   });
+  const [employeeSettings, setEmployeeSettings] = useState(() => normalizeEmployeeSettings(config));
+  const [employeeDraft, setEmployeeDraft] = useState({ name: "", active: true, commissionPercent: "0" });
   const [services, setServices] = useState(config.services || []);
   const [serviceCategories, setServiceCategories] = useState(() => {
     const categories = [...(config.serviceCategories || []), ...(config.services || []).map((service) => service.category)];
@@ -184,8 +205,9 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
     setServiceError("");
   };
 
-  const buildConfigPayload = (nextServices = services, nextCategories = serviceCategories) => ({
-    employees: textToList(form.employees),
+  const buildConfigPayload = (nextServices = services, nextCategories = serviceCategories, nextEmployees = employeeSettings) => ({
+    employees: nextEmployees.filter((employee) => employee.active !== false).map((employee) => employee.name),
+    employeeSettings: nextEmployees,
     services: nextServices,
     serviceCategories: nextCategories,
     paymentMethods: textToList(form.paymentMethods),
@@ -199,6 +221,66 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
     setServices(nextServices);
     setServiceCategories(nextCategories);
     onSave(buildConfigPayload(nextServices, nextCategories));
+  };
+
+  const persistEmployees = (nextEmployees) => {
+    setEmployeeSettings(nextEmployees);
+    onSave(buildConfigPayload(services, serviceCategories, nextEmployees));
+  };
+
+  const withCommissionAudit = (employeesToSave, targetEmployeeId = "") => {
+    const originalEmployees = normalizeEmployeeSettings(config);
+    return employeesToSave.map((employee) => {
+      if (targetEmployeeId && employee.id !== targetEmployeeId) return employee;
+      const original = originalEmployees.find((item) => item.id === employee.id || item.name.toLowerCase() === employee.name.toLowerCase());
+      const previousPercent = Number(original?.commissionPercent || 0);
+      const nextPercent = Number(employee.commissionPercent || 0);
+      if (nextPercent === previousPercent) return { ...employee, commissionPercent: nextPercent };
+
+      return {
+        ...employee,
+        commissionPercent: nextPercent,
+        commissionHistory: [
+          {
+            id: `employee-commission-${Date.now()}`,
+            date: new Date().toISOString(),
+            user: currentUser?.email || currentUser?.nombre || "Usuario no identificado",
+            previousValue: previousPercent,
+            newValue: nextPercent,
+          },
+          ...(employee.commissionHistory || []),
+        ],
+      };
+    });
+  };
+
+  const updateEmployeeDraft = (employeeId, updates) => {
+    if (!canManageEmployeeCommissions) return;
+    setEmployeeSettings((current) => current.map((employee) => (
+      employee.id === employeeId ? { ...employee, ...updates } : employee
+    )));
+  };
+
+  const saveEmployee = (employeeId) => {
+    if (!canManageEmployeeCommissions) return;
+    persistEmployees(withCommissionAudit(employeeSettings, employeeId));
+  };
+
+  const createEmployee = () => {
+    if (!canManageEmployeeCommissions || !employeeDraft.name.trim()) return;
+    const exists = employeeSettings.some((employee) => employee.name.trim().toLowerCase() === employeeDraft.name.trim().toLowerCase());
+    if (exists) return;
+    persistEmployees([
+      ...employeeSettings,
+      {
+        id: createEmployeeId(employeeDraft.name),
+        name: employeeDraft.name.trim(),
+        active: employeeDraft.active !== false,
+        commissionPercent: Number(employeeDraft.commissionPercent || 0),
+        commissionHistory: [],
+      },
+    ]);
+    setEmployeeDraft({ name: "", active: true, commissionPercent: "0" });
   };
 
   const selectCategory = (category) => {
@@ -348,8 +430,10 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
 
   const submit = (event) => {
     event.preventDefault();
+    const auditedEmployees = withCommissionAudit(employeeSettings);
     onSave({
-      employees: textToList(form.employees),
+      employees: auditedEmployees.filter((employee) => employee.active !== false).map((employee) => employee.name),
+      employeeSettings: auditedEmployees,
       services,
       serviceCategories,
       paymentMethods: textToList(form.paymentMethods),
@@ -366,13 +450,16 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
 
     onRestoreBaseConfig();
     setForm({
-      employees: "Marianne\nAmbar\nGrace\nLeidys",
       paymentMethods: "Efectivo\nTarjeta\nBizum\nBono\nTarjeta regalo",
       entryChannels: "Walk-in/Calle\nInstagram\nGoogle\nTreatwell\nBooksy\nWhatsApp\nRecomendacion\nTikTok\nCliente recurrente\nAcademia\nOtro",
       expenseCategories: "Suministros\nNominas\nAlquiler\nGestoria\nMateriales\nImpuestos\nComisiones bancarias\nMarketing\nMantenimiento\nServicios externos\nOtros",
       monthlyGoal: 4500,
       loyaltyVisits: 5,
     });
+    setEmployeeSettings(normalizeEmployeeSettings({
+      employees: ["Marianne", "Ambar", "Grace", "Leidys"],
+      employeeSettings: ["Marianne", "Ambar", "Grace", "Leidys"].map((name) => ({ name, active: true, commissionPercent: 0, commissionHistory: [] })),
+    }));
   };
 
   const importClients = async () => {
@@ -405,12 +492,41 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients }) {
     <section className="settings-layout">
       <form className="panel settings-form" onSubmit={submit}>
         <h2>Configuracion</h2>
+        <section className="panel employee-settings-panel">
+          <h3>Empleadas</h3>
+          <div className="list">
+            {employeeSettings.map((employee) => (
+              <article className="list-item" key={employee.id}>
+                <div>
+                  <strong>{employee.name}</strong>
+                  <span>{employee.active === false ? "Inactiva" : "Activa"} - Comision por defecto {Number(employee.commissionPercent || 0).toFixed(2)}%</span>
+                  {(employee.commissionHistory || []).slice(0, 3).map((item) => (
+                    <small key={item.id || item.date}>{item.date} - {item.user}: {item.previousValue}% -&gt; {item.newValue}%</small>
+                  ))}
+                </div>
+                <div className="row-actions">
+                  <input value={employee.name} disabled={!canManageEmployeeCommissions} onChange={(event) => updateEmployeeDraft(employee.id, { name: event.target.value })} placeholder="Nombre" />
+                  <label className="check-field"><input type="checkbox" checked={employee.active !== false} disabled={!canManageEmployeeCommissions} onChange={(event) => updateEmployeeDraft(employee.id, { active: event.target.checked })} /> Activa</label>
+                  <input type="number" min="0" step="0.01" value={employee.commissionPercent} disabled={!canManageEmployeeCommissions} onChange={(event) => updateEmployeeDraft(employee.id, { commissionPercent: event.target.value })} aria-label="Comision por defecto" />
+                  {canManageEmployeeCommissions && <button type="button" onClick={() => saveEmployee(employee.id)}>Guardar</button>}
+                </div>
+              </article>
+            ))}
+          </div>
+          {canManageEmployeeCommissions && (
+            <div className="field-row">
+              <input value={employeeDraft.name} onChange={(event) => setEmployeeDraft({ ...employeeDraft, name: event.target.value })} placeholder="Nueva empleada" />
+              <label className="check-field"><input type="checkbox" checked={employeeDraft.active} onChange={(event) => setEmployeeDraft({ ...employeeDraft, active: event.target.checked })} /> Activa</label>
+              <input type="number" min="0" step="0.01" value={employeeDraft.commissionPercent} onChange={(event) => setEmployeeDraft({ ...employeeDraft, commissionPercent: event.target.value })} placeholder="Comision %" />
+              <button type="button" onClick={createEmployee}>Crear empleada</button>
+            </div>
+          )}
+        </section>
         <div className="field-row">
-          <label>Empleadas<textarea name="employees" value={form.employees} onChange={updateField} /></label>
           <label>Metodos pago<textarea name="paymentMethods" value={form.paymentMethods} onChange={updateField} /></label>
+          <label>Canales de entrada<textarea name="entryChannels" value={form.entryChannels} onChange={updateField} /></label>
         </div>
         <div className="field-row">
-          <label>Canales de entrada<textarea name="entryChannels" value={form.entryChannels} onChange={updateField} /></label>
           <label>Categorias gasto<textarea name="expenseCategories" value={form.expenseCategories} onChange={updateField} /></label>
         </div>
         <div className="field-row">

@@ -111,15 +111,22 @@ function normalizePaymentOption(method = "") {
   return value;
 }
 
+function normalizeEmployeeSettings(config) {
+  const settings = Array.isArray(config.employeeSettings) ? config.employeeSettings : [];
+  if (settings.length > 0) return settings;
+  return (config.employees || []).map((name) => ({ name, active: true, commissionPercent: 0 }));
+}
+
 function saleStatus(sale) {
   const status = String(sale?.status || "cobrado").toLowerCase();
-  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada") return status;
+  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada" || status === "servicio_interno") return status;
   return "cobrado";
 }
 
 function emptySaleForm() {
   return {
     date: getMadridDateString(),
+    operationType: "venta",
     clientId: "",
     employee: "",
     extra: "0",
@@ -144,10 +151,13 @@ function SalesForm({
   onCreateService,
   canCreateService = false,
   canEditSaleDate = false,
+  canEditCommission = false,
   onCancelEdit,
   onDateChange,
 }) {
   const catalogServices = (config.services || []).filter((service) => service.active !== false);
+  const employeeSettings = useMemo(() => normalizeEmployeeSettings(config), [config]);
+  const activeEmployees = useMemo(() => employeeSettings.filter((employee) => employee.active !== false), [employeeSettings]);
   const serviceCategories = useMemo(() => {
     const categories = [...(config.serviceCategories || []), ...(config.services || []).map((service) => service.category)];
     return Array.from(new Set(categories.filter(Boolean))).sort((first, second) => first.localeCompare(second));
@@ -176,6 +186,7 @@ function SalesForm({
     const nextDate = editingSale.fechaOperativa || editingSale.date || getMadridDateString();
     setForm({
       date: nextDate,
+      operationType: editingSale.operationType || (String(editingSale.status || "").toLowerCase() === "servicio_interno" ? "servicio_interno" : "venta"),
       clientId: editingSale.clientId || "",
       employee: editingSale.employee || "",
       extra: String(editingSale.extra ?? 0),
@@ -281,11 +292,18 @@ function SalesForm({
 
   const paymentsTotal = useMemo(() => payments.reduce((total, payment) => total + Number(payment.amount || 0), 0), [payments]);
   const paymentsDifference = totals.total - paymentsTotal;
+  const isInternalService = form.operationType === "servicio_interno";
 
   const updateField = (event) => {
-    setForm({ ...form, [event.target.name]: event.target.value });
+    const { name, value } = event.target;
+    if (name === "employee") {
+      const employee = employeeSettings.find((item) => String(item.name || "") === value);
+      setForm({ ...form, employee: value, commissionPercent: String(employee?.commissionPercent ?? 0) });
+    } else {
+      setForm({ ...form, [name]: value });
+    }
     setSaleError("");
-    if (event.target.name === "date") onDateChange?.(event.target.value);
+    if (name === "date") onDateChange?.(value);
   };
 
   const updateTreatwellPercent = (event) => {
@@ -484,21 +502,25 @@ function SalesForm({
   const buildPayload = (validPayments, effectiveDate, status) => {
     const client = clients.find((item) => item.id === form.clientId);
     const referralClient = clients.find((item) => item.id === form.referralClientId);
+    const financialTotals = isInternalService
+      ? { ...totals, ivaAmount: 0, netWithoutVat: 0, netAfterCommission: -totals.commissionAmount, netAfterTreatwellAndCommission: -totals.commissionAmount }
+      : totals;
 
     return {
       ...form,
       date: effectiveDate,
       fechaOperativa: effectiveDate,
       status,
+      operationType: form.operationType,
       clientName: client?.name || clientQuery.trim() || "Cliente mostrador",
-      referralClientId: status === "cobrado" ? (referralClient?.id || "") : "",
-      referralClientName: status === "cobrado" ? (referralClient?.name || "") : "",
+      referralClientId: status === "cobrado" && !isInternalService ? (referralClient?.id || "") : "",
+      referralClientName: status === "cobrado" && !isInternalService ? (referralClient?.name || "") : "",
       cardTipAmount: Number(form.cardTipAmount || 0),
       treatwellCommissionPercent: Number(form.treatwellCommissionPercent || 0),
       treatwellCommissionAmount: Number(form.treatwellCommissionAmount || 0),
       netAfterTreatwellAndCommission: totals.netAfterTreatwellAndCommission,
-      payments: validPayments,
-      paymentMethod: validPayments.map((payment) => payment.method).join(" + "),
+      payments: isInternalService ? [] : validPayments,
+      paymentMethod: isInternalService ? "" : validPayments.map((payment) => payment.method).join(" + "),
       services: saleServices.map(({ lineId, ...service }) => ({
         ...service,
         price: Number(service.price || 0),
@@ -506,7 +528,7 @@ function SalesForm({
       })),
       extra: Number(form.extra || 0),
       commissionPercent: Number(form.commissionPercent || 0),
-      ...totals,
+      ...financialTotals,
     };
   };
 
@@ -539,6 +561,10 @@ function SalesForm({
 
   const savePending = () => {
     if (saleServices.length === 0) return;
+    if (isInternalService) {
+      setSaleError("Los servicios internos no pueden guardarse como pendiente. Usa Guardar servicio interno.");
+      return;
+    }
     const effectiveDate = effectiveOperationalDate("pendiente_pago");
 
     if (saleServices.length === 0 || !form.employee || totals.total <= 0) {
@@ -552,6 +578,18 @@ function SalesForm({
   const submit = (event) => {
     event.preventDefault();
     if (saleServices.length === 0) return;
+
+    if (isInternalService) {
+      const effectiveDate = effectiveOperationalDate("servicio_interno");
+      if (saleServices.length === 0 || !clientQuery.trim() || !form.employee || totals.total <= 0 || Number(form.commissionPercent || 0) <= 0 || !form.notes.trim()) {
+        setSaleError("Completa socio/persona beneficiaria, servicio, profesional, precio de referencia, comision % y motivo/observacion obligatoria.");
+        return;
+      }
+
+      savePayload(buildPayload([], effectiveDate, "servicio_interno"));
+      return;
+    }
+
     const validPayments = payments
       .map((payment) => ({ method: payment.method, amount: Number(payment.amount || 0) }))
       .filter((payment) => payment.method && payment.amount > 0);
@@ -645,9 +683,13 @@ function SalesForm({
 
       <section className="sale-admin-section">
         <h3>Datos de la venta</h3>
+        <label>Tipo de operacion<select name="operationType" value={form.operationType} onChange={updateField}>
+          <option value="venta">Venta normal</option>
+          <option value="servicio_interno">Servicio interno / socio</option>
+        </select></label>
         <label className="service-search-field">
-          Cliente
-          <input value={clientQuery} onChange={updateClientQuery} onFocus={() => setShowClientResults(Boolean(clientQuery.trim()))} placeholder="Buscar cliente por nombre o telefono" />
+          {isInternalService ? "Socio / persona beneficiaria" : "Cliente"}
+          <input value={clientQuery} onChange={updateClientQuery} onFocus={() => setShowClientResults(Boolean(clientQuery.trim()))} placeholder={isInternalService ? "Nombre del socio o buscar cliente" : "Buscar cliente por nombre o telefono"} />
           <div className="client-quick-actions">
             <button className="secondary-button" type="button" onClick={clearClient}>Sin cliente</button>
             <button className="secondary-button" type="button" onClick={openQuickClientForm}>+ Crear cliente nuevo</button>
@@ -682,10 +724,10 @@ function SalesForm({
           </section>
         )}
         <div className="field-row">
-          <label>Empleada<select name="employee" value={form.employee} onChange={updateField}><option value="">Seleccionar...</option>{(config.employees || []).map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>Canal de origen<select name="entryChannel" value={form.entryChannel} onChange={updateField}><option value="">Seleccionar...</option>{(config.entryChannels || []).map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label>Empleada<select name="employee" value={form.employee} onChange={updateField}><option value="">Seleccionar...</option>{activeEmployees.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
+          {!isInternalService && <label>Canal de origen<select name="entryChannel" value={form.entryChannel} onChange={updateField}><option value="">Seleccionar...</option>{(config.entryChannels || []).map((item) => <option key={item}>{item}</option>)}</select></label>}
         </div>
-        <section className="quick-client-box">
+        {!isInternalService && <section className="quick-client-box">
           <h3>Pagos</h3>
           {payments.map((payment, index) => (
             <div className="field-row" key={`${index}-${payment.method}`}>
@@ -702,7 +744,18 @@ function SalesForm({
             <span>Pagado: <b>{paymentsTotal.toFixed(2)} EUR</b></span>
             <span>Diferencia: <b>{paymentsDifference.toFixed(2)} EUR</b></span>
           </div>
-        </section>
+        </section>}
+        {isInternalService && (
+          <section className="quick-client-box">
+            <h3>Servicio interno / socio</h3>
+            <p className="empty-state">No genera venta, IVA, caja ni ingresos. Solo registra la comision pendiente de la profesional.</p>
+            <div className="calculated-row">
+              <span>Precio de referencia: <b>{totals.total.toFixed(2)} EUR</b></span>
+              <span>Comision profesional: <b>{totals.commissionAmount.toFixed(2)} EUR</b></span>
+            </div>
+            <label>Motivo / observacion obligatoria<textarea name="notes" value={form.notes} onChange={updateField} placeholder="Servicio realizado a socio. Solo se paga comision a la profesional." /></label>
+          </section>
+        )}
         <section className="advanced-sale-section">
           <button className="secondary-button" type="button" onClick={() => setShowAdvanced((current) => !current)}>
             {showAdvanced ? "Ocultar opciones avanzadas" : "Opciones avanzadas"}
@@ -711,7 +764,7 @@ function SalesForm({
             <div className="advanced-sale-fields">
               <div className="field-row">
                 <label>Fecha<input type="date" name="date" value={form.date} onChange={updateField} disabled={!canEditSaleDate} /></label>
-                <label>Comision %<input type="number" min="0" step="0.01" name="commissionPercent" value={form.commissionPercent} onChange={updateField} /></label>
+                <label>Comision aplicada %<input type="number" min="0" step="0.01" name="commissionPercent" value={form.commissionPercent} onChange={updateField} disabled={!canEditCommission} /></label>
               </div>
               <div className="field-row">
                 <label>Comision Treatwell %<input type="number" min="0" step="0.01" name="treatwellCommissionPercent" value={form.treatwellCommissionPercent} onChange={updateTreatwellPercent} /></label>
@@ -731,7 +784,7 @@ function SalesForm({
                   </div>
                 )}
               </label>
-              <label>Observaciones<textarea name="notes" value={form.notes} onChange={updateField} placeholder="Observaciones internas de la venta" /></label>
+              {!isInternalService && <label>Observaciones<textarea name="notes" value={form.notes} onChange={updateField} placeholder="Observaciones internas de la venta" /></label>}
             </div>
           )}
         </section>
@@ -740,12 +793,13 @@ function SalesForm({
 
       <div className="calculated-row operational-total-row">
         <span>Subtotal servicios: <b>{totals.subtotalServices.toFixed(2)} EUR</b></span>
-        <span>Pagado: <b>{paymentsTotal.toFixed(2)} EUR</b></span>
-        <span>Total venta: <b>{totals.total.toFixed(2)} EUR</b></span>
+        {!isInternalService && <span>Pagado: <b>{paymentsTotal.toFixed(2)} EUR</b></span>}
+        <span>{isInternalService ? "Precio referencia" : "Total venta"}: <b>{totals.total.toFixed(2)} EUR</b></span>
+        <span>Comision generada: <b>{totals.commissionAmount.toFixed(2)} EUR</b></span>
       </div>
       <div className="form-actions">
-        <button type="submit">{editingSale ? "Cobrar y cerrar" : "Cobrar y cerrar"}</button>
-        <button className="secondary-button" type="button" onClick={savePending}>Guardar pendiente</button>
+        <button type="submit">{isInternalService ? "Guardar servicio interno" : "Cobrar y cerrar"}</button>
+        {!isInternalService && <button className="secondary-button" type="button" onClick={savePending}>Guardar pendiente</button>}
         {editingSale && <button className="secondary-button" type="button" onClick={cancelEdit}>Cancelar edicion</button>}
       </div>
     </form>

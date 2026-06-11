@@ -28,7 +28,7 @@ function salePayments(sale) {
 
 function saleStatus(sale) {
   const status = String(sale.status || "cobrado").toLowerCase();
-  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada") return status;
+  if (status === "pendiente_pago" || status === "cancelado" || status === "anulada" || status === "servicio_interno") return status;
   if (status === "editada") return "cobrado";
   return "cobrado";
 }
@@ -59,6 +59,7 @@ function saleStatusLabel(sale) {
   if (saleStatus(sale) === "cobrado") return "Cobrada";
   if (saleStatus(sale) === "pendiente_pago") return "Pendiente de pago";
   if (saleStatus(sale) === "cancelado") return "Cancelada";
+  if (saleStatus(sale) === "servicio_interno") return "Servicio interno";
   return "Cobrada";
 }
 
