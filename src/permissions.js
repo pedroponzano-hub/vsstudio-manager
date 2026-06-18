@@ -4,7 +4,7 @@ const permissionsByRole = {
     actions: ["manageSales", "manageExpenses", "manageClients", "manageAppointments", "manageCommissions", "manageSettings", "manageServices", "restoreData", "importClients", "viewFinance", "manageCashClosing"],
   },
   direccion: {
-    tabs: ["dashboard", "sales", "expenses", "clients", "loyalty", "agenda", "cashClosing"],
+    tabs: ["dashboard", "sales", "expenses", "clients", "loyalty", "agenda", "cashClosing", "commissions", "salesHistory"],
     actions: ["manageSales", "manageExpenses", "manageClients", "manageAppointments", "manageServices", "manageCashClosing"],
   },
   recepcion: {
@@ -20,8 +20,8 @@ const permissionsByRole = {
     actions: ["manageSales", "manageExpenses", "manageCashClosing"],
   },
   profesional: {
-    tabs: ["agenda", "commissions", "clients"],
-    actions: ["manageOwnAppointments", "viewOwnCommissions", "readClients"],
+    tabs: ["professionalAgenda", "professionalCommissions"],
+    actions: ["viewOwnAgenda", "viewOwnCommissions"],
     ownEmployeeOnly: true,
   },
 };
@@ -30,11 +30,12 @@ const userRoleOverrides = {};
 
 function effectiveRoleForUser(user) {
   const email = String(user?.email || "").trim().toLowerCase();
-  return userRoleOverrides[email] || user?.role || "profesional";
+  return String(userRoleOverrides[email] || user?.role || "profesional").trim().toLowerCase();
 }
 
 function rolePermissions(role) {
-  return permissionsByRole[role] || permissionsByRole.profesional;
+  const normalizedRole = String(role || "").trim().toLowerCase();
+  return permissionsByRole[normalizedRole] || permissionsByRole.profesional;
 }
 
 function allowedTabsForRole(role) {
@@ -54,13 +55,25 @@ function isOwnEmployeeOnly(role) {
 }
 
 function employeeNameForUser(user) {
-  return String(user?.employeeName || user?.nombre || "").trim().toLowerCase();
+  return String(user?.professionalName || user?.employeeName || user?.nombre || "").trim().toLowerCase();
+}
+
+function professionalIdForUser(user) {
+  return String(user?.professionalId || user?.employeeId || "").trim().toLowerCase();
+}
+
+function professionalMatchesItem(item, user) {
+  const professionalId = professionalIdForUser(user);
+  const itemProfessionalId = String(item?.professionalId || item?.employeeId || item?.empleadaId || "").trim().toLowerCase();
+  if (professionalId && itemProfessionalId && professionalId === itemProfessionalId) return true;
+
+  const employeeName = employeeNameForUser(user);
+  const itemEmployeeName = String(item?.professionalName || item?.employeeName || item?.employee || item?.empleada || "").trim().toLowerCase();
+  return Boolean(employeeName && itemEmployeeName && employeeName === itemEmployeeName);
 }
 
 function onlyOwnEmployeeItems(items, user) {
-  const employeeName = employeeNameForUser(user);
-  if (!employeeName) return [];
-  return (items || []).filter((item) => String(item.employee || "").trim().toLowerCase() === employeeName);
+  return (items || []).filter((item) => professionalMatchesItem(item, user));
 }
 
 export {
@@ -71,4 +84,5 @@ export {
   employeeNameForUser,
   isOwnEmployeeOnly,
   onlyOwnEmployeeItems,
+  professionalMatchesItem,
 };

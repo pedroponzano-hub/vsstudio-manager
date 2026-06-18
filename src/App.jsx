@@ -13,12 +13,27 @@ import SafeSalesHistory from "./components/SafeSalesHistory.jsx";
 import Settings from "./components/Settings.jsx";
 import Statistics from "./components/Statistics.jsx";
 import Login from "./components/Login.jsx";
+import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { allowedTabsForRole, canAccessTab, canPerform, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems } from "./permissions.js";
+import { allowedTabsForRole, canAccessTab, canPerform, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
 
 const navigationSections = [
+  {
+    id: "professional-agenda",
+    label: "Mi agenda",
+    items: [
+      { key: "professional-agenda", pageId: "professional.agenda", tabId: "professionalAgenda", label: "Mi agenda" },
+    ],
+  },
+  {
+    id: "professional-commissions",
+    label: "Mis comisiones",
+    items: [
+      { key: "professional-commissions", pageId: "professional.commissions", tabId: "professionalCommissions", label: "Mis comisiones" },
+    ],
+  },
   {
     id: "dashboard",
     label: "Dashboard",
@@ -33,6 +48,7 @@ const navigationSections = [
     items: [
       { key: "sales-new", pageId: "sales.new", tabId: "sales", label: "Nueva venta" },
       { key: "sales-pending", pageId: "sales.pending", tabId: "sales", label: "Tickets pendientes" },
+      { key: "sales-today", pageId: "sales.today", tabId: "sales", label: "Ventas del dia" },
     ],
   },
   {
@@ -51,12 +67,30 @@ const navigationSections = [
     ],
   },
   {
+    id: "expenses",
+    label: "Gastos",
+    items: [
+      { key: "expenses-list", pageId: "finance.expenses", tabId: "expenses", label: "Gastos" },
+    ],
+  },
+  {
+    id: "cash-closing",
+    label: "Cierre de Caja",
+    items: [
+      { key: "cash-closing-main", pageId: "finance.cashClosing", tabId: "cashClosing", label: "Cierre de caja" },
+    ],
+  },
+  {
+    id: "commissions",
+    label: "Comisiones",
+    items: [
+      { key: "commissions-main", pageId: "finance.commissions", tabId: "commissions", label: "Comisiones" },
+    ],
+  },
+  {
     id: "finance",
     label: "Finanzas",
     items: [
-      { key: "finance-expenses", pageId: "finance.expenses", tabId: "expenses", label: "Gastos" },
-      { key: "finance-commissions", pageId: "finance.commissions", tabId: "commissions", label: "Comisiones" },
-      { key: "finance-cash-closing", pageId: "finance.cashClosing", tabId: "cashClosing", label: "Cierre de caja" },
       { key: "finance-monthly-closing", pageId: "finance.monthlyClosing", tabId: "finance", label: "Cierre mensual" },
       { key: "finance-treasury", pageId: "finance.treasury", tabId: "finance", label: "Tesoreria" },
     ],
@@ -65,7 +99,7 @@ const navigationSections = [
     id: "statistics",
     label: "Estadisticas",
     items: [
-      { key: "stats-sales-history", pageId: "statistics.salesHistory", tabId: "statistics", label: "Historial de ventas" },
+      { key: "stats-sales-history", pageId: "statistics.salesHistory", tabId: "salesHistory", label: "Historial de ventas" },
       { key: "stats-sales-audit", pageId: "statistics.salesAudit", tabId: "statistics", label: "Ventas editadas/anuladas" },
       { key: "stats-category", pageId: "statistics.category", tabId: "statistics", label: "Ventas por categoria" },
       { key: "stats-employee", pageId: "statistics.employee", tabId: "statistics", label: "Ventas por empleada" },
@@ -253,8 +287,13 @@ function TodayClosedSales({ sales, clients, onView, onEdit, onVoid }) {
   );
 }
 
-function buildVisibleNavigation(allowedTabIds) {
-  return navigationSections
+function buildVisibleNavigation(allowedTabIds, role) {
+  const normalizedRole = String(role || "").trim().toLowerCase();
+  const sectionsForRole = normalizedRole === "profesional"
+    ? navigationSections.filter((section) => section.id.startsWith("professional-"))
+    : navigationSections.filter((section) => !section.id.startsWith("professional-"));
+
+  return sectionsForRole
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => allowedTabIds.includes(item.tabId)),
@@ -322,6 +361,7 @@ function App() {
   const [currentMadridDate, setCurrentMadridDate] = useState(getTodayLocalDateString());
   const [selectedSaleDate, setSelectedSaleDate] = useState(getTodayLocalDateString());
   const [editingSale, setEditingSale] = useState(null);
+  const [modalEditingSale, setModalEditingSale] = useState(null);
   const [editingExpense, setEditingExpense] = useState(null);
   const [salesFormHighlight, setSalesFormHighlight] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -334,7 +374,7 @@ function App() {
 
   const effectiveRole = useMemo(() => effectiveRoleForUser(user), [user]);
   const allowedTabIds = useMemo(() => allowedTabsForRole(effectiveRole), [effectiveRole]);
-  const visibleNavigation = useMemo(() => buildVisibleNavigation(allowedTabIds), [allowedTabIds]);
+  const visibleNavigation = useMemo(() => buildVisibleNavigation(allowedTabIds, effectiveRole), [allowedTabIds, effectiveRole]);
   const selectedNavKey = useMemo(() => {
     const itemIsCurrent = visibleNavigation.some((section) => (
       section.items.some((item) => item.key === activeNavKey && item.pageId === activePage)
@@ -348,7 +388,7 @@ function App() {
   const roleCanEditSaleDate = canPerform(effectiveRole, "viewFinance");
   const scopedData = useMemo(() => {
     if (!isOwnEmployeeOnly(effectiveRole)) return data;
-    const ownEmployeeName = user?.employeeName || user?.nombre ? [user.employeeName || user.nombre] : [];
+    const ownEmployeeName = user?.professionalName || user?.employeeName || user?.nombre ? [user.professionalName || user.employeeName || user.nombre] : [];
     return {
       ...data,
       appointments: onlyOwnEmployeeItems(data.appointments || [], user),
@@ -359,11 +399,10 @@ function App() {
       },
     };
   }, [data, user, effectiveRole]);
-  const dashboardData = useMemo(() => DataService.getDashboardData(), [data, currentMadridDate]);
-  const commissionsData = useMemo(() => {
+  const ownCommissionsData = useMemo(() => {
     const commissions = DataService.getCommissions();
     if (!isOwnEmployeeOnly(effectiveRole)) return commissions;
-    const rows = onlyOwnEmployeeItems(commissions.rows || [], user);
+    const rows = (commissions.rows || []).filter((row) => professionalMatchesItem(row, user));
     const byEmployee = rows.reduce((totals, row) => {
       totals[row.employee] = (totals[row.employee] || 0) + Number(row.commissionAmount || 0);
       return totals;
@@ -373,6 +412,12 @@ function App() {
     const paid = generated - pending;
     return { rows, totals: { generated, pending, paid, byEmployee } };
   }, [data, user, effectiveRole]);
+  const dashboardData = useMemo(() => DataService.getDashboardData(), [data, currentMadridDate]);
+  const commissionsData = useMemo(() => {
+    const commissions = DataService.getCommissions();
+    if (!isOwnEmployeeOnly(effectiveRole)) return commissions;
+    return ownCommissionsData;
+  }, [data, effectiveRole, ownCommissionsData]);
   const clientMap = useMemo(() => Object.fromEntries(scopedData.clients.map((client) => [client.id, client.name])), [scopedData.clients]);
 
   useEffect(() => {
@@ -646,8 +691,9 @@ function App() {
   };
   const canDeleteExpense = (expense) => effectiveRole === "admin" || expense.date === getTodayLocalDateString();
   const updateCommissionStatus = (saleId, status, details) => {
-    if (!canPerform(effectiveRole, "manageCommissions")) return;
-    setData(DataService.updateCommissionStatus(saleId, status, { ...details, editedBy: user?.email || user?.nombre || "" }));
+    if (effectiveRole !== "admin" || !canPerform(effectiveRole, "manageCommissions")) return;
+    const actor = user?.email || user?.nombre || "";
+    setData(DataService.updateCommissionStatus(saleId, status, { ...details, editedBy: actor, updatedBy: actor }));
   };
 
   const resetData = (mode) => {
@@ -667,6 +713,7 @@ function App() {
     setActiveTab(item.tabId);
     setActivePage(item.pageId);
     setActiveNavKey(item.key);
+    setModalEditingSale(null);
     setMobileMenuOpen(false);
   };
 
@@ -697,7 +744,11 @@ function App() {
   );
 
   const renderSalesHistoryPage = (mode = "history") => {
-    if (!canAccessTab(effectiveRole, "statistics")) {
+    const canOpenHistory = mode === "history"
+      ? canAccessTab(effectiveRole, "salesHistory") || canAccessTab(effectiveRole, "statistics")
+      : canAccessTab(effectiveRole, "statistics");
+
+    if (!canOpenHistory) {
       return (
         <section className="module">
           <section className="panel">
@@ -713,20 +764,89 @@ function App() {
         sales={scopedData.sales || []}
         clients={clientMap}
         mode={mode}
-        onEditSale={(sale) => {
+        onEditSale={effectiveRole === "admin" ? (sale) => {
           setEditingSale(sale);
           setActivePage("sales.new");
           setActiveTab("sales");
           setActiveNavKey("sales-new");
           setSalesFormHighlight(true);
-        }}
-        onDeleteSale={deleteSale}
-        onVoidSale={voidClosedSale}
+        } : null}
+        onDeleteSale={effectiveRole === "admin" ? deleteSale : null}
+        onVoidSale={effectiveRole === "admin" ? voidClosedSale : null}
       />
     );
   };
 
+  const renderTodaySalesPage = () => {
+    if (!canAccessTab(effectiveRole, "sales")) {
+      return (
+        <section className="module">
+          <section className="panel">
+            <p className="empty-state">No tienes permisos para acceder a esta sección.</p>
+          </section>
+        </section>
+      );
+    }
+
+    return (
+      <section className="module">
+        <SafeSalesHistory
+          sales={scopedData.sales || []}
+          clients={clientMap}
+          mode="today"
+          fixedDate={getTodayLocalDateString()}
+          title="Ventas del dia"
+          subtitle="Ventas registradas hoy"
+          showFilters={false}
+          emptyMessage="No hay ventas registradas hoy."
+          onEditSale={setModalEditingSale}
+          onDeleteSale={deleteSale}
+          onVoidSale={voidClosedSale}
+        />
+        {modalEditingSale && (
+          <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Editar venta del dia">
+            <article className="statistics-edit-dialog">
+              <div className="section-title">
+                <div>
+                  <h2>Editar venta</h2>
+                  <span>Los cambios se guardan sin salir de Ventas del dia</span>
+                </div>
+                <button className="secondary-button" type="button" onClick={() => setModalEditingSale(null)}>Cerrar</button>
+              </div>
+              <SalesForm
+                key={modalEditingSale.id}
+                clients={scopedData.clients}
+                config={scopedData.config}
+                editingSale={modalEditingSale}
+                onSave={addSale}
+                onUpdate={(saleId, updates) => {
+                  updateSale(saleId, updates);
+                  setModalEditingSale(null);
+                }}
+                onCreateClient={createClientFromSale}
+                onCreateService={createServiceFromSale}
+                canCreateService={roleCanManageServices}
+                canEditSaleDate={roleCanEditSaleDate}
+                canEditCommission={effectiveRole === "admin"}
+                onCancelEdit={() => setModalEditingSale(null)}
+                onDateChange={() => {}}
+              />
+            </article>
+          </section>
+        )}
+      </section>
+    );
+  };
+
   const renderActivePage = () => {
+    const accessDeniedPage = (
+      <section className="module">
+        <section className="panel">
+          <p className="empty-state">No tienes permisos para acceder a esta sección.</p>
+        </section>
+      </section>
+    );
+
     const unavailablePage = (
       <section className="module">
         <section className="panel">
@@ -736,18 +856,26 @@ function App() {
     );
 
     switch (activePage) {
+      case "professional.agenda":
+        return canAccessTab(effectiveRole, "professionalAgenda") ? <ProfessionalAgenda appointments={scopedData.appointments} /> : accessDeniedPage;
+      case "professional.sales":
+        return accessDeniedPage;
+      case "professional.commissions":
+        return canAccessTab(effectiveRole, "professionalCommissions") ? <ProfessionalCommissions sales={scopedData.sales} commissions={ownCommissionsData.rows} /> : accessDeniedPage;
       case "dashboard.monthly":
-        return canAccessTab(effectiveRole, "dashboard") && <Dashboard data={dashboardData} viewMode={effectiveRole === "direccion" ? "encargado" : "administrador"} section="month" />;
+        return canAccessTab(effectiveRole, "dashboard") ? <Dashboard data={dashboardData} viewMode={effectiveRole === "direccion" ? "encargado" : "administrador"} section="month" /> : accessDeniedPage;
       case "sales.new":
-        return canAccessTab(effectiveRole, "sales") && renderSalesFormPage();
+        return canAccessTab(effectiveRole, "sales") ? renderSalesFormPage() : accessDeniedPage;
       case "sales.pending":
-        return canAccessTab(effectiveRole, "sales") && (
+        return canAccessTab(effectiveRole, "sales") ? (
           <section className="module">
             <div className="section-title"><h2>Tickets pendientes</h2><span>Pendientes de cobro</span></div>
             <PendingTickets sales={scopedData.sales} clients={clientMap} onCharge={chargePendingSale} onCancel={cancelPendingSale} />
             {!scopedData.sales.some((sale) => saleStatus(sale) === "pendiente_pago") && <section className="panel"><p className="empty-state">No hay tickets pendientes.</p></section>}
           </section>
-        );
+        ) : accessDeniedPage;
+      case "sales.today":
+        return renderTodaySalesPage();
       case "sales-history":
       case "sales.history":
       case "sales-audit":
@@ -760,7 +888,7 @@ function App() {
           </section>
         );
       case "clients.list":
-        return canAccessTab(effectiveRole, "clients") && (
+        return canAccessTab(effectiveRole, "clients") ? (
           <Clients
             clients={scopedData.clients}
             sales={scopedData.sales}
@@ -772,11 +900,11 @@ function App() {
             canManageLoyalty={effectiveRole === "admin"}
             currentUser={user}
           />
-        );
+        ) : accessDeniedPage;
       case "clients.loyalty":
-        return canAccessTab(effectiveRole, "loyalty") && <Loyalty clients={scopedData.clients} config={scopedData.config} />;
+        return canAccessTab(effectiveRole, "loyalty") ? <Loyalty clients={scopedData.clients} config={scopedData.config} /> : accessDeniedPage;
       case "agenda.appointments":
-        return canAccessTab(effectiveRole, "agenda") && (
+        return canAccessTab(effectiveRole, "agenda") ? (
           <Agenda
             clients={scopedData.clients}
             config={scopedData.config}
@@ -786,9 +914,9 @@ function App() {
             onDelete={deleteAppointment}
             onCreateClient={roleCanManageClients ? createClientFromSale : null}
           />
-        );
+        ) : accessDeniedPage;
       case "finance.expenses":
-        return canAccessTab(effectiveRole, "expenses") && (
+        return canAccessTab(effectiveRole, "expenses") ? (
           <section className="workspace">
             <ExpenseForm
               config={scopedData.config}
@@ -804,13 +932,13 @@ function App() {
               canDeleteExpense={canDeleteExpense}
             />
           </section>
-        );
+        ) : accessDeniedPage;
       case "finance.commissions":
-        return canAccessTab(effectiveRole, "commissions") && <Commissions data={commissionsData} onStatusChange={roleCanManageCommissions ? updateCommissionStatus : null} />;
+        return canAccessTab(effectiveRole, "commissions") ? <Commissions data={commissionsData} onStatusChange={effectiveRole === "admin" && roleCanManageCommissions ? updateCommissionStatus : null} /> : accessDeniedPage;
       case "finance.cashClosing":
-        return canAccessTab(effectiveRole, "cashClosing") && <CashClosing data={scopedData} commissionsData={commissionsData} user={user} onSave={saveCashClosing} />;
+        return canAccessTab(effectiveRole, "cashClosing") ? <CashClosing data={scopedData} commissionsData={commissionsData} user={user} onSave={saveCashClosing} /> : accessDeniedPage;
       case "finance.monthlyClosing":
-        return canAccessTab(effectiveRole, "finance") && (
+        return canAccessTab(effectiveRole, "finance") ? (
           <Finance
             data={scopedData}
             commissionsData={commissionsData}
@@ -820,9 +948,9 @@ function App() {
             onSaveMonthlyClosing={saveMonthlyClosing}
             view="monthlyClosing"
           />
-        );
+        ) : accessDeniedPage;
       case "finance.treasury":
-        return canAccessTab(effectiveRole, "finance") && (
+        return canAccessTab(effectiveRole, "finance") ? (
           <Finance
             data={scopedData}
             commissionsData={commissionsData}
@@ -832,12 +960,12 @@ function App() {
             onSaveMonthlyClosing={saveMonthlyClosing}
             view="treasury"
           />
-        );
+        ) : accessDeniedPage;
       case "statistics.employee":
       case "statistics.channels":
       case "statistics.commissions":
       case "statistics.category":
-        return canAccessTab(effectiveRole, "statistics") && (
+        return canAccessTab(effectiveRole, "statistics") ? (
           <Statistics
             dataVersion={scopedData}
             clients={clientMap}
@@ -852,13 +980,13 @@ function App() {
             canEditSaleDate={roleCanEditSaleDate}
             canEditCommission={effectiveRole === "admin"}
           />
-        );
+        ) : accessDeniedPage;
       case "statistics.salesHistory":
         return renderSalesHistoryPage("history");
       case "statistics.salesAudit":
         return renderSalesHistoryPage("audit");
       case "settings.general":
-        return canAccessTab(effectiveRole, "settings") && (
+        return canAccessTab(effectiveRole, "settings") ? (
           <Settings
             config={scopedData.config}
             onSave={updateConfig}
@@ -867,12 +995,12 @@ function App() {
             currentUser={user}
             canManageEmployeeCommissions={effectiveRole === "admin"}
           />
-        );
+        ) : accessDeniedPage;
       case "dashboard.daily":
       default:
         return canAccessTab(effectiveRole, "dashboard")
           ? <Dashboard data={dashboardData} viewMode={effectiveRole === "direccion" ? "encargado" : "administrador"} section="today" />
-          : unavailablePage;
+          : accessDeniedPage;
     }
   };
 

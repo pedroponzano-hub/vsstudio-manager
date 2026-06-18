@@ -12,6 +12,60 @@ const dashboardViews = {
   administrador: ["today", "month"],
 };
 
+const incomeRows = [
+  ["Ingresos en efectivo", "Efectivo"],
+  ["Ingresos en tarjeta", "Tarjeta"],
+  ["Ingresos en Bizum", "Bizum"],
+  ["Ingresos Treatwell", "Treatwell"],
+  ["Otros ingresos", "Otros"],
+];
+
+const expenseRows = [
+  ["Gastos en efectivo", "Efectivo"],
+  ["Gastos en tarjeta", "Tarjeta"],
+  ["Gastos por transferencia", "Transferencia"],
+  ["Gastos por Bizum", "Bizum"],
+  ["Otros gastos", "Otros"],
+];
+
+function CashSummaryBlock({ title, summary = {} }) {
+  const incomeByMethod = summary.incomeByMethod || {};
+  const expensesByMethod = summary.expensesByMethod || {};
+
+  return (
+    <section className="panel dashboard-cash-panel">
+      <div className="section-title compact-title">
+        <h3>{title}</h3>
+        <span>Ingresos cobrados y gastos pagados</span>
+      </div>
+      <div className="dashboard-cash-grid">
+        <article>
+          <h4>Ingresos</h4>
+          <div className="list">
+            {incomeRows.map(([label, method]) => (
+              <div className="stat-row" key={method}><span>{label}</span><strong>{money(incomeByMethod[method])}</strong></div>
+            ))}
+            <div className="stat-row total"><span>Total ingresos</span><strong>{money(summary.totalIncome)}</strong></div>
+          </div>
+        </article>
+        <article>
+          <h4>Gastos</h4>
+          <div className="list">
+            {expenseRows.map(([label, method]) => (
+              <div className="stat-row" key={method}><span>{label}</span><strong>{money(expensesByMethod[method])}</strong></div>
+            ))}
+            <div className="stat-row total"><span>Total gastos</span><strong>{money(summary.totalExpenses)}</strong></div>
+          </div>
+        </article>
+        <article className="dashboard-cash-result">
+          <span>Resultado neto</span>
+          <strong>{money(summary.netResult)}</strong>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function Dashboard({ data, viewMode = "administrador", section = "all" }) {
   const visibleSections = dashboardViews[viewMode] || dashboardViews.administrador;
   const showToday = section === "all" || section === "today";
@@ -38,6 +92,7 @@ function Dashboard({ data, viewMode = "administrador", section = "all" }) {
             <article className="metric"><span>Clientes</span><strong>{data.today.clients}</strong></article>
             <article className="metric"><span>Ticket medio</span><strong>{money(data.today.averageTicket)}</strong></article>
           </div>
+          <CashSummaryBlock title="Resumen de caja del dia" summary={data.today.cashSummary} />
         </>
       )}
 
@@ -67,6 +122,7 @@ function Dashboard({ data, viewMode = "administrador", section = "all" }) {
             <article className="metric"><span>Cumplido</span><strong>{percent(data.month.completion)}</strong></article>
             <article className="metric"><span>Prediccion cierre</span><strong>{money(data.month.predictedClose)}</strong></article>
           </div>
+          <CashSummaryBlock title="Resumen de caja del mes" summary={data.month.cashSummary} />
         </>
       )}
     </section>

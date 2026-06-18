@@ -61,6 +61,11 @@ function SafeSalesHistory({
   sales = [],
   clients = {},
   mode = "history",
+  fixedDate = "",
+  title,
+  subtitle,
+  showFilters = true,
+  emptyMessage = "No hay ventas para el periodo seleccionado.",
   onEditSale,
   onDeleteSale,
   onVoidSale,
@@ -75,6 +80,7 @@ function SafeSalesHistory({
       const rows = (Array.isArray(sales) ? sales : [])
         .filter((sale) => {
           const date = operationalDate(sale);
+          if (fixedDate && date !== fixedDate) return false;
           if (from && date < from) return false;
           if (to && date > to) return false;
           if (mode === "audit" && statusFilter === "all") return saleIsEdited(sale) || saleStatus(sale) === "anulada";
@@ -89,7 +95,7 @@ function SafeSalesHistory({
     } catch {
       return { rows: [], error: "No se pudo cargar el historial de ventas." };
     }
-  }, [sales, from, to, statusFilter, mode]);
+  }, [sales, from, to, statusFilter, mode, fixedDate]);
 
   if (historyState.error) {
     return (
@@ -106,25 +112,27 @@ function SafeSalesHistory({
     <section className="module">
       <div className="section-title">
         <div>
-          <h2>{mode === "audit" ? "Ventas editadas/anuladas" : "Historial de ventas"}</h2>
-          <span>Consulta estable de ventas registradas</span>
+          <h2>{title || (mode === "audit" ? "Ventas editadas/anuladas" : "Historial de ventas")}</h2>
+          <span>{subtitle || "Consulta estable de ventas registradas"}</span>
         </div>
       </div>
 
-      <section className="panel filters-panel">
-        <label>Fecha desde<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
-        <label>Fecha hasta<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
-        <label>Estado<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-          <option value="all">Todas</option>
-          <option value="cobrado">Cobradas</option>
-          <option value="editada">Editadas</option>
-          <option value="anulada">Anuladas</option>
-          <option value="pendiente_pago">Pendientes</option>
-        </select></label>
-        <button className="secondary-button" type="button" onClick={() => { setFrom(""); setTo(""); setStatusFilter(mode === "audit" ? "editada" : "all"); }}>
-          Limpiar filtros
-        </button>
-      </section>
+      {showFilters && (
+        <section className="panel filters-panel">
+          <label>Fecha desde<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
+          <label>Fecha hasta<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+          <label>Estado<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="all">Todas</option>
+            <option value="cobrado">Cobradas</option>
+            <option value="editada">Editadas</option>
+            <option value="anulada">Anuladas</option>
+            <option value="pendiente_pago">Pendientes</option>
+          </select></label>
+          <button className="secondary-button" type="button" onClick={() => { setFrom(""); setTo(""); setStatusFilter(mode === "audit" ? "editada" : "all"); }}>
+            Limpiar filtros
+          </button>
+        </section>
+      )}
 
       <section className="panel">
         <div className="finance-table">
@@ -139,7 +147,7 @@ function SafeSalesHistory({
             <span>Estado</span>
             <span>Acciones</span>
           </div>
-          {historyState.rows.length === 0 && <p className="empty-state">No hay ventas para el periodo seleccionado.</p>}
+          {historyState.rows.length === 0 && <p className="empty-state">{emptyMessage}</p>}
           {historyState.rows.map((sale) => (
             <div className="finance-row safe-sales-history-row" key={sale.id || `${operationalDate(sale)}-${saleHour(sale)}-${servicesText(sale)}`}>
               <span>{operationalDate(sale) || "-"}</span>
@@ -151,12 +159,14 @@ function SafeSalesHistory({
               <span>{paymentText(sale)}</span>
               <span className={saleStatus(sale) === "anulada" ? "status-pill pending" : saleIsEdited(sale) ? "status-pill edited" : "status-pill online"}>
                 {statusLabel(sale)}
+                {saleIsEdited(sale) && <b className="sale-tag edited"> Editada</b>}
+                {saleStatus(sale) === "anulada" && <b className="sale-tag voided"> Anulada</b>}
               </span>
               <div className="compact-actions">
                 <button className="secondary-button" type="button" onClick={() => setSelectedSale(sale)}>Ver historial</button>
-                <button className="secondary-button" type="button" onClick={() => onEditSale?.(sale)}>Editar</button>
-                {saleStatus(sale) === "cobrado" && <button className="danger-button" type="button" onClick={() => onVoidSale?.(sale)}>Anular</button>}
-                {saleStatus(sale) !== "cobrado" && <button className="danger-button" type="button" onClick={() => onDeleteSale?.(sale.id)}>Eliminar</button>}
+                {onEditSale && <button className="secondary-button" type="button" onClick={() => onEditSale(sale)}>Editar</button>}
+                {onVoidSale && saleStatus(sale) === "cobrado" && <button className="danger-button" type="button" onClick={() => onVoidSale(sale)}>Anular</button>}
+                {onDeleteSale && saleStatus(sale) !== "cobrado" && <button className="danger-button" type="button" onClick={() => onDeleteSale(sale.id)}>Eliminar</button>}
               </div>
             </div>
           ))}

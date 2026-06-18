@@ -388,6 +388,69 @@ function groupBySum(items, keyField, amountField) {
   }, {});
 }
 
+function normalizePaymentMethodName(method = "") {
+  const normalized = String(method || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (normalized.includes("efectivo")) return "Efectivo";
+  if (normalized.includes("tarjeta")) return "Tarjeta";
+  if (normalized.includes("bizum")) return "Bizum";
+  if (normalized.includes("treatwell")) return "Treatwell";
+  if (normalized.includes("transferencia")) return "Transferencia";
+  return "Otros";
+}
+
+function groupDashboardIncomeByMethod(sales) {
+  return sales.reduce((groups, sale) => {
+    const payments = normalizeSalePayments(sale);
+    const saleTotal = saleAmount(sale);
+    const paymentsTotal = payments.reduce((total, payment) => total + Number(payment.amount || 0), 0);
+    let cardTipToRemove = Math.min(Number(sale.cardTipAmount || 0), Math.max(paymentsTotal - saleTotal, 0));
+
+    payments.forEach((payment) => {
+      const method = normalizePaymentMethodName(payment.method);
+      let amount = Number(payment.amount || 0);
+      if (method === "Tarjeta" && cardTipToRemove > 0) {
+        const removed = Math.min(amount, cardTipToRemove);
+        amount -= removed;
+        cardTipToRemove -= removed;
+      }
+      groups[method] = (groups[method] || 0) + amount;
+    });
+
+    return groups;
+  }, { Efectivo: 0, Tarjeta: 0, Bizum: 0, Treatwell: 0, Otros: 0 });
+}
+
+function groupDashboardPaidExpensesByMethod(expenses) {
+  return expenses
+    .filter((expense) => expense.status !== "pendiente")
+    .reduce((groups, expense) => {
+      const method = normalizePaymentMethodName(expense.paymentMethod);
+      const targetMethod = ["Efectivo", "Tarjeta", "Transferencia", "Bizum"].includes(method) ? method : "Otros";
+      groups[targetMethod] = (groups[targetMethod] || 0) + Number(expense.amount || 0);
+      return groups;
+    }, { Efectivo: 0, Tarjeta: 0, Transferencia: 0, Bizum: 0, Otros: 0 });
+}
+
+function dashboardCashSummary(sales, expenses) {
+  const incomeByMethod = groupDashboardIncomeByMethod(sales);
+  const expensesByMethod = groupDashboardPaidExpensesByMethod(expenses);
+  const totalIncome = Object.values(incomeByMethod).reduce((total, amount) => total + Number(amount || 0), 0);
+  const totalExpenses = Object.values(expensesByMethod).reduce((total, amount) => total + Number(amount || 0), 0);
+
+  return {
+    incomeByMethod,
+    expensesByMethod,
+    totalIncome,
+    totalExpenses,
+    netResult: totalIncome - totalExpenses,
+  };
+}
+
 function saleSummary(sales) {
   return sales.reduce((summary, sale) => {
     const fields = saleVatFields(sale);
@@ -586,7 +649,7 @@ function normalizeMonthlyClosing(closing) {
 }
 
 function commissionRows(sales, commissionStatuses) {
-  const statusBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item.status || "pendiente"]));
+  const statusBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item.commissionStatus || item.status || "pendiente"]));
   const detailsBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item]));
 
   return sales
@@ -602,6 +665,8 @@ function commissionRows(sales, commissionStatuses) {
         saleId: sale.id,
         date: saleOperationalDate(sale),
         hour: sale.horaCierreLocal || sale.horaCreacionLocal || localTimeFromTimestamp(sale.horaCierre || sale.horaCreacion || sale.createdAt),
+        professionalId: details.professionalId || sale.professionalId || sale.employeeId || "",
+        professionalName: details.professionalName || sale.professionalName || sale.employee || "Sin empleada",
         employee: details.employee || sale.employee || "Sin empleada",
         originalEmployee: sale.employee || "Sin empleada",
         client: sale.clientName || "Sin cliente",
@@ -611,6 +676,12 @@ function commissionRows(sales, commissionStatuses) {
         commissionPercent,
         commissionAmount,
         status: statusBySale[sale.id] || "pendiente",
+        commissionStatus: statusBySale[sale.id] || "pendiente",
+        paidAt: details.paidAt || "",
+        paidBy: details.paidBy || "",
+        paidObservation: details.paidObservation || "",
+        statusChangeReason: details.statusChangeReason || "",
+        updatedBy: details.updatedBy || details.editedBy || "",
         paymentDate: details.paymentDate || "",
         paymentMethod: details.paymentMethod || "",
         correctionReason: details.correctionReason || "",
@@ -840,6 +911,8 @@ function normalizeSale(sale) {
     editada,
     clientId: sale.clientId,
     clientName: sale.clientName || "",
+    professionalId: sale.professionalId || sale.employeeId || sale.empleadaId || "",
+    professionalName: sale.professionalName || sale.employeeName || sale.employee || sale.empleada || "",
     employee: sale.employee || sale.empleada || "",
     services,
     serviceId: primaryService.serviceId || sale.serviceId || "",
@@ -1557,21 +1630,30 @@ const DataService = {
     const existingStatus = currentStatuses.find((item) => (item.saleId || item.id) === saleId);
     const currentRow = commissionRows(this.getSales(), currentStatuses).find((row) => row.saleId === saleId);
     const hasCorrection = Boolean(details.correctionReason);
+    const isQuickStatusChange = Boolean(details.statusChangeOnly);
     const previousValues = currentRow ? {
       employee: currentRow.employee,
       commissionPercent: Number(currentRow.commissionPercent || 0),
       commissionAmount: Number(currentRow.commissionAmount || 0),
       status: currentRow.status || "pendiente",
+      commissionStatus: currentRow.commissionStatus || currentRow.status || "pendiente",
+      paidAt: currentRow.paidAt || "",
+      paidBy: currentRow.paidBy || "",
+      paidObservation: currentRow.paidObservation || "",
       paymentDate: currentRow.paymentDate || "",
       paymentMethod: currentRow.paymentMethod || "",
     } : {};
     const newValues = {
       employee: details.employee ?? existingStatus?.employee ?? previousValues.employee,
-      commissionPercent: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : existingStatus?.commissionPercent,
-      commissionAmount: details.commissionAmount !== undefined ? Number(details.commissionAmount || 0) : existingStatus?.commissionAmount,
+      commissionPercent: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : (existingStatus?.commissionPercent ?? previousValues.commissionPercent),
+      commissionAmount: details.commissionAmount !== undefined ? Number(details.commissionAmount || 0) : (existingStatus?.commissionAmount ?? previousValues.commissionAmount),
       status: safeStatus,
-      paymentDate: safeStatus === "pagada" ? (details.paymentDate || existingStatus?.paymentDate || todayLocal()) : "",
-      paymentMethod: safeStatus === "pagada" ? (details.paymentMethod || existingStatus?.paymentMethod || "Transferencia") : "",
+      commissionStatus: safeStatus,
+      paidAt: safeStatus === "pagada" ? (details.paidAt || getMadridTimestamp()) : null,
+      paidBy: null,
+      paidObservation: null,
+      paymentDate: safeStatus === "pagada" ? todayLocal() : "",
+      paymentMethod: safeStatus === "pagada" ? (details.paymentMethod || existingStatus?.paymentMethod || "") : "",
     };
     const correctionHistory = hasCorrection
       ? [
@@ -1586,6 +1668,19 @@ const DataService = {
         },
       ]
       : (existingStatus?.correctionHistory || []);
+    const statusHistory = isQuickStatusChange
+      ? [
+        ...(Array.isArray(existingStatus?.statusHistory) ? existingStatus.statusHistory : []),
+        {
+          id: createId("commission-status"),
+          changedAt: getMadridTimestamp(),
+          changedBy: details.updatedBy || details.editedBy || "",
+          previousStatus: previousValues.commissionStatus || previousValues.status || "pendiente",
+          newStatus: safeStatus,
+          paidAt: newValues.paidAt,
+        },
+      ]
+      : (existingStatus?.statusHistory || []);
     const nextStatus = cleanFirestoreData({
       ...(existingStatus || {}),
       id: saleId,
@@ -1594,11 +1689,18 @@ const DataService = {
       commissionPercent: newValues.commissionPercent,
       commissionAmount: newValues.commissionAmount,
       status: safeStatus,
+      commissionStatus: safeStatus,
+      paidAt: newValues.paidAt,
+      paidBy: newValues.paidBy,
+      paidObservation: newValues.paidObservation,
+      statusChangeReason: "",
       paymentDate: newValues.paymentDate,
       paymentMethod: newValues.paymentMethod,
       correctionReason: details.correctionReason || existingStatus?.correctionReason || "",
       correctionHistory,
+      statusHistory,
       editedBy: details.editedBy || existingStatus?.editedBy || "",
+      updatedBy: details.updatedBy || details.editedBy || existingStatus?.updatedBy || "",
       updatedAt: getMadridTimestamp(),
     });
     const commissions = writeCollection(
@@ -1686,6 +1788,8 @@ const DataService = {
     const monthExpensesTotal = sum(monthExpenses, "amount");
     const todaySummary = saleSummary(todaySales);
     const monthSummary = saleSummary(monthSales);
+    const todayCashSummary = dashboardCashSummary(todaySales, todayExpenses);
+    const monthCashSummary = dashboardCashSummary(monthSales, monthExpenses);
     const monthProfit = monthSummary.totalSales - monthSummary.ivaAmount - monthSummary.commissionAmount - monthExpensesTotal;
     const dayOfMonth = getMadridDayOfMonth();
     const daysInMonth = getMadridDaysInCurrentMonth();
@@ -1703,6 +1807,7 @@ const DataService = {
         profit: todaySummary.netAfterCommission - todayExpensesTotal,
         clients: new Set(todaySales.map((sale) => sale.clientId).filter(Boolean)).size,
         averageTicket: todaySales.length ? todaySalesTotal / todaySales.length : 0,
+        cashSummary: todayCashSummary,
       },
       month: {
         sales: monthSalesTotal,
@@ -1717,6 +1822,7 @@ const DataService = {
         goal: Number(config.monthlyGoal || 0),
         completion: config.monthlyGoal ? (monthSalesTotal / Number(config.monthlyGoal)) * 100 : 0,
         predictedClose,
+        cashSummary: monthCashSummary,
       },
       pending: {
         count: pendingSales.length,

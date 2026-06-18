@@ -134,6 +134,21 @@ function Commissions({ data, onStatusChange }) {
     setEditError("");
   };
 
+  const startStatusChange = (row, nextStatus) => {
+    if (!onStatusChange) return;
+    const normalizedStatus = nextStatus === "pagada" ? "pagada" : "pendiente";
+    if ((row.status || "pendiente") === normalizedStatus) return;
+
+    if (normalizedStatus === "pendiente") {
+      const confirmed = window.confirm("¿Seguro que deseas volver esta comisión a pendiente?");
+      if (!confirmed) return;
+    }
+
+    onStatusChange?.(row.saleId, normalizedStatus, {
+      statusChangeOnly: true,
+    });
+  };
+
   return (
     <section className="module">
       <div className="section-title">
@@ -199,9 +214,24 @@ function Commissions({ data, onStatusChange }) {
               <strong>{money(row.saleTotal)}</strong>
               <strong>{Number(row.commissionPercent || 0).toFixed(2)}%</strong>
               <strong>{money(row.commissionAmount)}</strong>
-              <span className={row.status === "pagada" ? "status-badge paid" : "status-badge pending"}>{row.status}</span>
+              {onStatusChange ? (
+                <select
+                  className={row.status === "pagada" ? "status-select paid" : "status-select pending"}
+                  value={row.status === "pagada" ? "pagada" : "pendiente"}
+                  onChange={(event) => startStatusChange(row, event.target.value)}
+                >
+                  <option value="pendiente">PENDIENTE</option>
+                  <option value="pagada">PAGADA</option>
+                </select>
+              ) : (
+                <span className={row.status === "pagada" ? "status-badge paid" : "status-badge pending"}>{row.status === "pagada" ? "PAGADA" : "PENDIENTE"}</span>
+              )}
               <span>{originLabel(row)}</span>
-              <button className="secondary-button" type="button" onClick={() => startEdit(row)} disabled={!onStatusChange}>Editar comisión</button>
+              {onStatusChange ? (
+                <button className="secondary-button" type="button" onClick={() => startEdit(row)}>Editar comisión</button>
+              ) : (
+                <span className="muted-text">Solo lectura</span>
+              )}
             </div>
           ))}
           {filteredRows.length === 0 && <p className="empty-state">No hay comisiones para estos filtros.</p>}
@@ -239,6 +269,7 @@ function Commissions({ data, onStatusChange }) {
           </div>
         </section>
       )}
+
     </section>
   );
 }

@@ -740,6 +740,53 @@ h3 {
   color: #8a6d2e;
 }
 
+.dashboard-cash-panel {
+  margin-top: 16px;
+}
+
+.compact-title {
+  margin-bottom: 12px;
+}
+
+.dashboard-cash-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(180px, 0.65fr);
+}
+
+.dashboard-cash-grid article {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-cash-grid h4 {
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+.stat-row.total {
+  background: #fbf8f1;
+  border-color: #dccb9b;
+}
+
+.dashboard-cash-result {
+  align-content: center;
+  background: #171412;
+  border-radius: 8px;
+  color: #fff;
+  padding: 16px;
+}
+
+.dashboard-cash-result span {
+  color: #d9cfae;
+  font-size: 0.82rem;
+}
+
+.dashboard-cash-result strong {
+  color: #fff;
+  font-size: 1.35rem;
+}
+
 .row-actions {
   display: flex;
   flex-wrap: wrap;
@@ -936,6 +983,27 @@ h3 {
 .status-badge.paid {
   background: #eef8f0;
   border: 1px solid #a9d4b2;
+  color: #26723a;
+}
+
+.status-select {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 6px 28px 6px 10px;
+  text-transform: uppercase;
+}
+
+.status-select.pending {
+  background: #fff1ef;
+  border-color: #efb4aa;
+  color: #9b2c1f;
+}
+
+.status-select.paid {
+  background: #eef8f0;
+  border-color: #a9d4b2;
   color: #26723a;
 }
 
@@ -1547,6 +1615,18 @@ h3 {
   min-width: 1420px;
 }
 
+.finance-header.professional-commissions-row,
+.finance-row.professional-commissions-row {
+  grid-template-columns: 110px 80px minmax(240px, 1.5fr) 130px 120px 140px 120px;
+  min-width: 1000px;
+}
+
+.finance-header.professional-agenda-row,
+.finance-row.professional-agenda-row {
+  grid-template-columns: 110px 90px minmax(150px, 1fr) minmax(220px, 1.4fr) 100px 120px;
+  min-width: 900px;
+}
+
 .commission-edit-panel {
   align-items: stretch;
 }
@@ -1677,6 +1757,14 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dashboard-cash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-cash-result {
+    grid-column: 1 / -1;
+  }
+
   .tpv-categories {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -1732,6 +1820,7 @@ h3 {
   }
 
   .summary-grid,
+  .dashboard-cash-grid,
   .cards-grid,
   .import-controls,
   .import-result,
