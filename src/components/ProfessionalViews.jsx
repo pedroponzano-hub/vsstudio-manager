@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { getTodayLocalDateString } from "../utils/date.js";
 
 function money(value) {
@@ -18,18 +19,43 @@ function monthPrefix() {
   return getTodayLocalDateString().slice(0, 7);
 }
 
-function ProfessionalSummary({ sales = [], commissions = [] }) {
-  const currentMonth = monthPrefix();
-  const monthSales = sales.filter((sale) => operationalDate(sale).startsWith(currentMonth) && saleStatus(sale) === "cobrado");
-  const monthCommissions = commissions.filter((commission) => String(commission.date || "").startsWith(currentMonth));
-  const sold = monthSales.reduce((total, sale) => total + Number(sale.total || sale.amount || 0), 0);
-  const generated = monthCommissions.reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
-  const pending = monthCommissions.filter((commission) => commission.status !== "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
-  const paid = monthCommissions.filter((commission) => commission.status === "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+function previousMonthPrefix() {
+  const today = getTodayLocalDateString();
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const previousMonth = month === 1 ? 12 : month - 1;
+  const previousYear = month === 1 ? year - 1 : year;
+  return `${previousYear}-${String(previousMonth).padStart(2, "0")}`;
+}
+
+function periodRange(period) {
+  const today = getTodayLocalDateString();
+  if (period === "currentMonth") return { from: `${today.slice(0, 7)}-01`, to: today };
+  if (period === "previousMonth") {
+    const previous = previousMonthPrefix();
+    const lastDay = new Date(Number(previous.slice(0, 4)), Number(previous.slice(5, 7)), 0).getDate();
+    return { from: `${previous}-01`, to: `${previous}-${String(lastDay).padStart(2, "0")}` };
+  }
+  if (period === "currentYear") return { from: `${today.slice(0, 4)}-01-01`, to: today };
+  return { from: "", to: "" };
+}
+
+function inRange(date, range) {
+  if (!date) return false;
+  if (range.from && date < range.from) return false;
+  if (range.to && date > range.to) return false;
+  return true;
+}
+
+function ProfessionalSummary({ commissions = [] }) {
+  const sold = commissions.reduce((total, commission) => total + Number(commission.saleTotal || 0), 0);
+  const generated = commissions.reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+  const pending = commissions.filter((commission) => commission.status !== "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+  const paid = commissions.filter((commission) => commission.status === "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
 
   return (
     <section className="summary-grid compact">
-      <article className="metric"><span>Total vendido este mes</span><strong>{money(sold)}</strong></article>
+      <article className="metric"><span>Total vendido</span><strong>{money(sold)}</strong></article>
       <article className="metric"><span>Comision generada</span><strong>{money(generated)}</strong></article>
       <article className="metric"><span>Pendiente</span><strong>{money(pending)}</strong></article>
       <article className="metric"><span>Pagado</span><strong>{money(paid)}</strong></article>
@@ -38,7 +64,35 @@ function ProfessionalSummary({ sales = [], commissions = [] }) {
 }
 
 function ProfessionalCommissions({ sales = [], commissions = [] }) {
-  const rows = [...(commissions || [])].sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")));
+  const initialRange = periodRange("currentMonth");
+  const [period, setPeriod] = useState("currentMonth");
+  const [draftRange, setDraftRange] = useState(initialRange);
+  const [range, setRange] = useState(initialRange);
+  const rows = useMemo(() => (
+    [...(commissions || [])]
+      .filter((commission) => inRange(String(commission.date || ""), range))
+      .sort((first, second) => `${second.date || ""} ${second.hour || ""}`.localeCompare(`${first.date || ""} ${first.hour || ""}`))
+  ), [commissions, range]);
+
+  const changePeriod = (nextPeriod) => {
+    setPeriod(nextPeriod);
+    if (nextPeriod === "custom") return;
+    const nextRange = periodRange(nextPeriod);
+    setDraftRange(nextRange);
+    setRange(nextRange);
+  };
+
+  const applyFilters = (event) => {
+    event.preventDefault();
+    setRange(draftRange);
+  };
+
+  const clearFilters = () => {
+    const nextRange = periodRange("currentMonth");
+    setPeriod("currentMonth");
+    setDraftRange(nextRange);
+    setRange(nextRange);
+  };
 
   return (
     <section className="module">
@@ -48,7 +102,27 @@ function ProfessionalCommissions({ sales = [], commissions = [] }) {
           <span>Comisiones generadas, pendientes y pagadas</span>
         </div>
       </div>
-      <ProfessionalSummary sales={sales} commissions={commissions} />
+
+      <form className="panel filters-panel" onSubmit={applyFilters}>
+        <label>Periodo<select value={period} onChange={(event) => changePeriod(event.target.value)}>
+          <option value="currentMonth">Mes actual</option>
+          <option value="previousMonth">Mes anterior</option>
+          <option value="currentYear">Año actual</option>
+          <option value="custom">Rango personalizado</option>
+        </select></label>
+        <label>Fecha desde<input type="date" value={draftRange.from} onChange={(event) => {
+          setPeriod("custom");
+          setDraftRange((current) => ({ ...current, from: event.target.value }));
+        }} /></label>
+        <label>Fecha hasta<input type="date" value={draftRange.to} onChange={(event) => {
+          setPeriod("custom");
+          setDraftRange((current) => ({ ...current, to: event.target.value }));
+        }} /></label>
+        <button type="submit">Aplicar filtro</button>
+        <button className="secondary-button" type="button" onClick={clearFilters}>Limpiar filtro</button>
+      </form>
+
+      <ProfessionalSummary sales={sales} commissions={rows} />
       <section className="panel">
         <div className="finance-table">
           <div className="finance-header professional-commissions-row">
@@ -65,7 +139,7 @@ function ProfessionalCommissions({ sales = [], commissions = [] }) {
               <span className={row.status === "pagada" ? "status-badge paid" : "status-badge pending"}>{row.status === "pagada" ? "pagada" : "pendiente"}</span>
             </div>
           ))}
-          {rows.length === 0 && <p className="empty-state">No hay comisiones asociadas a tu usuario.</p>}
+          {rows.length === 0 && <p className="empty-state">No tienes comisiones registradas en este periodo.</p>}
         </div>
       </section>
     </section>

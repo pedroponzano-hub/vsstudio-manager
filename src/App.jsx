@@ -386,6 +386,7 @@ function App() {
   const roleCanManageCommissions = canPerform(effectiveRole, "manageCommissions");
   const roleCanManageServices = canPerform(effectiveRole, "manageServices");
   const roleCanEditSaleDate = canPerform(effectiveRole, "viewFinance");
+  const roleCanEditSalesFully = effectiveRole === "admin" || effectiveRole === "direccion";
   const scopedData = useMemo(() => {
     if (!isOwnEmployeeOnly(effectiveRole)) return data;
     const ownEmployeeName = user?.professionalName || user?.employeeName || user?.nombre ? [user.professionalName || user.employeeName || user.nombre] : [];
@@ -730,8 +731,8 @@ function App() {
             onCreateClient={createClientFromSale}
             onCreateService={createServiceFromSale}
             canCreateService={roleCanManageServices}
-            canEditSaleDate={roleCanEditSaleDate}
-            canEditCommission={effectiveRole === "admin"}
+            canEditSaleDate={editingSale ? roleCanEditSalesFully : roleCanEditSaleDate}
+            canEditCommission={editingSale ? roleCanEditSalesFully : effectiveRole === "admin"}
             onCancelEdit={() => {
               setEditingSale(null);
               setSalesFormHighlight(false);
@@ -764,7 +765,7 @@ function App() {
         sales={scopedData.sales || []}
         clients={clientMap}
         mode={mode}
-        onEditSale={effectiveRole === "admin" ? (sale) => {
+        onEditSale={roleCanEditSalesFully ? (sale) => {
           setEditingSale(sale);
           setActivePage("sales.new");
           setActiveTab("sales");
@@ -826,8 +827,8 @@ function App() {
                 onCreateClient={createClientFromSale}
                 onCreateService={createServiceFromSale}
                 canCreateService={roleCanManageServices}
-                canEditSaleDate={roleCanEditSaleDate}
-                canEditCommission={effectiveRole === "admin"}
+                canEditSaleDate={roleCanEditSalesFully}
+                canEditCommission={roleCanEditSalesFully}
                 onCancelEdit={() => setModalEditingSale(null)}
                 onDateChange={() => {}}
               />
@@ -977,8 +978,8 @@ function App() {
             onCreateClient={createClientFromSale}
             onCreateService={createServiceFromSale}
             canCreateService={roleCanManageServices}
-            canEditSaleDate={roleCanEditSaleDate}
-            canEditCommission={effectiveRole === "admin"}
+            canEditSaleDate={roleCanEditSalesFully}
+            canEditCommission={roleCanEditSalesFully}
           />
         ) : accessDeniedPage;
       case "statistics.salesHistory":

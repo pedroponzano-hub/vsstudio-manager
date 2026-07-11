@@ -154,6 +154,36 @@ function BusinessAreaSales({ rows }) {
   );
 }
 
+function PaymentMethodSales({ rows }) {
+  const max = Math.max(...rows.map((row) => row.amount), 1);
+
+  return (
+    <article className="panel wide-panel">
+      <h3>Ventas por metodo de pago</h3>
+      <div className="finance-table">
+        <div className="finance-header payment-method-stats-row">
+          <span>Metodo</span>
+          <span>Importe cobrado</span>
+          <span>Nº ventas</span>
+          <span>% sobre total</span>
+        </div>
+        {rows.length === 0 && <p className="empty-state">Sin ventas en el rango.</p>}
+        {rows.map((row) => (
+          <div className="finance-row payment-method-stats-row" key={row.method}>
+            <span className="business-area-name">
+              <span>{row.method}</span>
+              <div className="day-bar"><span style={{ width: `${(row.amount / max) * 100}%` }} /></div>
+            </span>
+            <strong>{money(row.amount)}</strong>
+            <span>{row.count}</span>
+            <strong>{row.percent.toFixed(1)}%</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 function Statistics({
   dataVersion,
   clients,
@@ -225,7 +255,12 @@ function Statistics({
         <button className="secondary-button" type="button" onClick={clearFilters}>Limpiar filtro</button>
       </form>
 
-      {view === "category" && <BusinessAreaSales rows={stats.salesByBusinessArea} />}
+      {view === "category" && (
+        <>
+          <BusinessAreaSales rows={stats.salesByBusinessArea} />
+          <PaymentMethodSales rows={stats.paymentMethodBreakdown || []} />
+        </>
+      )}
       {view === "employee" && <StatBlock title="Ventas por empleada" data={stats.salesByEmployee} />}
       {view === "channels" && <ChannelStatsBlock rows={stats.salesByChannel} />}
       {view === "commissions" && <EmployeeCommissions rows={stats.employeeCommissions} />}

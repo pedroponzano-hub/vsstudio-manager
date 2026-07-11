@@ -542,8 +542,12 @@ function SalesForm({
 
   const savePayload = (payload) => {
     if (editingSale) {
-      const editsCollectedSale = saleStatus(editingSale) === "cobrado" && payload.status === "cobrado";
-      if (editsCollectedSale) {
+      const originalStatus = saleStatus(editingSale);
+      const nextStatus = saleStatus(payload);
+      const isChargingPendingTicket = originalStatus === "pendiente_pago" && nextStatus === "cobrado";
+      const requiresEditReason = !isChargingPendingTicket;
+
+      if (requiresEditReason) {
         const editReason = window.prompt("Motivo de la edicion\n\nEjemplos: Error en metodo de pago, servicio incorrecto, cliente cambio servicio, error de importe, error de empleada, otro.");
         if (!editReason || !editReason.trim()) {
           setSaleError("Debes indicar el motivo de la edicion para guardar cambios.");

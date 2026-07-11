@@ -403,6 +403,64 @@ function normalizePaymentMethodName(method = "") {
   return "Otros";
 }
 
+function normalizeStatsPaymentMethodName(method = "") {
+  const normalized = String(method || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (normalized.includes("efectivo")) return "Efectivo";
+  if (normalized.includes("bizum")) return "Bizum";
+  if (normalized.includes("treatwell")) return "Treatwell";
+  if (normalized.includes("bono") || normalized.includes("regalo")) return "Bono / tarjeta regalo";
+  if (normalized.includes("tarjeta")) return "Tarjeta";
+  return "Otro";
+}
+
+function adjustedSalePaymentsForStats(sale) {
+  const payments = normalizeSalePayments(sale).map((payment) => ({ ...payment }));
+  const saleTotal = saleAmount(sale);
+  const paymentsTotal = payments.reduce((total, payment) => total + Number(payment.amount || 0), 0);
+  let cardTipToRemove = Math.min(Number(sale.cardTipAmount || 0), Math.max(paymentsTotal - saleTotal, 0));
+
+  return payments
+    .map((payment) => {
+      const method = normalizeStatsPaymentMethodName(payment.method);
+      let amount = Number(payment.amount || 0);
+      if (method === "Tarjeta" && cardTipToRemove > 0) {
+        const removed = Math.min(amount, cardTipToRemove);
+        amount -= removed;
+        cardTipToRemove -= removed;
+      }
+      return { method, amount };
+    })
+    .filter((payment) => payment.amount > 0);
+}
+
+function paymentMethodStats(sales) {
+  const methodOrder = ["Efectivo", "Tarjeta", "Bizum", "Treatwell", "Bono / tarjeta regalo", "Otro"];
+  const grouped = Object.fromEntries(methodOrder.map((method) => [method, { method, amount: 0, count: 0, percent: 0 }]));
+
+  sales.forEach((sale) => {
+    const countedMethods = new Set();
+    adjustedSalePaymentsForStats(sale).forEach((payment) => {
+      grouped[payment.method] = grouped[payment.method] || { method: payment.method, amount: 0, count: 0, percent: 0 };
+      grouped[payment.method].amount += Number(payment.amount || 0);
+      countedMethods.add(payment.method);
+    });
+    countedMethods.forEach((method) => {
+      grouped[method].count += 1;
+    });
+  });
+
+  const total = Object.values(grouped).reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  return methodOrder.map((method) => ({
+    ...grouped[method],
+    percent: total ? (grouped[method].amount / total) * 100 : 0,
+  }));
+}
+
 function groupDashboardIncomeByMethod(sales) {
   return sales.reduce((groups, sale) => {
     const payments = normalizeSalePayments(sale);
@@ -1318,8 +1376,8 @@ const DataService = {
     const wasCollected = saleStatus(existingSale) === "cobrado";
     const isCollected = nextStatus === "cobrado";
     const isVoid = nextStatus === "anulada";
-    const isClosedEdit = wasCollected && isCollected && !updates.skipEditAudit;
-    const previousVersions = isClosedEdit
+    const isAuditedEdit = Boolean(updates.editReason) && !updates.skipEditAudit;
+    const previousVersions = isAuditedEdit
       ? [...(existingSale.previousVersions || []), { savedAt: now, data: existingSale }]
       : existingSale.previousVersions || [];
     const updateInput = {
@@ -1330,7 +1388,7 @@ const DataService = {
       id: saleId,
       status: nextStatus,
       estadoVenta: nextStatus,
-      editada: isClosedEdit ? true : saleIsEdited(existingSale),
+      editada: isAuditedEdit ? true : saleIsEdited(existingSale),
       horaCreacion: existingSale.horaCreacion || existingSale.createdAt || now,
       horaCreacionLocal: existingSale.horaCreacionLocal || localTimeFromTimestamp(existingSale.horaCreacion || existingSale.createdAt) || localTime,
       horaCierre: nextStatus === "cobrado" ? (updates.horaCierre || (wasCollected ? existingSale.horaCierre : "") || now) : "",
@@ -1340,15 +1398,15 @@ const DataService = {
       horaCancelacion: nextStatus === "cancelado" ? (updates.horaCancelacion || now) : existingSale.horaCancelacion,
       createdAt: existingSale.createdAt || technicalTimestamp,
       updatedAt: technicalTimestamp,
-      editedAt: isClosedEdit ? now : existingSale.editedAt,
-      editedBy: isClosedEdit ? (updates.editedBy || existingSale.editedBy || "") : existingSale.editedBy,
+      editedAt: isAuditedEdit ? now : existingSale.editedAt,
+      editedBy: isAuditedEdit ? (updates.editedBy || existingSale.editedBy || "") : existingSale.editedBy,
       previousVersions,
       voidedAt: isVoid ? (updates.voidedAt || now) : existingSale.voidedAt,
       voidedBy: isVoid ? (updates.voidedBy || existingSale.voidedBy || "") : existingSale.voidedBy,
       voidReason: isVoid ? (updates.voidReason || existingSale.voidReason || "") : existingSale.voidReason,
     };
     const draftSale = normalizeSale(updateInput);
-    const editHistory = isClosedEdit
+    const editHistory = isAuditedEdit
       ? [
         ...saleEditHistory(existingSale),
         {
@@ -1364,7 +1422,7 @@ const DataService = {
       : saleEditHistory(existingSale);
     const updatedSale = normalizeSale({
       ...draftSale,
-      editReason: isClosedEdit ? (updates.editReason || "") : draftSale.editReason,
+      editReason: isAuditedEdit ? (updates.editReason || "") : draftSale.editReason,
       editHistory,
     });
     const sales = writeCollection(
@@ -1390,6 +1448,7 @@ const DataService = {
       documentType: expenseInput.documentType || "Otro",
       vatRate: expenseInput.vatRate,
       id: createId("expense"),
+      createdAt: expenseInput.createdAt || getMadridTimestamp(),
     });
     const expenses = writeCollection("expenses", [expense, ...currentExpenses]);
     saveDocumentToFirestore("expenses", expense);
@@ -1858,6 +1917,7 @@ const DataService = {
       salesByEmployee: groupBySum(sales, "employee", "total"),
       salesByService: groupBySum(sales, "service", "total"),
       paymentMethods: groupBySum(sales, "paymentMethod", "total"),
+      paymentMethodBreakdown: paymentMethodStats(sales),
       salesByChannel: channelStats(sales, config.entryChannels),
       salesByBusinessArea: salesByBusinessArea(sales),
       serviceRankings: serviceRankings(sales),

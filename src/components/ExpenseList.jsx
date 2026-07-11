@@ -1,13 +1,22 @@
 import { getTodayLocalDateString } from "../utils/date.js";
 
+function expenseSortKey(expense = {}) {
+  return String(expense.createdAt || expense.date || "");
+}
+
 function ExpenseList({ expenses, onEditExpense, onDeleteExpense, canDeleteExpense }) {
   const today = getTodayLocalDateString();
+  const sortedExpenses = [...(expenses || [])].sort((first, second) => {
+    const dateComparison = expenseSortKey(second).localeCompare(expenseSortKey(first));
+    if (dateComparison !== 0) return dateComparison;
+    return String(second.id || "").localeCompare(String(first.id || ""));
+  });
 
   return (
     <section className="panel list-panel">
       <h2>Gastos</h2>
       <div className="list">
-        {expenses.map((expense) => {
+        {sortedExpenses.map((expense) => {
           const canEditToday = expense.date === today;
           const canDelete = canDeleteExpense ? canDeleteExpense(expense) : true;
 
