@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getDaysInMadridMonth, getLocalStartOfWeek, getMadridTimestamp, getTodayLocalDateString } from "../utils/date.js";
 
-const paymentMethods = ["Efectivo", "Tarjeta", "Bizum", "Treatwell", "Bono / tarjeta regalo", "Otro"];
+const paymentMethods = ["Efectivo", "Tarjeta", "Transferencia", "Bizum", "Treatwell", "Bono / tarjeta regalo", "Otro"];
 const expenseMethods = ["Efectivo", "Tarjeta", "Transferencia", "Bizum", "Otro"];
 const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -44,6 +44,11 @@ function operationalDate(item = {}) {
 function normalizeMethod(method = "", methods = paymentMethods) {
   const value = String(method).trim().toLowerCase();
   if (["bono", "bonos", "tarjeta regalo", "bono / tarjeta regalo"].includes(value)) return "Bono / tarjeta regalo";
+  if (value.includes("transferencia")) return "Transferencia";
+  if (value.includes("bizum")) return "Bizum";
+  if (value.includes("efectivo")) return "Efectivo";
+  if (value.includes("tarjeta")) return "Tarjeta";
+  if (value.includes("treatwell")) return "Treatwell";
   return methods.find((item) => item.toLowerCase() === value) || "Otro";
 }
 
@@ -101,7 +106,7 @@ function groupPaidCommissionsByMethod(rows) {
   return rows
     .filter((row) => row.status === "pagada")
     .reduce((groups, row) => {
-      const method = normalizeMethod(row.paymentMethod, paymentMethods);
+      const method = normalizeMethod(row.metodoPagoComision || row.paymentMethod, paymentMethods);
       groups[method] = (groups[method] || 0) + Number(row.commissionAmount || 0);
       return groups;
     }, Object.fromEntries(paymentMethods.map((method) => [method, 0])));
@@ -111,7 +116,7 @@ function groupMonthlyPaidCommissionsByMethod(rows) {
   return rows
     .filter((row) => row.status === "pagada")
     .reduce((groups, row) => {
-      const method = normalizeMethod(row.paymentMethod, expenseMethods);
+      const method = normalizeMethod(row.metodoPagoComision || row.paymentMethod, expenseMethods);
       groups[method] = (groups[method] || 0) + Number(row.commissionAmount || 0);
       return groups;
     }, Object.fromEntries(expenseMethods.map((method) => [method, 0])));
@@ -256,14 +261,17 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
     const sales = (data.sales || []).filter((sale) => inRange(operationalDate(sale), range) && isCollectedSale(sale));
     const expenses = (data.expenses || []).filter((expense) => inRange(expense.date, range));
     const commissions = (commissionsData.rows || []).filter((commission) => inRange(commission.date, range));
+    const paidCommissionsForTreasury = (commissionsData.rows || []).filter((commission) => (
+      commission.status === "pagada" && inRange(commission.paymentDate || commission.fechaPago || commission.date, range)
+    ));
     const collectionsByMethod = groupPayments(sales);
     const expensesByMethod = groupExpenses(expenses);
-    const paidCommissionsByMethod = groupMonthlyPaidCommissionsByMethod(commissions);
+    const paidCommissionsByMethod = groupMonthlyPaidCommissionsByMethod(paidCommissionsForTreasury);
     const salesTotal = sales.reduce((total, sale) => total + Number(sale.total || 0), 0);
     const expensesTotal = expenses.reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const paidExpensesTotal = expenses.filter((expense) => expense.status !== "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const pendingExpensesTotal = expenses.filter((expense) => expense.status === "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
-    const paidCommissionsTotal = commissions.filter((commission) => commission.status === "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+    const paidCommissionsTotal = paidCommissionsForTreasury.reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
     const pendingCommissionsTotal = commissions.filter((commission) => commission.status !== "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
     const treatwellCommissionTotal = sales.reduce((total, sale) => total + Number(sale.treatwellCommissionAmount || 0), 0);
     const taxes = vatSummary(sales, expenses);
@@ -411,10 +419,13 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
     const sales = (data.sales || []).filter((sale) => inRange(operationalDate(sale), range) && isCollectedSale(sale));
     const expenses = (data.expenses || []).filter((expense) => inRange(expense.date, range));
     const commissions = (commissionsData.rows || []).filter((commission) => inRange(commission.date, range));
+    const paidCommissionsForTreasury = (commissionsData.rows || []).filter((commission) => (
+      commission.status === "pagada" && inRange(commission.paymentDate || commission.fechaPago || commission.date, range)
+    ));
     const registeredPayments = groupPayments(sales);
     const expensesByMethod = groupExpenses(expenses);
     const paidExpensesForBalance = groupPaidExpensesForPaymentMethods(expenses);
-    const paidCommissionsByMethod = groupPaidCommissionsByMethod(commissions);
+    const paidCommissionsByMethod = groupPaidCommissionsByMethod(paidCommissionsForTreasury);
     const commissionByEmployee = Object.values(groupCommissions(commissions)).sort((a, b) => b.total - a.total);
     const salesTotal = sales.reduce((total, sale) => total + Number(sale.total || 0), 0);
     const collectionsTotal = Object.values(registeredPayments).reduce((total, amount) => total + Number(amount || 0), 0);
@@ -422,7 +433,7 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
     const expensesTotal = expenses.reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const paidExpensesTotal = expenses.filter((expense) => expense.status !== "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const pendingExpensesTotal = expenses.filter((expense) => expense.status === "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
-    const paidCommissionsTotal = commissions.filter((commission) => commission.status === "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+    const paidCommissionsTotal = paidCommissionsForTreasury.reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
     const pendingCommissionsTotal = commissions.filter((commission) => commission.status !== "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
     const internalCommissionsTotal = commissions
       .filter((commission) => commission.operationType === "servicio_interno")
@@ -528,6 +539,8 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
         <article className="metric"><span>Gastos pagados</span><strong>{money(finance.paidExpensesTotal)}</strong></article>
         <article className="metric"><span>Comisiones pendientes</span><strong>{money(finance.pendingCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisiones pagadas</span><strong>{money(finance.paidCommissionsTotal)}</strong></article>
+        <article className="metric"><span>Comisiones pagadas efectivo</span><strong>{money(finance.paidCommissionsByMethod.Efectivo)}</strong></article>
+        <article className="metric"><span>Comisiones pagadas transferencia</span><strong>{money(finance.paidCommissionsByMethod.Transferencia)}</strong></article>
         <article className="metric"><span>Comisiones internas</span><strong>{money(finance.internalCommissionsTotal)}</strong></article>
         <article className="metric"><span>Beneficio operativo</span><strong>{money(finance.operatingProfit)}</strong></article>
         <article className="metric"><span>Tesoreria real</span><strong>{money(finance.realTreasury)}</strong></article>

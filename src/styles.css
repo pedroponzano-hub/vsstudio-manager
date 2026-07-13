@@ -893,6 +893,11 @@ h3 {
   margin-top: 5px;
 }
 
+.commission-payment-dialog {
+  max-width: 560px;
+  width: min(560px, 100%);
+}
+
 .statistics-edit-dialog {
   background: #fffdf8;
   border: 1px solid var(--line);

@@ -31,6 +31,7 @@ const expenseRows = [
 function CashSummaryBlock({ title, summary = {} }) {
   const incomeByMethod = summary.incomeByMethod || {};
   const expensesByMethod = summary.expensesByMethod || {};
+  const commissionsByMethod = summary.commissionsByMethod || {};
 
   return (
     <section className="panel dashboard-cash-panel">
@@ -55,6 +56,14 @@ function CashSummaryBlock({ title, summary = {} }) {
               <div className="stat-row" key={method}><span>{label}</span><strong>{money(expensesByMethod[method])}</strong></div>
             ))}
             <div className="stat-row total"><span>Total gastos</span><strong>{money(summary.totalExpenses)}</strong></div>
+          </div>
+        </article>
+        <article>
+          <h4>Comisiones pagadas</h4>
+          <div className="list">
+            <div className="stat-row"><span>Comisiones pagadas en efectivo</span><strong>{money(commissionsByMethod.Efectivo)}</strong></div>
+            <div className="stat-row"><span>Comisiones pagadas por transferencia</span><strong>{money(commissionsByMethod.Transferencia)}</strong></div>
+            <div className="stat-row total"><span>Total comisiones pagadas</span><strong>{money(summary.totalCommissions)}</strong></div>
           </div>
         </article>
         <article className="dashboard-cash-result">
