@@ -13,6 +13,7 @@ import SafeSalesHistory from "./components/SafeSalesHistory.jsx";
 import Settings from "./components/Settings.jsx";
 import Statistics from "./components/Statistics.jsx";
 import Login from "./components/Login.jsx";
+import OperationalAgenda from "./components/OperationalAgenda.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import { allowedTabsForRole, canAccessTab, canPerform, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
@@ -64,6 +65,7 @@ const navigationSections = [
     label: "Agenda",
     items: [
       { key: "agenda-appointments", pageId: "agenda.appointments", tabId: "agenda", label: "Citas" },
+      { key: "agenda-operational-v2", pageId: "pos.agendaV2", tabId: "agenda", label: "Agenda operativa v2" },
     ],
   },
   {
@@ -124,6 +126,12 @@ const platformSectionIds = {
 function getPlatformModeFromPath(pathname = "") {
   const normalizedPath = String(pathname || "").toLowerCase();
   return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "pos" : "manager";
+}
+
+function getInitialPageFromPath(pathname = "") {
+  const normalizedPath = String(pathname || "").toLowerCase();
+  if (normalizedPath === "/pos/agenda-v2" || normalizedPath.startsWith("/pos/agenda-v2/")) return "pos.agendaV2";
+  return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "agenda.appointments" : "dashboard.daily";
 }
 
 function money(value) {
@@ -369,7 +377,7 @@ function App() {
   const { user, loading, logout } = useAuth();
   const [platformMode, setPlatformMode] = useState(() => getPlatformModeFromPath(typeof window !== "undefined" ? window.location.pathname : "/manager"));
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [activePage, setActivePage] = useState("dashboard.daily");
+  const [activePage, setActivePage] = useState(() => getInitialPageFromPath(typeof window !== "undefined" ? window.location.pathname : "/manager"));
   const [data, setData] = useState(() => DataService.getData());
   const [showResetOptions, setShowResetOptions] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
@@ -442,6 +450,10 @@ function App() {
         window.history.replaceState(null, "", `/manager${window.location.search}${window.location.hash}`);
       }
       setPlatformMode(getPlatformModeFromPath(window.location.pathname));
+      setActivePage((currentPage) => {
+        const pageFromPath = getInitialPageFromPath(window.location.pathname);
+        return pageFromPath === currentPage ? currentPage : pageFromPath;
+      });
     };
 
     syncPlatformMode();
@@ -943,6 +955,14 @@ function App() {
             onUpdate={updateAppointment}
             onDelete={deleteAppointment}
             onCreateClient={roleCanManageClients ? createClientFromSale : null}
+          />
+        ) : accessDeniedPage;
+      case "pos.agendaV2":
+        return canAccessTab(effectiveRole, "agenda") ? (
+          <OperationalAgenda
+            appointments={scopedData.appointments}
+            clients={scopedData.clients}
+            config={scopedData.config}
           />
         ) : accessDeniedPage;
       case "finance.expenses":

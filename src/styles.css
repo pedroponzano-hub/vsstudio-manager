@@ -1634,6 +1634,18 @@ h3 {
   min-width: 900px;
 }
 
+.finance-header.operational-agenda-row,
+.finance-row.operational-agenda-row {
+  grid-template-columns: 90px minmax(160px, 1fr) minmax(130px, 0.8fr) minmax(220px, 1.25fr) minmax(140px, 0.8fr) 110px 120px;
+  min-width: 1040px;
+}
+
+.compact-date-filter {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+
 .commission-edit-panel {
   align-items: stretch;
 }
