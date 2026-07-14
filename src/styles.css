@@ -1789,6 +1789,36 @@ h3 {
   gap: 14px;
 }
 
+.demo-view-tabs {
+  background: #fff;
+  border: 1px solid #ece4d8;
+  border-radius: 12px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 6px;
+  width: fit-content;
+}
+
+.demo-view-tabs button,
+.demo-client-mode button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #5c5248;
+  padding: 9px 12px;
+}
+
+.demo-view-tabs button.active,
+.demo-client-mode button.active {
+  background: #171412;
+  border-color: #171412;
+  color: #fff;
+}
+
+.demo-appointment-flow {
+  display: grid;
+  gap: 14px;
+}
+
 .compact-section-title {
   margin-bottom: 0;
 }
@@ -1815,9 +1845,18 @@ h3 {
   border: 1px dashed #86b86a;
   border-left: 5px solid #86b86a;
   border-radius: 10px;
+  cursor: pointer;
   display: grid;
   gap: 3px;
   padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.availability-slot-card.selected {
+  background: #effbe9;
+  border-style: solid;
+  box-shadow: 0 0 0 2px rgba(134, 184, 106, 0.18);
 }
 
 .availability-slot-card strong {
@@ -1843,6 +1882,47 @@ h3 {
   color: #786f64;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.demo-client-step,
+.demo-appointment-summary,
+.appointment-readonly-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.demo-client-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.summary-list span,
+.summary-list small {
+  color: #5f564d;
+  font-size: 0.9rem;
+}
+
+.summary-list b {
+  color: #171412;
+}
+
+.day-agenda-demo-layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+}
+
+.agenda-button-card {
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
 }
 
 .commission-edit-panel {
@@ -1992,7 +2072,8 @@ h3 {
   }
 
   .availability-controls,
-  .availability-results {
+  .availability-results,
+  .day-agenda-demo-layout {
     grid-template-columns: 1fr;
   }
 }

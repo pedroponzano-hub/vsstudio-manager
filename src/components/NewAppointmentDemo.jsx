@@ -1,0 +1,188 @@
+import { useMemo, useState } from "react";
+
+import {
+  DEMO_CLIENTS,
+  DEMO_PROFESSIONALS,
+  DEMO_SERVICES,
+  DEMO_SLOT_INTERVALS,
+  calculateDemoAvailability,
+  formatMinutes,
+  minutesToTime,
+} from "../utils/availabilityDemo.js";
+
+const emptyClientDraft = { name: "", phone: "" };
+
+function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
+  const [serviceId, setServiceId] = useState("");
+  const [professionalId, setProfessionalId] = useState("any");
+  const [requestedTime, setRequestedTime] = useState("12:00");
+  const [slotInterval, setSlotInterval] = useState(15);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [clientMode, setClientMode] = useState("existing");
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientDraft, setClientDraft] = useState(emptyClientDraft);
+
+  const selectedService = DEMO_SERVICES.find((service) => service.id === serviceId);
+  const enabledProfessionals = useMemo(() => (
+    serviceId
+      ? DEMO_PROFESSIONALS.filter((professional) => professional.serviceIds.includes(serviceId))
+      : []
+  ), [serviceId]);
+  const selectedProfessional = enabledProfessionals.some((professional) => professional.id === professionalId)
+    ? professionalId
+    : "any";
+
+  const availabilityResults = useMemo(() => (
+    serviceId
+      ? calculateDemoAvailability({
+        appointments,
+        interval: Number(slotInterval),
+        professionalId: selectedProfessional,
+        requestedTime,
+        selectedDate,
+        serviceId,
+      })
+      : []
+  ), [appointments, requestedTime, selectedDate, selectedProfessional, serviceId, slotInterval]);
+
+  const selectedClient = clientMode === "existing"
+    ? DEMO_CLIENTS.find((client) => client.id === selectedClientId)
+    : { id: "demo-new-client", ...clientDraft };
+  const canShowSummary = selectedSlot && selectedClient?.name;
+
+  const resetSlot = () => setSelectedSlot(null);
+
+  return (
+    <section className="demo-appointment-flow">
+      <section className="panel availability-search-panel">
+        <div className="section-title compact-section-title">
+          <div>
+            <h2>Nueva cita demo</h2>
+            <span>Modo demo local - no se guarda en Firebase</span>
+          </div>
+        </div>
+
+        <div className="availability-controls new-appointment-controls">
+          <label>
+            Servicio
+            <select
+              value={serviceId}
+              onChange={(event) => {
+                setServiceId(event.target.value);
+                setProfessionalId("any");
+                resetSlot();
+              }}
+            >
+              <option value="">Seleccionar servicio</option>
+              {DEMO_SERVICES.map((service) => (
+                <option key={service.id} value={service.id}>{service.name} - {formatMinutes(service.duration)}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Fecha
+            <input type="date" value={selectedDate} onChange={(event) => { onDateChange(event.target.value); resetSlot(); }} />
+          </label>
+          <label>
+            Hora aproximada
+            <input type="time" value={requestedTime} onChange={(event) => { setRequestedTime(event.target.value); resetSlot(); }} />
+          </label>
+          <label>
+            Profesional
+            <select value={selectedProfessional} onChange={(event) => { setProfessionalId(event.target.value); resetSlot(); }} disabled={!serviceId}>
+              <option value="any">Cualquiera</option>
+              {enabledProfessionals.map((professional) => (
+                <option key={professional.id} value={professional.id}>{professional.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Intervalo
+            <select value={slotInterval} onChange={(event) => { setSlotInterval(Number(event.target.value)); resetSlot(); }}>
+              {DEMO_SLOT_INTERVALS.map((interval) => (
+                <option key={interval} value={interval}>{interval} min</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="availability-results">
+          {!serviceId && <p className="empty-state">Selecciona un servicio para buscar disponibilidad demo.</p>}
+          {serviceId && availabilityResults.map((slot) => (
+            <button
+              className={selectedSlot?.id === slot.id ? "availability-slot-card selected" : "availability-slot-card"}
+              key={slot.id}
+              type="button"
+              onClick={() => setSelectedSlot(slot)}
+            >
+              <strong>{minutesToTime(slot.start)} - {minutesToTime(slot.end)}</strong>
+              <span>{selectedSlot?.id === slot.id ? "Seleccionado" : "Disponible"}</span>
+              <p>{slot.professionalName} - {slot.serviceName} - {formatMinutes(slot.duration)}</p>
+              <small>{slot.proximityText}</small>
+            </button>
+          ))}
+          {serviceId && availabilityResults.length === 0 && <p className="empty-state">No hay huecos demo para esta busqueda.</p>}
+        </div>
+      </section>
+
+      {selectedSlot && (
+        <section className="panel demo-client-step">
+          <div className="section-title compact-section-title">
+            <div>
+              <h2>Cliente</h2>
+              <span>Horario seleccionado: {minutesToTime(selectedSlot.start)} - {minutesToTime(selectedSlot.end)}</span>
+            </div>
+          </div>
+
+          <div className="demo-client-mode">
+            <button className={clientMode === "existing" ? "active" : ""} type="button" onClick={() => setClientMode("existing")}>Buscar cliente demo</button>
+            <button className={clientMode === "new" ? "active" : ""} type="button" onClick={() => setClientMode("new")}>Crear cliente demo</button>
+          </div>
+
+          {clientMode === "existing" ? (
+            <label>
+              Cliente demo
+              <select value={selectedClientId} onChange={(event) => setSelectedClientId(event.target.value)}>
+                <option value="">Seleccionar cliente</option>
+                {DEMO_CLIENTS.map((client) => (
+                  <option key={client.id} value={client.id}>{client.name} - {client.phone}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="field-row">
+              <label>
+                Nombre
+                <input value={clientDraft.name} onChange={(event) => setClientDraft({ ...clientDraft, name: event.target.value })} placeholder="Cliente demo" />
+              </label>
+              <label>
+                Telefono
+                <input value={clientDraft.phone} onChange={(event) => setClientDraft({ ...clientDraft, phone: event.target.value })} placeholder="600 000 000" />
+              </label>
+            </div>
+          )}
+        </section>
+      )}
+
+      {canShowSummary && (
+        <section className="panel demo-appointment-summary">
+          <div>
+            <h2>Resumen final</h2>
+            <p>Modo demo local - no se guarda en Firebase</p>
+          </div>
+          <div className="summary-list">
+            <span><b>Servicio:</b> {selectedService?.name}</span>
+            <span><b>Duracion:</b> {formatMinutes(selectedSlot.duration)}</span>
+            <span><b>Fecha:</b> {selectedDate}</span>
+            <span><b>Hora:</b> {minutesToTime(selectedSlot.start)} - {minutesToTime(selectedSlot.end)}</span>
+            <span><b>Profesional:</b> {selectedSlot.professionalName}</span>
+            <span><b>Cliente:</b> {selectedClient.name}</span>
+            <span><b>Estado sugerido:</b> Confirmada</span>
+          </div>
+        </section>
+      )}
+    </section>
+  );
+}
+
+export default NewAppointmentDemo;
