@@ -410,6 +410,7 @@ function App() {
   const roleCanManageServices = canPerform(effectiveRole, "manageServices");
   const roleCanEditSaleDate = canPerform(effectiveRole, "viewFinance");
   const roleCanEditSalesFully = effectiveRole === "admin" || effectiveRole === "direccion";
+  const canShowRestoreData = platformMode !== "pos" && canPerform(effectiveRole, "restoreData");
   const scopedData = useMemo(() => {
     if (!isOwnEmployeeOnly(effectiveRole)) return data;
     const ownEmployeeName = user?.professionalName || user?.employeeName || user?.nombre ? [user.professionalName || user.employeeName || user.nombre] : [];
@@ -1081,7 +1082,7 @@ function App() {
           <span className={isOnline ? "status-pill online" : "status-pill offline"}>{isOnline ? "Conectado a Firebase" : "Modo local / sin conexión"}</span>
           <span className="user-pill">{user.nombre} - {effectiveRole}</span>
           <button className="ghost-button" type="button" onClick={logout}>Cerrar sesion</button>
-          {canPerform(effectiveRole, "restoreData") && <button className="ghost-button" onClick={() => setShowResetOptions(true)}>Restaurar datos (limpiar todo)</button>}
+          {canShowRestoreData && <button className="ghost-button" onClick={() => setShowResetOptions(true)}>Restaurar datos (limpiar todo)</button>}
         </div>
       </section>
 
@@ -1099,7 +1100,7 @@ function App() {
         </section>
       )}
 
-      {showResetOptions && canPerform(effectiveRole, "restoreData") && (
+      {showResetOptions && canShowRestoreData && (
         <section className="reset-panel" role="dialog" aria-label="Opciones de restauracion">
           <div>
             <h2>Restaurar datos</h2>

@@ -188,16 +188,16 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
               </div>
               <div className="appointment-main">
                 <div className="appointment-title-line">
-                  <div>
-                    <h3>{row.clientName}</h3>
-                    <p>{row.serviceName}</p>
+                  <div className="appointment-primary-line">
+                    <strong>{row.clientName}</strong>
+                    <span>{row.serviceName}</span>
+                    <span>{row.employee}</span>
                   </div>
                   <span className={`operational-status-badge ${getStatusClassName(row.status)}`}>
                     {row.status}
                   </span>
                 </div>
                 <div className="appointment-meta">
-                  <span>Profesional: <b>{row.employee}</b></span>
                   <span>Duracion: <b>{row.duration}</b></span>
                   <span>Telefono: <b>{row.phone}</b></span>
                 </div>
