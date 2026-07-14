@@ -25,13 +25,93 @@ function formatDuration(value) {
   return text;
 }
 
+function demoAppointmentsForDate(date) {
+  return [
+    {
+      id: "demo-agenda-confirmada",
+      date,
+      startTime: "09:15",
+      clientName: "Cliente Demo Aurora",
+      clientPhone: "600 000 101",
+      serviceName: "Manicura semipermanente demo",
+      employee: "Marianne",
+      duration: "45 min",
+      status: "Confirmada",
+    },
+    {
+      id: "demo-agenda-llegado",
+      date,
+      startTime: "10:20",
+      clientName: "Cliente Demo Brisa",
+      clientPhone: "600 000 202",
+      serviceName: "Diseño de cejas demo",
+      employee: "Ambar",
+      duration: "30 min",
+      status: "Cliente llegado",
+    },
+    {
+      id: "demo-agenda-servicio",
+      date,
+      startTime: "11:30",
+      clientName: "Cliente Demo Coral",
+      clientPhone: "600 000 303",
+      serviceName: "Lifting de pestañas demo",
+      employee: "Grace",
+      duration: "1 h",
+      status: "En servicio",
+    },
+    {
+      id: "demo-agenda-cobro",
+      date,
+      startTime: "13:00",
+      clientName: "Cliente Demo Dalia",
+      clientPhone: "600 000 404",
+      serviceName: "Pedicura completa demo",
+      employee: "Leidys",
+      duration: "1 h 15 min",
+      status: "Pendiente de cobro",
+    },
+    {
+      id: "demo-agenda-finalizada",
+      date,
+      startTime: "16:10",
+      clientName: "Cliente Demo Elara",
+      clientPhone: "600 000 505",
+      serviceName: "Tratamiento facial demo",
+      employee: "Marianne",
+      duration: "1 h",
+      status: "Finalizada",
+    },
+    {
+      id: "demo-agenda-cancelada",
+      date,
+      startTime: "18:30",
+      clientName: "Cliente Demo Fenix",
+      clientPhone: "600 000 606",
+      serviceName: "Masaje corporal demo",
+      employee: "Grace",
+      duration: "45 min",
+      status: "Cancelada",
+    },
+  ];
+}
+
+function shouldUseDemoAgenda() {
+  if (!import.meta.env.DEV || typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("demoAgenda") === "1";
+}
+
 function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
   const [selectedDate, setSelectedDate] = useState(getTodayLocalDateString());
+  const demoMode = shouldUseDemoAgenda();
   const clientMap = useMemo(() => Object.fromEntries((clients || []).map((client) => [client.id, client])), [clients]);
   const services = config.services || [];
+  const visibleAppointments = useMemo(() => (
+    demoMode ? demoAppointmentsForDate(selectedDate) : appointments
+  ), [appointments, demoMode, selectedDate]);
 
   const rows = useMemo(() => (
-    (appointments || [])
+    (visibleAppointments || [])
       .filter((appointment) => (appointment.date || appointment.fechaOperativa || "") === selectedDate)
       .map((appointment) => {
         const client = clientMap[appointment.clientId] || {};
@@ -56,7 +136,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
         };
       })
       .sort((first, second) => String(first.time || "99:99").localeCompare(String(second.time || "99:99")))
-  ), [appointments, clientMap, selectedDate, services]);
+  ), [clientMap, selectedDate, services, visibleAppointments]);
 
   return (
     <section className="module operational-agenda">
@@ -70,6 +150,12 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
         </label>
       </div>
+
+      {demoMode && (
+        <section className="version-notice operational-demo-notice" aria-live="polite">
+          <span>Modo demo local — datos simulados</span>
+        </section>
+      )}
 
       <section className="summary-grid compact">
         <article className="metric"><span>Citas del dia</span><strong>{rows.length}</strong></article>
