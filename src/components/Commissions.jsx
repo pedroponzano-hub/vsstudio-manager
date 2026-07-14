@@ -9,7 +9,13 @@ const periodOptions = [
   { value: "custom", label: "Personalizado" },
 ];
 
-const paymentMethods = ["Efectivo", "Tarjeta", "Transferencia", "Bizum", "Otro"];
+const paymentMethods = ["Efectivo", "Transferencia", "Bizum", "Otro"];
+const commissionPaymentOptions = [
+  { value: "Efectivo", label: "Efectivo" },
+  { value: "Transferencia", label: "Transferencia bancaria" },
+  { value: "Bizum", label: "Bizum" },
+  { value: "Otro", label: "Otro" },
+];
 
 function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
@@ -57,6 +63,9 @@ function Commissions({ data, onStatusChange }) {
   const [editingRow, setEditingRow] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [editError, setEditError] = useState("");
+  const [statusModal, setStatusModal] = useState(null);
+  const [statusForm, setStatusForm] = useState({ paymentDate: "", paymentMethod: "", paymentObservation: "" });
+  const [statusError, setStatusError] = useState("");
 
   const employees = useMemo(() => (
     [...new Set(rows.map((row) => row.employee || "Sin empleada"))].sort((first, second) => first.localeCompare(second))
@@ -127,6 +136,8 @@ function Commissions({ data, onStatusChange }) {
       commissionAmount: Number(editForm.commissionAmount || 0),
       paymentDate: editForm.status === "pagada" ? editForm.paymentDate : "",
       paymentMethod: editForm.status === "pagada" ? editForm.paymentMethod : "",
+      fechaPago: editForm.status === "pagada" ? editForm.paymentDate : "",
+      metodoPagoComision: editForm.status === "pagada" ? editForm.paymentMethod : "",
       correctionReason: editForm.correctionReason.trim(),
     });
     setEditingRow(null);
@@ -139,6 +150,17 @@ function Commissions({ data, onStatusChange }) {
     const normalizedStatus = nextStatus === "pagada" ? "pagada" : "pendiente";
     if ((row.status || "pendiente") === normalizedStatus) return;
 
+    if (normalizedStatus === "pagada") {
+      setStatusModal(row);
+      setStatusForm({
+        paymentDate: row.paymentDate || getTodayLocalDateString(),
+        paymentMethod: row.paymentMethod || "",
+        paymentObservation: row.paidObservation || "",
+      });
+      setStatusError("");
+      return;
+    }
+
     if (normalizedStatus === "pendiente") {
       const confirmed = window.confirm("¿Seguro que deseas volver esta comisión a pendiente?");
       if (!confirmed) return;
@@ -149,6 +171,33 @@ function Commissions({ data, onStatusChange }) {
     });
   };
 
+  const updateStatusField = (event) => {
+    const { name, value } = event.target;
+    setStatusForm((current) => ({ ...current, [name]: value }));
+    setStatusError("");
+  };
+
+  const saveStatusPayment = () => {
+    if (!statusModal) return;
+    if (!statusForm.paymentDate || !statusForm.paymentMethod) {
+      setStatusError("Completa la fecha y el metodo de pago.");
+      return;
+    }
+
+    onStatusChange?.(statusModal.saleId, "pagada", {
+      statusChangeOnly: true,
+      paymentDate: statusForm.paymentDate,
+      paymentMethod: statusForm.paymentMethod,
+      fechaPago: statusForm.paymentDate,
+      metodoPagoComision: statusForm.paymentMethod,
+      observacionesPago: statusForm.paymentObservation.trim(),
+      paidObservation: statusForm.paymentObservation.trim(),
+    });
+    setStatusModal(null);
+    setStatusForm({ paymentDate: "", paymentMethod: "", paymentObservation: "" });
+    setStatusError("");
+  };
+
   return (
     <section className="module">
       <div className="section-title">
@@ -157,6 +206,36 @@ function Commissions({ data, onStatusChange }) {
           <span>Seguimiento, correccion y auditoria de comisiones</span>
         </div>
       </div>
+
+      {statusModal && (
+        <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Marcar comision como pagada">
+          <article className="sale-history-dialog commission-payment-dialog">
+            <div className="section-title">
+              <div>
+                <h2>Marcar comision como pagada</h2>
+                <span>{statusModal.employee || "Sin profesional"}</span>
+              </div>
+            </div>
+            <div className="list">
+              <div className="stat-row"><span>Servicio</span><strong>{statusModal.services || "Sin servicio"}</strong></div>
+              <div className="stat-row"><span>Importe comision</span><strong>{money(statusModal.commissionAmount)}</strong></div>
+            </div>
+            <div className="field-row">
+              <label>Fecha de pago<input type="date" name="paymentDate" value={statusForm.paymentDate} onChange={updateStatusField} /></label>
+              <label>Metodo de pago<select name="paymentMethod" value={statusForm.paymentMethod} onChange={updateStatusField}>
+                <option value="">Seleccionar...</option>
+                {commissionPaymentOptions.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
+              </select></label>
+            </div>
+            <label>Observaciones opcionales<textarea name="paymentObservation" value={statusForm.paymentObservation} onChange={updateStatusField} placeholder="Referencia, detalle del pago..." /></label>
+            {statusError && <p className="auth-error">{statusError}</p>}
+            <div className="reset-actions">
+              <button type="button" onClick={saveStatusPayment}>Guardar como pagada</button>
+              <button className="secondary-button" type="button" onClick={() => { setStatusModal(null); setStatusError(""); }}>Cancelar</button>
+            </div>
+          </article>
+        </section>
+      )}
 
       <section className="panel filters-panel">
         <label>Rango de fecha<select value={period} onChange={(event) => changePeriod(event.target.value)}>

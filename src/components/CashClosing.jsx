@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getMadridTimestamp, getTodayLocalDateString } from "../utils/date.js";
 
-const paymentMethods = ["Efectivo", "Tarjeta", "Bizum", "Treatwell", "Bono / tarjeta regalo", "Otro"];
+const paymentMethods = ["Efectivo", "Tarjeta", "Transferencia", "Bizum", "Treatwell", "Bono / tarjeta regalo", "Otro"];
 
 function todayDate() {
   return getTodayLocalDateString();
@@ -18,6 +18,11 @@ function roundMoney(value) {
 function normalizeMethod(method = "") {
   const value = String(method).trim().toLowerCase();
   if (["bono", "bonos", "tarjeta regalo", "bono / tarjeta regalo"].includes(value)) return "Bono / tarjeta regalo";
+  if (value.includes("transferencia")) return "Transferencia";
+  if (value.includes("bizum")) return "Bizum";
+  if (value.includes("efectivo")) return "Efectivo";
+  if (value.includes("tarjeta")) return "Tarjeta";
+  if (value.includes("treatwell")) return "Treatwell";
   return paymentMethods.find((item) => item.toLowerCase() === value) || "Otro";
 }
 
@@ -85,7 +90,7 @@ function groupPaidCommissionsByMethod(commissions) {
   return commissions
     .filter((commission) => commission.status === "pagada")
     .reduce((groups, commission) => {
-      const method = normalizeMethod(commission.paymentMethod);
+      const method = normalizeMethod(commission.metodoPagoComision || commission.paymentMethod);
       groups[method] = (groups[method] || 0) + Number(commission.commissionAmount || 0);
       return groups;
     }, Object.fromEntries(paymentMethods.map((method) => [method, 0])));
@@ -289,7 +294,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
     const auditSales = [...sales, ...voidedSales].sort((first, second) => String(second.horaCierre || second.horaCreacion || "").localeCompare(String(first.horaCierre || first.horaCreacion || "")));
     const expenses = (data.expenses || []).filter((expense) => expense.date === targetDate);
     const commissions = (commissionsData.rows || []).filter((commission) => (
-      commission.status === "pagada" && (commission.paymentDate || commission.date) === targetDate
+      commission.status === "pagada" && (commission.paymentDate || commission.fechaPago || commission.date) === targetDate
     ));
     const registeredSales = groupSalesByMethod(sales);
     const paidExpenses = groupPaidExpensesByMethod(expenses);

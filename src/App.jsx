@@ -461,6 +461,7 @@ function App() {
     const pageItem = navigationItemForPage(visibleNavigation, activePage);
     if (pageItem && allowedTabIds.includes(pageItem.tabId)) {
       if (activeTab !== pageItem.tabId) setActiveTab(pageItem.tabId);
+      if (accessDeniedMessage) setAccessDeniedMessage("");
       return;
     }
 
@@ -469,7 +470,7 @@ function App() {
     setActivePage(firstItem?.pageId || "agenda.appointments");
     setActiveTab(firstItem?.tabId || allowedTabIds[0] || "agenda");
     setActiveNavKey(firstItem?.key || "");
-  }, [activePage, activeTab, allowedTabIds, visibleNavigation, user]);
+  }, [accessDeniedMessage, activePage, activeTab, allowedTabIds, visibleNavigation, user]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });

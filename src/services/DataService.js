@@ -494,18 +494,33 @@ function groupDashboardPaidExpensesByMethod(expenses) {
     }, { Efectivo: 0, Tarjeta: 0, Transferencia: 0, Bizum: 0, Otros: 0 });
 }
 
-function dashboardCashSummary(sales, expenses) {
+function groupDashboardPaidCommissionsByMethod(commissions) {
+  return commissions
+    .filter((commission) => commission.status === "pagada")
+    .reduce((groups, commission) => {
+      const method = normalizePaymentMethodName(commission.metodoPagoComision || commission.paymentMethod);
+      const targetMethod = ["Efectivo", "Transferencia", "Bizum"].includes(method) ? method : "Otros";
+      groups[targetMethod] = (groups[targetMethod] || 0) + Number(commission.commissionAmount || 0);
+      return groups;
+    }, { Efectivo: 0, Transferencia: 0, Bizum: 0, Otros: 0 });
+}
+
+function dashboardCashSummary(sales, expenses, commissions = []) {
   const incomeByMethod = groupDashboardIncomeByMethod(sales);
   const expensesByMethod = groupDashboardPaidExpensesByMethod(expenses);
+  const commissionsByMethod = groupDashboardPaidCommissionsByMethod(commissions);
   const totalIncome = Object.values(incomeByMethod).reduce((total, amount) => total + Number(amount || 0), 0);
   const totalExpenses = Object.values(expensesByMethod).reduce((total, amount) => total + Number(amount || 0), 0);
+  const totalCommissions = Object.values(commissionsByMethod).reduce((total, amount) => total + Number(amount || 0), 0);
 
   return {
     incomeByMethod,
     expensesByMethod,
+    commissionsByMethod,
     totalIncome,
     totalExpenses,
-    netResult: totalIncome - totalExpenses,
+    totalCommissions,
+    netResult: totalIncome - totalExpenses - totalCommissions,
   };
 }
 
@@ -736,12 +751,16 @@ function commissionRows(sales, commissionStatuses) {
         status: statusBySale[sale.id] || "pendiente",
         commissionStatus: statusBySale[sale.id] || "pendiente",
         paidAt: details.paidAt || "",
-        paidBy: details.paidBy || "",
-        paidObservation: details.paidObservation || "",
+        paidBy: details.paidBy || details.usuarioQuePago || "",
+        paidObservation: details.paidObservation || details.observacionesPago || "",
         statusChangeReason: details.statusChangeReason || "",
         updatedBy: details.updatedBy || details.editedBy || "",
-        paymentDate: details.paymentDate || "",
-        paymentMethod: details.paymentMethod || "",
+        paymentDate: details.paymentDate || details.fechaPago || "",
+        paymentMethod: details.paymentMethod || details.metodoPagoComision || "",
+        fechaPago: details.fechaPago || details.paymentDate || "",
+        metodoPagoComision: details.metodoPagoComision || details.paymentMethod || "",
+        usuarioQuePago: details.usuarioQuePago || details.paidBy || "",
+        observacionesPago: details.observacionesPago || details.paidObservation || "",
         correctionReason: details.correctionReason || "",
         correctionHistory: Array.isArray(details.correctionHistory) ? details.correctionHistory : [],
       };
@@ -1701,7 +1720,15 @@ const DataService = {
       paidObservation: currentRow.paidObservation || "",
       paymentDate: currentRow.paymentDate || "",
       paymentMethod: currentRow.paymentMethod || "",
+      fechaPago: currentRow.fechaPago || currentRow.paymentDate || "",
+      metodoPagoComision: currentRow.metodoPagoComision || currentRow.paymentMethod || "",
+      usuarioQuePago: currentRow.usuarioQuePago || currentRow.paidBy || "",
+      observacionesPago: currentRow.observacionesPago || currentRow.paidObservation || "",
     } : {};
+    const paymentDate = details.paymentDate || details.fechaPago || existingStatus?.paymentDate || existingStatus?.fechaPago || todayLocal();
+    const paymentMethod = details.paymentMethod || details.metodoPagoComision || existingStatus?.paymentMethod || existingStatus?.metodoPagoComision || "";
+    const paymentObservation = details.paidObservation || details.observacionesPago || existingStatus?.paidObservation || existingStatus?.observacionesPago || "";
+    const paymentUser = details.updatedBy || details.editedBy || existingStatus?.updatedBy || existingStatus?.usuarioQuePago || "";
     const newValues = {
       employee: details.employee ?? existingStatus?.employee ?? previousValues.employee,
       commissionPercent: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : (existingStatus?.commissionPercent ?? previousValues.commissionPercent),
@@ -1709,10 +1736,14 @@ const DataService = {
       status: safeStatus,
       commissionStatus: safeStatus,
       paidAt: safeStatus === "pagada" ? (details.paidAt || getMadridTimestamp()) : null,
-      paidBy: null,
-      paidObservation: null,
-      paymentDate: safeStatus === "pagada" ? todayLocal() : "",
-      paymentMethod: safeStatus === "pagada" ? (details.paymentMethod || existingStatus?.paymentMethod || "") : "",
+      paidBy: safeStatus === "pagada" ? paymentUser : "",
+      paidObservation: safeStatus === "pagada" ? paymentObservation : "",
+      paymentDate: safeStatus === "pagada" ? paymentDate : "",
+      paymentMethod: safeStatus === "pagada" ? paymentMethod : "",
+      fechaPago: safeStatus === "pagada" ? paymentDate : "",
+      metodoPagoComision: safeStatus === "pagada" ? paymentMethod : "",
+      usuarioQuePago: safeStatus === "pagada" ? paymentUser : "",
+      observacionesPago: safeStatus === "pagada" ? paymentObservation : "",
     };
     const correctionHistory = hasCorrection
       ? [
@@ -1737,6 +1768,9 @@ const DataService = {
           previousStatus: previousValues.commissionStatus || previousValues.status || "pendiente",
           newStatus: safeStatus,
           paidAt: newValues.paidAt,
+          paymentDate: newValues.paymentDate,
+          paymentMethod: newValues.paymentMethod,
+          commissionAmount: newValues.commissionAmount,
         },
       ]
       : (existingStatus?.statusHistory || []);
@@ -1755,6 +1789,10 @@ const DataService = {
       statusChangeReason: "",
       paymentDate: newValues.paymentDate,
       paymentMethod: newValues.paymentMethod,
+      fechaPago: newValues.fechaPago,
+      metodoPagoComision: newValues.metodoPagoComision,
+      usuarioQuePago: newValues.usuarioQuePago,
+      observacionesPago: newValues.observacionesPago,
       correctionReason: details.correctionReason || existingStatus?.correctionReason || "",
       correctionHistory,
       statusHistory,
@@ -1837,18 +1875,25 @@ const DataService = {
     const expenses = this.getExpenses();
     const clients = this.getClients();
     const config = this.getConfig();
+    const commissionRowsForDashboard = commissionRows(allSales, this.getCommissionStatuses());
     const todaySales = sales.filter((sale) => itemOperationalDate(sale) === current.day);
     const todayExpenses = expenses.filter((expense) => itemOperationalDate(expense) === current.day);
+    const todayPaidCommissions = commissionRowsForDashboard.filter((commission) => (
+      commission.status === "pagada" && (commission.paymentDate || commission.fechaPago || commission.date) === current.day
+    ));
     const monthSales = sales.filter((sale) => itemOperationalDate(sale)?.startsWith(current.month));
     const monthExpenses = expenses.filter((expense) => itemOperationalDate(expense)?.startsWith(current.month));
+    const monthPaidCommissions = commissionRowsForDashboard.filter((commission) => (
+      commission.status === "pagada" && String(commission.paymentDate || commission.fechaPago || commission.date || "").startsWith(current.month)
+    ));
     const todaySalesTotal = todaySales.reduce((total, sale) => total + saleAmount(sale), 0);
     const todayExpensesTotal = sum(todayExpenses, "amount");
     const monthSalesTotal = monthSales.reduce((total, sale) => total + saleAmount(sale), 0);
     const monthExpensesTotal = sum(monthExpenses, "amount");
     const todaySummary = saleSummary(todaySales);
     const monthSummary = saleSummary(monthSales);
-    const todayCashSummary = dashboardCashSummary(todaySales, todayExpenses);
-    const monthCashSummary = dashboardCashSummary(monthSales, monthExpenses);
+    const todayCashSummary = dashboardCashSummary(todaySales, todayExpenses, todayPaidCommissions);
+    const monthCashSummary = dashboardCashSummary(monthSales, monthExpenses, monthPaidCommissions);
     const monthProfit = monthSummary.totalSales - monthSummary.ivaAmount - monthSummary.commissionAmount - monthExpensesTotal;
     const dayOfMonth = getMadridDayOfMonth();
     const daysInMonth = getMadridDaysInCurrentMonth();
