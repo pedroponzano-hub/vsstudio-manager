@@ -1784,6 +1784,67 @@ h3 {
   font-weight: 700;
 }
 
+.availability-search-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.compact-section-title {
+  margin-bottom: 0;
+}
+
+.availability-controls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(220px, 1.5fr) minmax(130px, 0.7fr) minmax(170px, 1fr) minmax(120px, 0.6fr);
+}
+
+.availability-controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.availability-results {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.availability-slot-card {
+  background: #fbfff8;
+  border: 1px dashed #86b86a;
+  border-left: 5px solid #86b86a;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+}
+
+.availability-slot-card strong {
+  color: #1f3a1d;
+  font-size: 1rem;
+}
+
+.availability-slot-card span {
+  color: #3d7a32;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.availability-slot-card p {
+  color: #51483f;
+  font-size: 0.84rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.availability-slot-card small {
+  color: #786f64;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .commission-edit-panel {
   align-items: stretch;
 }
@@ -1927,6 +1988,11 @@ h3 {
   }
 
   .sales-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .availability-controls,
+  .availability-results {
     grid-template-columns: 1fr;
   }
 }
