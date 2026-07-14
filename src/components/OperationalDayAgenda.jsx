@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import AppointmentDetailModalDemo from "./AppointmentDetailModalDemo.jsx";
 import { getStatusClassName } from "../utils/availabilityDemo.js";
 
 function OperationalDayAgenda({ rows = [] }) {
@@ -48,23 +49,12 @@ function OperationalDayAgenda({ rows = [] }) {
         </div>
       </section>
 
-      <section className="panel appointment-readonly-detail">
-        <h2>Detalle de cita</h2>
-        {selectedAppointment ? (
-          <div className="summary-list">
-            <span><b>Hora:</b> {selectedAppointment.time || "No disponible"}</span>
-            <span><b>Cliente:</b> {selectedAppointment.clientName}</span>
-            <span><b>Telefono:</b> {selectedAppointment.phone}</span>
-            <span><b>Servicio:</b> {selectedAppointment.serviceName}</span>
-            <span><b>Profesional:</b> {selectedAppointment.employee}</span>
-            <span><b>Duracion:</b> {selectedAppointment.duration}</span>
-            <span><b>Estado:</b> {selectedAppointment.status}</span>
-            <small>Solo lectura. Las acciones reales se incorporaran en una fase posterior.</small>
-          </div>
-        ) : (
-          <p className="empty-state">Selecciona una cita para ver el detalle.</p>
-        )}
-      </section>
+      {selectedAppointment && (
+        <AppointmentDetailModalDemo
+          appointment={selectedAppointment}
+          onClose={() => setSelectedAppointment(null)}
+        />
+      )}
     </section>
   );
 }

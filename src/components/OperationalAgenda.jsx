@@ -73,6 +73,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
 
         return {
           id: appointment.id || `${appointment.date}-${appointment.startTime || appointment.time}-${appointment.clientId || appointment.clientName}`,
+          serviceId: appointment.serviceId || service.id || "",
           time: normalizeTime(appointment.startTime || appointment.time),
           clientName: valueOrFallback(
             appointment.clientName

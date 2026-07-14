@@ -1915,7 +1915,7 @@ h3 {
 .day-agenda-demo-layout {
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+  grid-template-columns: 1fr;
 }
 
 .agenda-button-card {
@@ -1923,6 +1923,70 @@ h3 {
   cursor: pointer;
   padding: 0;
   text-align: left;
+}
+
+.appointment-demo-dialog {
+  max-width: 860px;
+  width: min(860px, 100%);
+}
+
+.appointment-modal-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkout-demo-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkout-demo-block {
+  background: #fff;
+  border: 1px solid #ece4d8;
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.checkout-demo-block h3 {
+  margin: 0;
+}
+
+.inline-check {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.demo-payment-split {
+  background: #fbf8f1;
+  border: 1px solid #efe7da;
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px;
+}
+
+.checkout-demo-total,
+.checkout-demo-complete {
+  background: #171412;
+  border-radius: 12px;
+  color: #fff;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.checkout-demo-total small,
+.checkout-demo-complete p {
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0;
+}
+
+.checkout-demo-complete button {
+  justify-self: start;
 }
 
 .commission-edit-panel {
@@ -2073,7 +2137,9 @@ h3 {
 
   .availability-controls,
   .availability-results,
-  .day-agenda-demo-layout {
+  .day-agenda-demo-layout,
+  .appointment-modal-summary,
+  .checkout-demo-grid {
     grid-template-columns: 1fr;
   }
 }

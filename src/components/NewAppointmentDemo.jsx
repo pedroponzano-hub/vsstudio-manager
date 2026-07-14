@@ -12,6 +12,19 @@ import {
 
 const emptyClientDraft = { name: "", phone: "" };
 
+function getLocalCurrentMinutes() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function automaticAppointmentType(date, slotStart) {
+  const today = new Date();
+  const todayText = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  if (date > todayText) return "Reservada";
+  if (date < todayText) return "Reservada";
+  return slotStart <= getLocalCurrentMinutes() + 30 ? "Walk-in / Sin reserva previa" : "Reservada";
+}
+
 function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   const [serviceId, setServiceId] = useState("");
   const [professionalId, setProfessionalId] = useState("any");
@@ -49,6 +62,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
     ? DEMO_CLIENTS.find((client) => client.id === selectedClientId)
     : { id: "demo-new-client", ...clientDraft };
   const canShowSummary = selectedSlot && selectedClient?.name;
+  const appointmentType = selectedSlot ? automaticAppointmentType(selectedDate, selectedSlot.start) : "";
 
   const resetSlot = () => setSelectedSlot(null);
 
@@ -177,6 +191,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
             <span><b>Hora:</b> {minutesToTime(selectedSlot.start)} - {minutesToTime(selectedSlot.end)}</span>
             <span><b>Profesional:</b> {selectedSlot.professionalName}</span>
             <span><b>Cliente:</b> {selectedClient.name}</span>
+            <span><b>Tipo automatico:</b> {appointmentType}</span>
             <span><b>Estado sugerido:</b> Confirmada</span>
           </div>
         </section>

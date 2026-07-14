@@ -1,12 +1,12 @@
 export const DEMO_SLOT_INTERVALS = [5, 10, 15, 30];
 
 export const DEMO_SERVICES = [
-  { id: "mani-semi", name: "Manicura semipermanente demo", duration: 45 },
-  { id: "cejas-diseno", name: "Diseno de cejas demo", duration: 30 },
-  { id: "lifting-pestanas", name: "Lifting de pestanas demo", duration: 60 },
-  { id: "pedicura-completa", name: "Pedicura completa demo", duration: 75 },
-  { id: "facial-demo", name: "Tratamiento facial demo", duration: 60 },
-  { id: "masaje-demo", name: "Masaje corporal demo", duration: 45 },
+  { id: "mani-semi", name: "Manicura semipermanente demo", duration: 45, price: 20 },
+  { id: "cejas-diseno", name: "Diseno de cejas demo", duration: 30, price: 18 },
+  { id: "lifting-pestanas", name: "Lifting de pestanas demo", duration: 60, price: 35 },
+  { id: "pedicura-completa", name: "Pedicura completa demo", duration: 75, price: 28 },
+  { id: "facial-demo", name: "Tratamiento facial demo", duration: 60, price: 60 },
+  { id: "masaje-demo", name: "Masaje corporal demo", duration: 45, price: 35 },
 ];
 
 export const DEMO_PROFESSIONALS = [
