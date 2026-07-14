@@ -1634,16 +1634,149 @@ h3 {
   min-width: 900px;
 }
 
-.finance-header.operational-agenda-row,
-.finance-row.operational-agenda-row {
-  grid-template-columns: 90px minmax(160px, 1fr) minmax(130px, 0.8fr) minmax(220px, 1.25fr) minmax(140px, 0.8fr) 110px 120px;
-  min-width: 1040px;
-}
-
 .compact-date-filter {
   display: grid;
   gap: 6px;
   min-width: 180px;
+}
+
+.operational-agenda-list {
+  display: grid;
+  gap: 12px;
+}
+
+.operational-appointment-card {
+  --agenda-status-color: #9ca3af;
+  --agenda-status-bg: #f4f4f5;
+  background: #fff;
+  border: 1px solid #ece4d8;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(42, 34, 24, 0.07);
+  display: grid;
+  grid-template-columns: 7px 112px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.operational-appointment-card::before {
+  background: var(--agenda-status-color);
+  content: "";
+  display: block;
+}
+
+.operational-appointment-card.agenda-status-confirmada,
+.operational-status-badge.agenda-status-confirmada {
+  --agenda-status-color: #2f80ed;
+  --agenda-status-bg: #eaf3ff;
+}
+
+.operational-appointment-card.agenda-status-llegado,
+.operational-status-badge.agenda-status-llegado {
+  --agenda-status-color: #f59e0b;
+  --agenda-status-bg: #fff4df;
+}
+
+.operational-appointment-card.agenda-status-servicio,
+.operational-status-badge.agenda-status-servicio {
+  --agenda-status-color: #16a34a;
+  --agenda-status-bg: #eaf8ef;
+}
+
+.operational-appointment-card.agenda-status-cobro,
+.operational-status-badge.agenda-status-cobro {
+  --agenda-status-color: #8b5cf6;
+  --agenda-status-bg: #f2ecff;
+}
+
+.operational-appointment-card.agenda-status-finalizada,
+.operational-status-badge.agenda-status-finalizada {
+  --agenda-status-color: #9ca3af;
+  --agenda-status-bg: #f3f4f6;
+}
+
+.operational-appointment-card.agenda-status-cancelada,
+.operational-status-badge.agenda-status-cancelada {
+  --agenda-status-color: #ef6b6b;
+  --agenda-status-bg: #fff0f0;
+}
+
+.appointment-time-block {
+  align-content: center;
+  background: #fbf8f1;
+  border-right: 1px solid #efe7da;
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+}
+
+.appointment-time-block strong {
+  color: #171412;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.appointment-time-block span {
+  color: #8a8074;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.appointment-main {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.appointment-title-line {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.appointment-title-line h3,
+.appointment-title-line p {
+  margin: 0;
+}
+
+.appointment-title-line h3 {
+  color: #171412;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.appointment-title-line p {
+  color: #4e463d;
+  font-size: 0.92rem;
+  font-weight: 750;
+  margin-top: 4px;
+}
+
+.operational-status-badge {
+  background: var(--agenda-status-bg);
+  border: 1px solid var(--agenda-status-color);
+  border-radius: 999px;
+  color: var(--agenda-status-color);
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.appointment-meta {
+  color: #786f64;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  gap: 8px 14px;
+}
+
+.appointment-meta b {
+  color: #51483f;
+  font-weight: 700;
 }
 
 .commission-edit-panel {
@@ -1924,6 +2057,30 @@ h3 {
 
   .summary-grid.compact {
     grid-template-columns: 1fr;
+  }
+
+  .operational-appointment-card {
+    grid-template-columns: 7px minmax(0, 1fr);
+  }
+
+  .appointment-time-block {
+    border-bottom: 1px solid #efe7da;
+    border-right: 0;
+    grid-column: 2;
+    padding: 12px 14px;
+  }
+
+  .appointment-main {
+    grid-column: 2;
+    padding: 14px;
+  }
+
+  .appointment-title-line {
+    grid-template-columns: 1fr;
+  }
+
+  .operational-status-badge {
+    justify-self: start;
   }
 
   .sales-day-cards {

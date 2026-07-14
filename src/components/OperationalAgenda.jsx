@@ -25,6 +25,21 @@ function formatDuration(value) {
   return text;
 }
 
+function getStatusClassName(status = "") {
+  const normalizedStatus = String(status)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (normalizedStatus.includes("confirmada")) return "agenda-status-confirmada";
+  if (normalizedStatus.includes("cliente llegado")) return "agenda-status-llegado";
+  if (normalizedStatus.includes("en servicio")) return "agenda-status-servicio";
+  if (normalizedStatus.includes("pendiente de cobro")) return "agenda-status-cobro";
+  if (normalizedStatus.includes("finalizada")) return "agenda-status-finalizada";
+  if (normalizedStatus.includes("cancelada")) return "agenda-status-cancelada";
+  return "agenda-status-default";
+}
+
 function demoAppointmentsForDate(date) {
   return [
     {
@@ -164,26 +179,30 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
       </section>
 
       <section className="panel">
-        <div className="finance-table">
-          <div className="finance-header operational-agenda-row">
-            <span>Hora</span>
-            <span>Cliente</span>
-            <span>Telefono</span>
-            <span>Servicio</span>
-            <span>Profesional</span>
-            <span>Duracion</span>
-            <span>Estado</span>
-          </div>
+        <div className="operational-agenda-list">
           {rows.map((row) => (
-            <div className="finance-row operational-agenda-row" key={row.id}>
-              <strong>{row.time || "No disponible"}</strong>
-              <span>{row.clientName}</span>
-              <span>{row.phone}</span>
-              <span>{row.serviceName}</span>
-              <span>{row.employee}</span>
-              <span>{row.duration}</span>
-              <span className="status-pill pending">{row.status}</span>
-            </div>
+            <article className={`operational-appointment-card ${getStatusClassName(row.status)}`} key={row.id}>
+              <div className="appointment-time-block">
+                <strong>{row.time || "No disponible"}</strong>
+                <span>Hora</span>
+              </div>
+              <div className="appointment-main">
+                <div className="appointment-title-line">
+                  <div>
+                    <h3>{row.clientName}</h3>
+                    <p>{row.serviceName}</p>
+                  </div>
+                  <span className={`operational-status-badge ${getStatusClassName(row.status)}`}>
+                    {row.status}
+                  </span>
+                </div>
+                <div className="appointment-meta">
+                  <span>Profesional: <b>{row.employee}</b></span>
+                  <span>Duracion: <b>{row.duration}</b></span>
+                  <span>Telefono: <b>{row.phone}</b></span>
+                </div>
+              </div>
+            </article>
           ))}
           {rows.length === 0 && <p className="empty-state">No hay citas para la fecha seleccionada.</p>}
         </div>
