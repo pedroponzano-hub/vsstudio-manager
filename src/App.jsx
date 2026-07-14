@@ -116,6 +116,16 @@ const navigationSections = [
   },
 ];
 
+const platformSectionIds = {
+  pos: ["agenda", "sales", "clients", "expenses", "cash-closing", "professional-agenda", "professional-commissions"],
+  manager: ["dashboard", "clients", "finance", "statistics", "commissions", "settings"],
+};
+
+function getPlatformModeFromPath(pathname = "") {
+  const normalizedPath = String(pathname || "").toLowerCase();
+  return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "pos" : "manager";
+}
+
 function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
 }
@@ -287,11 +297,15 @@ function TodayClosedSales({ sales, clients, onView, onEdit, onVoid }) {
   );
 }
 
-function buildVisibleNavigation(allowedTabIds, role) {
+function buildVisibleNavigation(allowedTabIds, role, platformMode) {
   const normalizedRole = String(role || "").trim().toLowerCase();
+  const sectionIds = platformSectionIds[platformMode] || platformSectionIds.manager;
+  const sectionsForPlatform = sectionIds
+    .map((sectionId) => navigationSections.find((section) => section.id === sectionId))
+    .filter(Boolean);
   const sectionsForRole = normalizedRole === "profesional"
-    ? navigationSections.filter((section) => section.id.startsWith("professional-"))
-    : navigationSections.filter((section) => !section.id.startsWith("professional-"));
+    ? sectionsForPlatform.filter((section) => section.id.startsWith("professional-"))
+    : sectionsForPlatform.filter((section) => !section.id.startsWith("professional-"));
 
   return sectionsForRole
     .map((section) => ({
@@ -353,6 +367,7 @@ class ViewErrorBoundary extends Component {
 
 function App() {
   const { user, loading, logout } = useAuth();
+  const [platformMode, setPlatformMode] = useState(() => getPlatformModeFromPath(typeof window !== "undefined" ? window.location.pathname : "/manager"));
   const [activeTab, setActiveTab] = useState("dashboard");
   const [activePage, setActivePage] = useState("dashboard.daily");
   const [data, setData] = useState(() => DataService.getData());
@@ -374,7 +389,7 @@ function App() {
 
   const effectiveRole = useMemo(() => effectiveRoleForUser(user), [user]);
   const allowedTabIds = useMemo(() => allowedTabsForRole(effectiveRole), [effectiveRole]);
-  const visibleNavigation = useMemo(() => buildVisibleNavigation(allowedTabIds, effectiveRole), [allowedTabIds, effectiveRole]);
+  const visibleNavigation = useMemo(() => buildVisibleNavigation(allowedTabIds, effectiveRole, platformMode), [allowedTabIds, effectiveRole, platformMode]);
   const selectedNavKey = useMemo(() => {
     const itemIsCurrent = visibleNavigation.some((section) => (
       section.items.some((item) => item.key === activeNavKey && item.pageId === activePage)
@@ -420,6 +435,19 @@ function App() {
     return ownCommissionsData;
   }, [data, effectiveRole, ownCommissionsData]);
   const clientMap = useMemo(() => Object.fromEntries(scopedData.clients.map((client) => [client.id, client.name])), [scopedData.clients]);
+
+  useEffect(() => {
+    const syncPlatformMode = () => {
+      if (window.location.pathname === "/") {
+        window.history.replaceState(null, "", `/manager${window.location.search}${window.location.hash}`);
+      }
+      setPlatformMode(getPlatformModeFromPath(window.location.pathname));
+    };
+
+    syncPlatformMode();
+    window.addEventListener("popstate", syncPlatformMode);
+    return () => window.removeEventListener("popstate", syncPlatformMode);
+  }, []);
 
   useEffect(() => {
     if (!user) return undefined;
