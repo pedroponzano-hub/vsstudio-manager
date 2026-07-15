@@ -1,17 +1,30 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DEMO_SERVICES } from "../utils/availabilityDemo.js";
 
+const demoPaymentMethods = ["Efectivo", "Tarjeta", "Bizum", "Bono / tarjeta regalo", "Treatwell", "Otro"];
+
 function formatMoney(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
+}
+
+function cents(value) {
+  return Math.round(Number(value || 0) * 100);
+}
+
+function emptyPaymentLine() {
+  return { method: "", amount: "" };
 }
 
 function AppointmentDetailModalDemo({ appointment, onClose }) {
   const [mode, setMode] = useState("detail");
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("Tarjeta");
+  const [singlePaymentAmount, setSinglePaymentAmount] = useState("");
   const [useSplitPayment, setUseSplitPayment] = useState(false);
+  const [payments, setPayments] = useState([emptyPaymentLine()]);
   const [observations, setObservations] = useState("");
+  const [paymentError, setPaymentError] = useState("");
 
   const service = useMemo(() => (
     DEMO_SERVICES.find((item) => item.id === appointment?.serviceId || item.name === appointment?.serviceName)
@@ -24,9 +37,53 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   const total = Math.max(0, basePrice - effectiveDiscount);
   const commissionPercent = 40;
   const commissionAmount = total * commissionPercent / 100;
-  const splitCardAmount = total > 0 ? Math.round((total * 0.6) * 100) / 100 : 0;
-  const splitCashAmount = Math.max(0, Math.round((total - splitCardAmount) * 100) / 100);
   const demoSaleId = `demo-sale-${appointment.id}`;
+  const singlePaidTotal = Number(singlePaymentAmount || 0);
+  const splitPaidTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const paidTotal = useSplitPayment ? splitPaidTotal : singlePaidTotal;
+  const paymentDifference = total - paidTotal;
+
+  useEffect(() => {
+    if (!useSplitPayment) setSinglePaymentAmount(total.toFixed(2));
+  }, [total, useSplitPayment]);
+
+  const updatePaymentLine = (index, updates) => {
+    setPayments((current) => current.map((payment, paymentIndex) => (
+      paymentIndex === index ? { ...payment, ...updates } : payment
+    )));
+    setPaymentError("");
+  };
+
+  const addPaymentLine = () => {
+    setPayments((current) => [...current, emptyPaymentLine()]);
+    setPaymentError("");
+  };
+
+  const removePaymentLine = (index) => {
+    setPayments((current) => (current.length > 1 ? current.filter((_, paymentIndex) => paymentIndex !== index) : current));
+    setPaymentError("");
+  };
+
+  const finishDemoPayment = () => {
+    const validPayments = useSplitPayment
+      ? payments.map((payment) => ({ method: payment.method, amount: Number(payment.amount || 0) })).filter((payment) => payment.method && payment.amount > 0)
+      : paymentMethod && Number(singlePaymentAmount || 0) > 0
+        ? [{ method: paymentMethod, amount: Number(singlePaymentAmount || 0) }]
+        : [];
+
+    if (validPayments.length === 0) {
+      setPaymentError("Anade al menos un metodo de pago demo.");
+      return;
+    }
+
+    if (cents(validPayments.reduce((sum, payment) => sum + payment.amount, 0)) !== cents(total)) {
+      setPaymentError(`La suma de pagos debe coincidir con el total. Diferencia: ${formatMoney(total - validPayments.reduce((sum, payment) => sum + payment.amount, 0))}.`);
+      return;
+    }
+
+    setPaymentError("");
+    setMode("complete");
+  };
 
   return (
     <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Detalle de cita demo">
@@ -81,11 +138,7 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
                   <label>
                     Metodo de pago
                     <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-                      <option>Efectivo</option>
-                      <option>Tarjeta</option>
-                      <option>Bizum</option>
-                      <option>Bono / tarjeta regalo</option>
-                      <option>Otro</option>
+                      {demoPaymentMethods.map((method) => <option key={method}>{method}</option>)}
                     </select>
                   </label>
                 </div>
@@ -93,12 +146,53 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
                   <input checked={useSplitPayment} type="checkbox" onChange={(event) => setUseSplitPayment(event.target.checked)} />
                   Pago mixto demo
                 </label>
-                {useSplitPayment && (
-                  <div className="demo-payment-split">
-                    <span>Tarjeta: <b>{formatMoney(splitCardAmount)}</b></span>
-                    <span>Efectivo: <b>{formatMoney(splitCashAmount)}</b></span>
-                  </div>
+                {!useSplitPayment ? (
+                  <label>
+                    Importe
+                    <input
+                      min="0"
+                      step="0.01"
+                      type="number"
+                      value={singlePaymentAmount}
+                      onChange={(event) => { setSinglePaymentAmount(event.target.value); setPaymentError(""); }}
+                    />
+                  </label>
+                ) : (
+                  <section className="quick-client-box demo-payments-box">
+                    <h3>Pagos</h3>
+                    {payments.map((payment, index) => (
+                      <div className="field-row" key={`${index}-${payment.method}`}>
+                        <label>
+                          Metodo
+                          <select value={payment.method} onChange={(event) => updatePaymentLine(index, { method: event.target.value })}>
+                            <option value="">Seleccionar...</option>
+                            {demoPaymentMethods.map((method) => <option key={method}>{method}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Importe
+                          <input
+                            min="0"
+                            step="0.01"
+                            type="number"
+                            value={payment.amount}
+                            onChange={(event) => updatePaymentLine(index, { amount: event.target.value })}
+                          />
+                        </label>
+                        <button className="danger-button" type="button" onClick={() => removePaymentLine(index)}>Eliminar pago</button>
+                      </div>
+                    ))}
+                    <div className="row-actions">
+                      <button className="secondary-button" type="button" onClick={addPaymentLine}>+ Anadir pago</button>
+                    </div>
+                  </section>
                 )}
+                <div className="calculated-row">
+                  <span>Total venta: <b>{formatMoney(total)}</b></span>
+                  <span>Pagado: <b>{formatMoney(paidTotal)}</b></span>
+                  <span>Diferencia: <b>{formatMoney(paymentDifference)}</b></span>
+                </div>
+                {paymentError && <p className="auth-error">{paymentError}</p>}
                 <label>
                   Observaciones
                   <textarea value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="Observaciones demo del cobro" />
@@ -113,7 +207,7 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
             </section>
 
             <div className="reset-actions">
-              <button type="button" onClick={() => setMode("complete")}>Cobrar y finalizar demo</button>
+              <button type="button" onClick={finishDemoPayment}>Cobrar y finalizar demo</button>
               <button className="secondary-button" type="button" onClick={() => setMode("detail")}>Volver al detalle</button>
             </div>
           </>
