@@ -1891,6 +1891,28 @@ h3 {
   gap: 14px;
 }
 
+.commercial-details-panel {
+  display: block;
+}
+
+.commercial-details-panel summary {
+  color: #171412;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.commercial-details-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.commercial-notes-field {
+  grid-column: 1 / -1;
+}
+
 .demo-client-mode {
   display: flex;
   flex-wrap: wrap;
@@ -2139,7 +2161,8 @@ h3 {
   .availability-results,
   .day-agenda-demo-layout,
   .appointment-modal-summary,
-  .checkout-demo-grid {
+  .checkout-demo-grid,
+  .commercial-details-grid {
     grid-template-columns: 1fr;
   }
 }

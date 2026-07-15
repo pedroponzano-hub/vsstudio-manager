@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import {
+  DEMO_APPOINTMENT_SOURCES,
   DEMO_CLIENTS,
   DEMO_PROFESSIONALS,
   DEMO_SERVICES,
@@ -11,6 +12,12 @@ import {
 } from "../utils/availabilityDemo.js";
 
 const emptyClientDraft = { name: "", phone: "" };
+const defaultCommercialDetails = {
+  appointmentSource: "Walk-in",
+  treatwellCommissionPercent: "25",
+  referralText: "",
+  appointmentNotes: "",
+};
 
 function getLocalCurrentMinutes() {
   const now = new Date();
@@ -34,6 +41,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   const [clientMode, setClientMode] = useState("existing");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientDraft, setClientDraft] = useState(emptyClientDraft);
+  const [commercialDetails, setCommercialDetails] = useState(defaultCommercialDetails);
 
   const selectedService = DEMO_SERVICES.find((service) => service.id === serviceId);
   const enabledProfessionals = useMemo(() => (
@@ -65,6 +73,10 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   const appointmentType = selectedSlot ? automaticAppointmentType(selectedDate, selectedSlot.start) : "";
 
   const resetSlot = () => setSelectedSlot(null);
+  const updateCommercialDetail = (event) => {
+    const { name, value } = event.target;
+    setCommercialDetails((current) => ({ ...current, [name]: value }));
+  };
 
   return (
     <section className="demo-appointment-flow">
@@ -178,6 +190,56 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
         </section>
       )}
 
+      {selectedSlot && (
+        <details className="panel commercial-details-panel">
+          <summary>Origen y detalles</summary>
+          <div className="commercial-details-grid">
+            <label>
+              Origen de la cita
+              <select name="appointmentSource" value={commercialDetails.appointmentSource} onChange={updateCommercialDetail}>
+                {DEMO_APPOINTMENT_SOURCES.map((source) => <option key={source}>{source}</option>)}
+              </select>
+            </label>
+            {commercialDetails.appointmentSource === "Treatwell" && (
+              <label>
+                Comision Treatwell %
+                <input
+                  min="0"
+                  name="treatwellCommissionPercent"
+                  step="0.01"
+                  type="number"
+                  value={commercialDetails.treatwellCommissionPercent}
+                  onChange={updateCommercialDetail}
+                />
+              </label>
+            )}
+            <label>
+              Referido por
+              <input
+                name="referralText"
+                value={commercialDetails.referralText}
+                onChange={updateCommercialDetail}
+                placeholder="Cliente existente o texto libre demo"
+              />
+            </label>
+            <label>
+              Precio previsto
+              <input readOnly value={selectedService?.price ? `${selectedService.price.toFixed(2)} EUR` : "No disponible"} />
+            </label>
+            <label className="commercial-notes-field">
+              Observaciones de la cita
+              <textarea
+                name="appointmentNotes"
+                value={commercialDetails.appointmentNotes}
+                onChange={updateCommercialDetail}
+                placeholder="Notas operativas para recepcion y profesional"
+              />
+            </label>
+          </div>
+          <p className="empty-state">Informacion comercial de la cita. No es metodo de pago ni total cobrado.</p>
+        </details>
+      )}
+
       {canShowSummary && (
         <section className="panel demo-appointment-summary">
           <div>
@@ -192,6 +254,11 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
             <span><b>Profesional:</b> {selectedSlot.professionalName}</span>
             <span><b>Cliente:</b> {selectedClient.name}</span>
             <span><b>Tipo automatico:</b> {appointmentType}</span>
+            <span><b>appointmentSource:</b> {commercialDetails.appointmentSource}</span>
+            <span><b>treatwellCommissionPercent:</b> {commercialDetails.appointmentSource === "Treatwell" ? `${commercialDetails.treatwellCommissionPercent || 0}%` : "No aplica"}</span>
+            <span><b>referralText:</b> {commercialDetails.referralText || "Sin indicar"}</span>
+            <span><b>appointmentNotes:</b> {commercialDetails.appointmentNotes || "Sin notas"}</span>
+            <span><b>expectedPrice:</b> {selectedService?.price ? `${selectedService.price.toFixed(2)} EUR` : "No disponible"}</span>
             <span><b>Estado sugerido:</b> Confirmada</span>
           </div>
         </section>

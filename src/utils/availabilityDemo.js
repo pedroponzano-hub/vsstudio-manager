@@ -1,5 +1,16 @@
 export const DEMO_SLOT_INTERVALS = [5, 10, 15, 30];
 
+export const DEMO_APPOINTMENT_SOURCES = [
+  "Walk-in",
+  "Treatwell",
+  "Instagram",
+  "Google",
+  "WhatsApp",
+  "Web",
+  "Recomendación",
+  "Otros",
+];
+
 export const DEMO_SERVICES = [
   { id: "mani-semi", name: "Manicura semipermanente demo", duration: 45, price: 20 },
   { id: "cejas-diseno", name: "Diseno de cejas demo", duration: 30, price: 18 },
