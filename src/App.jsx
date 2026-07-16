@@ -318,7 +318,10 @@ function buildVisibleNavigation(allowedTabIds, role, platformMode) {
   return sectionsForRole
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => allowedTabIds.includes(item.tabId)),
+      items: section.items.filter((item) => (
+        allowedTabIds.includes(item.tabId)
+        && !(platformMode === "pos" && item.pageId === "agenda.appointments")
+      )),
     }))
     .filter((section) => section.items.length > 0);
 }
