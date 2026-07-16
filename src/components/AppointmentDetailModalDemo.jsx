@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { DEMO_SERVICES } from "../utils/availabilityDemo.js";
+import { DEMO_SERVICES, DEMO_TREATWELL_BOOKING_TYPES } from "../utils/availabilityDemo.js";
 
 const demoPaymentMethods = ["Efectivo", "Tarjeta", "Bizum", "Bono / tarjeta regalo", "Treatwell", "Otro"];
 
@@ -14,6 +14,10 @@ function cents(value) {
 
 function emptyPaymentLine() {
   return { method: "", amount: "" };
+}
+
+function treatwellBookingLabel(typeId) {
+  return DEMO_TREATWELL_BOOKING_TYPES.find((item) => item.id === typeId)?.label || "No indicado";
 }
 
 function AppointmentDetailModalDemo({ appointment, onClose }) {
@@ -33,8 +37,14 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   if (!appointment) return null;
 
   const basePrice = service?.price || 30;
+  const isTreatwell = appointment.appointmentSource === "Treatwell" || Boolean(appointment.treatwellBookingType);
+  const isTreatwellPrepaid = isTreatwell && appointment.isPrepaid;
+  const salonDue = Number(appointment.amountDueAtSalon ?? basePrice);
+  const prepaidAmount = Number(appointment.prepaidAmount || 0);
+  const treatwellCommissionPercent = Number(appointment.treatwellCommissionPercent || 0);
+  const treatwellCommissionAmount = basePrice * treatwellCommissionPercent / 100;
   const effectiveDiscount = Math.max(0, Number(discount || 0));
-  const total = Math.max(0, basePrice - effectiveDiscount);
+  const total = isTreatwellPrepaid ? 0 : Math.max(0, salonDue - effectiveDiscount);
   const commissionPercent = 40;
   const commissionAmount = total * commissionPercent / 100;
   const demoSaleId = `demo-sale-${appointment.id}`;
@@ -46,6 +56,14 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   useEffect(() => {
     if (!useSplitPayment) setSinglePaymentAmount(total.toFixed(2));
   }, [total, useSplitPayment]);
+
+  useEffect(() => {
+    if (isTreatwellPrepaid) {
+      setPaymentMethod("Treatwell");
+      setUseSplitPayment(false);
+      setSinglePaymentAmount("0.00");
+    }
+  }, [isTreatwellPrepaid]);
 
   const updatePaymentLine = (index, updates) => {
     setPayments((current) => current.map((payment, paymentIndex) => (
@@ -65,6 +83,12 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   };
 
   const finishDemoPayment = () => {
+    if (isTreatwellPrepaid) {
+      setPaymentError("");
+      setMode("complete");
+      return;
+    }
+
     const validPayments = useSplitPayment
       ? payments.map((payment) => ({ method: payment.method, amount: Number(payment.amount || 0) })).filter((payment) => payment.method && payment.amount > 0)
       : paymentMethod && Number(singlePaymentAmount || 0) > 0
@@ -84,6 +108,17 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
     setPaymentError("");
     setMode("complete");
   };
+
+  const treatwellInfo = isTreatwell ? (
+    <div className="treatwell-demo-info appointment-treatwell-info">
+      <span><b>Origen:</b> Treatwell</span>
+      <span><b>Tipo de reserva:</b> {treatwellBookingLabel(appointment.treatwellBookingType)}</span>
+      <span><b>Comision Treatwell:</b> {treatwellCommissionPercent}% - {formatMoney(treatwellCommissionAmount)}</span>
+      <span><b>Estado de pago:</b> {isTreatwellPrepaid ? "Prepaga en Treatwell" : "Pendiente de cobro en centro"}</span>
+      <span><b>Pagado previamente:</b> {formatMoney(prepaidAmount)}</span>
+      <span><b>Pendiente en centro:</b> {formatMoney(salonDue)}</span>
+    </div>
+  ) : null;
 
   return (
     <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Detalle de cita demo">
@@ -108,6 +143,7 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
               <span><b>Duracion:</b> {appointment.duration}</span>
               <span><b>Estado:</b> {appointment.status}</span>
             </div>
+            {treatwellInfo}
             <div className="reset-actions">
               <button type="button" onClick={() => setMode("checkout")}>Cobrar demo</button>
               <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
@@ -126,71 +162,84 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
                   <span><b>Profesional:</b> {appointment.employee}</span>
                   <span><b>Precio demo:</b> {formatMoney(basePrice)}</span>
                 </div>
+                {treatwellInfo}
               </section>
 
               <section className="checkout-demo-block">
                 <h3>Cobro</h3>
-                <div className="field-row">
-                  <label>
-                    Descuento demo
-                    <input min="0" type="number" value={discount} onChange={(event) => setDiscount(event.target.value)} />
-                  </label>
-                  <label>
-                    Metodo de pago
-                    <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-                      {demoPaymentMethods.map((method) => <option key={method}>{method}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <label className="inline-check">
-                  <input checked={useSplitPayment} type="checkbox" onChange={(event) => setUseSplitPayment(event.target.checked)} />
-                  Pago mixto demo
-                </label>
-                {!useSplitPayment ? (
-                  <label>
-                    Importe
-                    <input
-                      min="0"
-                      step="0.01"
-                      type="number"
-                      value={singlePaymentAmount}
-                      onChange={(event) => { setSinglePaymentAmount(event.target.value); setPaymentError(""); }}
-                    />
-                  </label>
+                {isTreatwellPrepaid ? (
+                  <div className="prepaid-demo-box">
+                    <strong>Reserva pagada en Treatwell</strong>
+                    <span>Metodo conceptual: {appointment.prepaidMethod || "Treatwell"}</span>
+                    <span>Importe ya pagado: {formatMoney(prepaidAmount)}</span>
+                    <span>Diferencia pendiente: {formatMoney(0)}</span>
+                    <small>No se permite un segundo cobro en este flujo demo.</small>
+                  </div>
                 ) : (
-                  <section className="quick-client-box demo-payments-box">
-                    <h3>Pagos</h3>
-                    {payments.map((payment, index) => (
-                      <div className="field-row" key={`${index}-${payment.method}`}>
-                        <label>
-                          Metodo
-                          <select value={payment.method} onChange={(event) => updatePaymentLine(index, { method: event.target.value })}>
-                            <option value="">Seleccionar...</option>
-                            {demoPaymentMethods.map((method) => <option key={method}>{method}</option>)}
-                          </select>
-                        </label>
-                        <label>
-                          Importe
-                          <input
-                            min="0"
-                            step="0.01"
-                            type="number"
-                            value={payment.amount}
-                            onChange={(event) => updatePaymentLine(index, { amount: event.target.value })}
-                          />
-                        </label>
-                        <button className="danger-button" type="button" onClick={() => removePaymentLine(index)}>Eliminar pago</button>
-                      </div>
-                    ))}
-                    <div className="row-actions">
-                      <button className="secondary-button" type="button" onClick={addPaymentLine}>+ Anadir pago</button>
+                  <>
+                    <div className="field-row">
+                      <label>
+                        Descuento demo
+                        <input min="0" type="number" value={discount} onChange={(event) => setDiscount(event.target.value)} />
+                      </label>
+                      <label>
+                        Metodo de pago
+                        <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+                          {demoPaymentMethods.map((method) => <option key={method}>{method}</option>)}
+                        </select>
+                      </label>
                     </div>
-                  </section>
+                    <label className="inline-check">
+                      <input checked={useSplitPayment} type="checkbox" onChange={(event) => setUseSplitPayment(event.target.checked)} />
+                      Pago mixto demo
+                    </label>
+                    {!useSplitPayment ? (
+                      <label>
+                        Importe
+                        <input
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          value={singlePaymentAmount}
+                          onChange={(event) => { setSinglePaymentAmount(event.target.value); setPaymentError(""); }}
+                        />
+                      </label>
+                    ) : (
+                      <section className="quick-client-box demo-payments-box">
+                        <h3>Pagos</h3>
+                        {payments.map((payment, index) => (
+                          <div className="field-row" key={`${index}-${payment.method}`}>
+                            <label>
+                              Metodo
+                              <select value={payment.method} onChange={(event) => updatePaymentLine(index, { method: event.target.value })}>
+                                <option value="">Seleccionar...</option>
+                                {demoPaymentMethods.map((method) => <option key={method}>{method}</option>)}
+                              </select>
+                            </label>
+                            <label>
+                              Importe
+                              <input
+                                min="0"
+                                step="0.01"
+                                type="number"
+                                value={payment.amount}
+                                onChange={(event) => updatePaymentLine(index, { amount: event.target.value })}
+                              />
+                            </label>
+                            <button className="danger-button" type="button" onClick={() => removePaymentLine(index)}>Eliminar pago</button>
+                          </div>
+                        ))}
+                        <div className="row-actions">
+                          <button className="secondary-button" type="button" onClick={addPaymentLine}>+ Anadir pago</button>
+                        </div>
+                      </section>
+                    )}
+                  </>
                 )}
                 <div className="calculated-row">
-                  <span>Total venta: <b>{formatMoney(total)}</b></span>
-                  <span>Pagado: <b>{formatMoney(paidTotal)}</b></span>
-                  <span>Diferencia: <b>{formatMoney(paymentDifference)}</b></span>
+                  <span>{isTreatwellPrepaid ? "Total venta bruto" : "Total venta"}: <b>{formatMoney(isTreatwellPrepaid ? basePrice : total)}</b></span>
+                  <span>{isTreatwellPrepaid ? "Pagado en Treatwell" : "Pagado"}: <b>{formatMoney(isTreatwellPrepaid ? prepaidAmount : paidTotal)}</b></span>
+                  <span>Diferencia pendiente: <b>{formatMoney(isTreatwellPrepaid ? 0 : paymentDifference)}</b></span>
                 </div>
                 {paymentError && <p className="auth-error">{paymentError}</p>}
                 <label>
@@ -201,13 +250,14 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
             </div>
 
             <section className="checkout-demo-total">
-              <span><b>Comision demo:</b> {commissionPercent}% - {formatMoney(commissionAmount)}</span>
-              <span><b>Total:</b> {formatMoney(total)}</span>
+              <span><b>Comision demo profesional:</b> {commissionPercent}% - {formatMoney(commissionAmount)}</span>
+              {isTreatwell && <span><b>Comision Treatwell separada:</b> {treatwellCommissionPercent}% - {formatMoney(treatwellCommissionAmount)}</span>}
+              <span><b>Total a cobrar en centro:</b> {formatMoney(total)}</span>
               <small>Preparado para futura relacion appointmentId: {appointment.id}, saleId: {demoSaleId}, services, payments y estado pagada.</small>
             </section>
 
             <div className="reset-actions">
-              <button type="button" onClick={finishDemoPayment}>Cobrar y finalizar demo</button>
+              <button type="button" onClick={finishDemoPayment}>{isTreatwellPrepaid ? "Finalizar servicio demo" : "Cobrar y finalizar demo"}</button>
               <button className="secondary-button" type="button" onClick={() => setMode("detail")}>Volver al detalle</button>
             </div>
           </>
@@ -215,7 +265,7 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
 
         {mode === "complete" && (
           <section className="checkout-demo-complete">
-            <strong>Cobro demo completado — no se ha guardado ningún dato</strong>
+            <strong>{isTreatwellPrepaid ? "Servicio demo finalizado - no se ha guardado ningun dato" : "Cobro demo completado - no se ha guardado ningun dato"}</strong>
             <p>En la version real se crearia la venta, se vincularia con la cita y se marcaria como pagada/finalizada.</p>
             <button type="button" onClick={onClose}>Cerrar</button>
           </section>

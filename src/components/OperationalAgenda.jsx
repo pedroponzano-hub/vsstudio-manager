@@ -84,6 +84,13 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           employee: valueOrFallback(appointment.employee),
           duration: formatDuration(appointment.duration || service.duration),
           status: valueOrFallback(appointment.status || "Pendiente"),
+          appointmentSource: appointment.appointmentSource || "",
+          treatwellBookingType: appointment.treatwellBookingType || "",
+          treatwellCommissionPercent: appointment.treatwellCommissionPercent || 0,
+          isPrepaid: Boolean(appointment.isPrepaid),
+          prepaidMethod: appointment.prepaidMethod || null,
+          prepaidAmount: Number(appointment.prepaidAmount || 0),
+          amountDueAtSalon: Number(appointment.amountDueAtSalon ?? service.price ?? 0),
         };
       })
       .sort((first, second) => String(first.time || "99:99").localeCompare(String(second.time || "99:99")))

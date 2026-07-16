@@ -1993,6 +1993,42 @@ h3 {
   grid-column: 1 / -1;
 }
 
+.treatwell-demo-info {
+  background: #f7f2ea;
+  border: 1px solid #e7d8bf;
+  border-left: 4px solid #c9a96a;
+  border-radius: 10px;
+  color: #2a241f;
+  display: grid;
+  gap: 6px;
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+}
+
+.treatwell-demo-info span {
+  font-size: 0.86rem;
+}
+
+.appointment-treatwell-info {
+  margin-top: 12px;
+}
+
+.prepaid-demo-box {
+  background: #f3f6ff;
+  border: 1px solid #d6def5;
+  border-left: 4px solid #7c8edc;
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.prepaid-demo-box span,
+.prepaid-demo-box small {
+  color: #4f5976;
+  font-size: 0.86rem;
+}
+
 .demo-client-mode {
   display: flex;
   flex-wrap: wrap;

@@ -7,6 +7,7 @@ import {
   DEMO_PROFESSIONALS,
   DEMO_SERVICES,
   DEMO_SLOT_INTERVALS,
+  DEMO_TREATWELL_BOOKING_TYPES,
   calculateDemoAvailability,
   formatMinutes,
   minutesToTime,
@@ -15,7 +16,12 @@ import {
 const emptyClientDraft = { name: "", phone: "" };
 const defaultCommercialDetails = {
   appointmentSource: "Walk-in",
-  treatwellCommissionPercent: "25",
+  treatwellBookingType: "",
+  treatwellCommissionPercent: "",
+  isPrepaid: false,
+  prepaidMethod: null,
+  prepaidAmount: 0,
+  amountDueAtSalon: 0,
   referralText: "",
   appointmentNotes: "",
 };
@@ -31,6 +37,29 @@ function automaticAppointmentType(date, slotStart) {
   if (date > todayText) return "Reservada";
   if (date < todayText) return "Reservada";
   return slotStart <= getLocalCurrentMinutes() + 30 ? "Walk-in / Sin reserva previa" : "Reservada";
+}
+
+function resolveTreatwellDetails(bookingTypeId, expectedPrice) {
+  const bookingType = DEMO_TREATWELL_BOOKING_TYPES.find((item) => item.id === bookingTypeId);
+  if (!bookingType) {
+    return {
+      treatwellBookingType: "",
+      treatwellCommissionPercent: "",
+      isPrepaid: false,
+      prepaidMethod: null,
+      prepaidAmount: 0,
+      amountDueAtSalon: expectedPrice,
+    };
+  }
+
+  return {
+    treatwellBookingType: bookingType.id,
+    treatwellCommissionPercent: bookingType.commissionPercent,
+    isPrepaid: bookingType.isPrepaid,
+    prepaidMethod: bookingType.prepaidMethod,
+    prepaidAmount: bookingType.isPrepaid ? expectedPrice : 0,
+    amountDueAtSalon: bookingType.isPrepaid ? 0 : expectedPrice,
+  };
 }
 
 function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
@@ -70,7 +99,22 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   const selectedClient = clientMode === "existing"
     ? DEMO_CLIENTS.find((client) => client.id === selectedClientId)
     : { id: "demo-new-client", ...clientDraft };
-  const canShowSummary = selectedSlot && selectedClient?.name;
+  const expectedPrice = Number(selectedService?.price || 0);
+  const resolvedCommercialDetails = {
+    ...commercialDetails,
+    ...(commercialDetails.appointmentSource === "Treatwell"
+      ? resolveTreatwellDetails(commercialDetails.treatwellBookingType, expectedPrice)
+      : {
+        treatwellBookingType: "",
+        treatwellCommissionPercent: "",
+        isPrepaid: false,
+        prepaidMethod: null,
+        prepaidAmount: 0,
+        amountDueAtSalon: expectedPrice,
+      }),
+  };
+  const treatwellTypeRequired = commercialDetails.appointmentSource === "Treatwell" && !commercialDetails.treatwellBookingType;
+  const canShowSummary = selectedSlot && selectedClient?.name && !treatwellTypeRequired;
   const appointmentType = selectedSlot ? automaticAppointmentType(selectedDate, selectedSlot.start) : "";
 
   const resetSlot = () => setSelectedSlot(null);
@@ -81,7 +125,30 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   };
   const updateCommercialDetail = (event) => {
     const { name, value } = event.target;
-    setCommercialDetails((current) => ({ ...current, [name]: value }));
+    setCommercialDetails((current) => {
+      if (name === "appointmentSource" && value !== "Treatwell") {
+        return {
+          ...current,
+          appointmentSource: value,
+          treatwellBookingType: "",
+          treatwellCommissionPercent: "",
+          isPrepaid: false,
+          prepaidMethod: null,
+          prepaidAmount: 0,
+          amountDueAtSalon: expectedPrice,
+        };
+      }
+
+      if (name === "treatwellBookingType") {
+        return {
+          ...current,
+          appointmentSource: "Treatwell",
+          ...resolveTreatwellDetails(value, expectedPrice),
+        };
+      }
+
+      return { ...current, [name]: value };
+    });
   };
 
   return (
@@ -210,16 +277,23 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
             </label>
             {commercialDetails.appointmentSource === "Treatwell" && (
               <label>
-                Comision Treatwell %
-                <input
-                  min="0"
-                  name="treatwellCommissionPercent"
-                  step="0.01"
-                  type="number"
-                  value={commercialDetails.treatwellCommissionPercent}
-                  onChange={updateCommercialDetail}
-                />
+                Tipo de reserva Treatwell
+                <select name="treatwellBookingType" value={commercialDetails.treatwellBookingType} onChange={updateCommercialDetail} required>
+                  <option value="">Seleccionar tipo...</option>
+                  {DEMO_TREATWELL_BOOKING_TYPES.map((bookingType) => (
+                    <option key={bookingType.id} value={bookingType.id}>{bookingType.label}</option>
+                  ))}
+                </select>
               </label>
+            )}
+            {treatwellTypeRequired && <p className="auth-error">Selecciona el tipo de reserva Treatwell para completar el resumen demo.</p>}
+            {commercialDetails.appointmentSource === "Treatwell" && commercialDetails.treatwellBookingType && (
+              <div className="treatwell-demo-info">
+                <span><b>Comision Treatwell:</b> {resolvedCommercialDetails.treatwellCommissionPercent}%</span>
+                <span><b>Estado:</b> {resolvedCommercialDetails.isPrepaid ? "Prepaga en Treatwell" : "Pendiente de cobro en centro"}</span>
+                <span><b>Pagado previamente:</b> {resolvedCommercialDetails.prepaidAmount.toFixed(2)} EUR</span>
+                <span><b>Pendiente en centro:</b> {resolvedCommercialDetails.amountDueAtSalon.toFixed(2)} EUR</span>
+              </div>
             )}
             <label>
               Referido por
@@ -262,11 +336,16 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
             <span><b>Profesional:</b> {selectedSlot.professionalName}</span>
             <span><b>Cliente:</b> {selectedClient.name}</span>
             <span><b>Tipo automatico:</b> {appointmentType}</span>
-            <span><b>appointmentSource:</b> {commercialDetails.appointmentSource}</span>
-            <span><b>treatwellCommissionPercent:</b> {commercialDetails.appointmentSource === "Treatwell" ? `${commercialDetails.treatwellCommissionPercent || 0}%` : "No aplica"}</span>
+            <span><b>appointmentSource:</b> {resolvedCommercialDetails.appointmentSource}</span>
+            <span><b>treatwellBookingType:</b> {resolvedCommercialDetails.treatwellBookingType || "No aplica"}</span>
+            <span><b>treatwellCommissionPercent:</b> {resolvedCommercialDetails.treatwellCommissionPercent ? `${resolvedCommercialDetails.treatwellCommissionPercent}%` : "No aplica"}</span>
+            <span><b>isPrepaid:</b> {resolvedCommercialDetails.isPrepaid ? "true" : "false"}</span>
+            <span><b>prepaidMethod:</b> {resolvedCommercialDetails.prepaidMethod || "No aplica"}</span>
+            <span><b>prepaidAmount:</b> {resolvedCommercialDetails.prepaidAmount.toFixed(2)} EUR</span>
+            <span><b>amountDueAtSalon:</b> {resolvedCommercialDetails.amountDueAtSalon.toFixed(2)} EUR</span>
             <span><b>referralText:</b> {commercialDetails.referralText || "Sin indicar"}</span>
             <span><b>appointmentNotes:</b> {commercialDetails.appointmentNotes || "Sin notas"}</span>
-            <span><b>expectedPrice:</b> {selectedService?.price ? `${selectedService.price.toFixed(2)} EUR` : "No disponible"}</span>
+            <span><b>expectedPrice:</b> {selectedService?.price ? `${expectedPrice.toFixed(2)} EUR` : "No disponible"}</span>
             <span><b>Estado sugerido:</b> Confirmada</span>
           </div>
         </section>

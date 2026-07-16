@@ -11,6 +11,23 @@ export const DEMO_APPOINTMENT_SOURCES = [
   "Otros",
 ];
 
+export const DEMO_TREATWELL_BOOKING_TYPES = [
+  {
+    id: "commission_25",
+    label: "Reserva Treatwell con comision del 25 %",
+    commissionPercent: 25,
+    isPrepaid: false,
+    prepaidMethod: null,
+  },
+  {
+    id: "prepaid_2",
+    label: "Reserva pagada en Treatwell - comision del 2 %",
+    commissionPercent: 2,
+    isPrepaid: true,
+    prepaidMethod: "Treatwell",
+  },
+];
+
 export const DEMO_SERVICES = [
   { id: "mani-semi", category: "Manicura", name: "Manicura semipermanente demo", duration: 45, price: 20 },
   { id: "cejas-diseno", category: "Cejas", name: "Diseno de cejas demo", duration: 30, price: 18 },
@@ -135,6 +152,13 @@ export function demoAppointmentsForDate(date) {
       employee: "Ambar",
       duration: "30 min",
       status: "Cliente llegado",
+      appointmentSource: "Treatwell",
+      treatwellBookingType: "commission_25",
+      treatwellCommissionPercent: 25,
+      isPrepaid: false,
+      prepaidMethod: null,
+      prepaidAmount: 0,
+      amountDueAtSalon: 18,
     },
     {
       id: "demo-agenda-servicio",
@@ -159,6 +183,13 @@ export function demoAppointmentsForDate(date) {
       employee: "Leidys",
       duration: "1 h 15 min",
       status: "Pendiente de cobro",
+      appointmentSource: "Treatwell",
+      treatwellBookingType: "prepaid_2",
+      treatwellCommissionPercent: 2,
+      isPrepaid: true,
+      prepaidMethod: "Treatwell",
+      prepaidAmount: 28,
+      amountDueAtSalon: 0,
     },
     {
       id: "demo-agenda-finalizada",
