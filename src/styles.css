@@ -1834,6 +1834,63 @@ h3 {
   gap: 6px;
 }
 
+.searchable-combobox {
+  position: relative;
+}
+
+.searchable-combobox-input {
+  width: 100%;
+}
+
+.searchable-combobox-list {
+  background: #fff;
+  border: 1px solid #e1dbcf;
+  border-radius: 8px;
+  box-shadow: 0 18px 45px rgba(44, 36, 24, 0.14);
+  display: grid;
+  gap: 4px;
+  left: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 45;
+}
+
+.searchable-combobox-option {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #171412;
+  min-height: 54px;
+  padding: 10px;
+  text-align: left;
+}
+
+.searchable-combobox-option:hover,
+.searchable-combobox-option.highlighted {
+  background: #fbf8f1;
+}
+
+.searchable-combobox-empty {
+  color: #786f64;
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 12px;
+}
+
+.service-combobox-result {
+  display: grid;
+  gap: 4px;
+}
+
+.service-combobox-result small {
+  color: #786f64;
+  font-size: 0.82rem;
+}
+
 .availability-results {
   display: grid;
   gap: 8px;

@@ -12,12 +12,12 @@ export const DEMO_APPOINTMENT_SOURCES = [
 ];
 
 export const DEMO_SERVICES = [
-  { id: "mani-semi", name: "Manicura semipermanente demo", duration: 45, price: 20 },
-  { id: "cejas-diseno", name: "Diseno de cejas demo", duration: 30, price: 18 },
-  { id: "lifting-pestanas", name: "Lifting de pestanas demo", duration: 60, price: 35 },
-  { id: "pedicura-completa", name: "Pedicura completa demo", duration: 75, price: 28 },
-  { id: "facial-demo", name: "Tratamiento facial demo", duration: 60, price: 60 },
-  { id: "masaje-demo", name: "Masaje corporal demo", duration: 45, price: 35 },
+  { id: "mani-semi", category: "Manicura", name: "Manicura semipermanente demo", duration: 45, price: 20 },
+  { id: "cejas-diseno", category: "Cejas", name: "Diseno de cejas demo", duration: 30, price: 18 },
+  { id: "lifting-pestanas", category: "Pestanas", name: "Lifting de pestanas demo", duration: 60, price: 35 },
+  { id: "pedicura-completa", category: "Pedicura", name: "Pedicura completa demo", duration: 75, price: 28 },
+  { id: "facial-demo", category: "Facial", name: "Tratamiento facial demo", duration: 60, price: 60 },
+  { id: "masaje-demo", category: "Corporal", name: "Masaje corporal demo", duration: 45, price: 35 },
 ];
 
 export const DEMO_PROFESSIONALS = [

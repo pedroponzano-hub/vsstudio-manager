@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import SearchableCombobox from "./SearchableCombobox.jsx";
 import {
   DEMO_APPOINTMENT_SOURCES,
   DEMO_CLIENTS,
@@ -73,6 +74,11 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   const appointmentType = selectedSlot ? automaticAppointmentType(selectedDate, selectedSlot.start) : "";
 
   const resetSlot = () => setSelectedSlot(null);
+  const selectService = (service) => {
+    setServiceId(service?.id || "");
+    setProfessionalId("any");
+    resetSlot();
+  };
   const updateCommercialDetail = (event) => {
     const { name, value } = event.target;
     setCommercialDetails((current) => ({ ...current, [name]: value }));
@@ -91,19 +97,21 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
         <div className="availability-controls new-appointment-controls">
           <label>
             Servicio
-            <select
-              value={serviceId}
-              onChange={(event) => {
-                setServiceId(event.target.value);
-                setProfessionalId("any");
-                resetSlot();
-              }}
-            >
-              <option value="">Seleccionar servicio</option>
-              {DEMO_SERVICES.map((service) => (
-                <option key={service.id} value={service.id}>{service.name} - {formatMinutes(service.duration)}</option>
-              ))}
-            </select>
+            <SearchableCombobox
+              emptyMessage="No se encontraron servicios"
+              getLabel={(service) => service?.name || ""}
+              getSearchText={(service) => [service?.name, service?.category].filter(Boolean).join(" ")}
+              items={DEMO_SERVICES}
+              onChange={selectService}
+              placeholder="Buscar servicio..."
+              renderItem={(service) => (
+                <span className="service-combobox-result">
+                  <strong>{service.name}</strong>
+                  <small>{[service.category, formatMinutes(service.duration), service.price ? `${service.price.toFixed(2)} EUR` : ""].filter(Boolean).join(" - ")}</small>
+                </span>
+              )}
+              value={selectedService || null}
+            />
           </label>
           <label>
             Fecha
