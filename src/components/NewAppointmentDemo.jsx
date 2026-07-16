@@ -115,6 +115,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   };
   const treatwellTypeRequired = commercialDetails.appointmentSource === "Treatwell" && !commercialDetails.treatwellBookingType;
   const canShowSummary = selectedSlot && selectedClient?.name && !treatwellTypeRequired;
+  const canShowCommercialDetails = selectedSlot && selectedClient?.name;
   const appointmentType = selectedSlot ? automaticAppointmentType(selectedDate, selectedSlot.start) : "";
 
   const resetSlot = () => setSelectedSlot(null);
@@ -265,7 +266,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
         </section>
       )}
 
-      {selectedSlot && (
+      {canShowCommercialDetails && (
         <details className="panel commercial-details-panel">
           <summary>Origen y detalles</summary>
           <div className="commercial-details-grid">

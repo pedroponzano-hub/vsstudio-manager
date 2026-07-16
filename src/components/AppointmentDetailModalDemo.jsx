@@ -29,6 +29,7 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   const [payments, setPayments] = useState([emptyPaymentLine()]);
   const [observations, setObservations] = useState("");
   const [paymentError, setPaymentError] = useState("");
+  const [checkoutTreatwellCommissionPercent, setCheckoutTreatwellCommissionPercent] = useState(appointment?.treatwellCommissionPercent || 0);
 
   const service = useMemo(() => (
     DEMO_SERVICES.find((item) => item.id === appointment?.serviceId || item.name === appointment?.serviceName)
@@ -41,12 +42,13 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   const isTreatwellPrepaid = isTreatwell && appointment.isPrepaid;
   const salonDue = Number(appointment.amountDueAtSalon ?? basePrice);
   const prepaidAmount = Number(appointment.prepaidAmount || 0);
-  const treatwellCommissionPercent = Number(appointment.treatwellCommissionPercent || 0);
+  const treatwellCommissionPercent = Number(checkoutTreatwellCommissionPercent || 0);
   const treatwellCommissionAmount = basePrice * treatwellCommissionPercent / 100;
   const effectiveDiscount = Math.max(0, Number(discount || 0));
   const total = isTreatwellPrepaid ? 0 : Math.max(0, salonDue - effectiveDiscount);
   const commissionPercent = 40;
   const commissionAmount = total * commissionPercent / 100;
+  const demoResultAfterCommissions = basePrice - commissionAmount - treatwellCommissionAmount;
   const demoSaleId = `demo-sale-${appointment.id}`;
   const singlePaidTotal = Number(singlePaymentAmount || 0);
   const splitPaidTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
@@ -64,6 +66,10 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
       setSinglePaymentAmount("0.00");
     }
   }, [isTreatwellPrepaid]);
+
+  useEffect(() => {
+    setCheckoutTreatwellCommissionPercent(appointment.treatwellCommissionPercent || 0);
+  }, [appointment.id, appointment.treatwellCommissionPercent]);
 
   const updatePaymentLine = (index, updates) => {
     setPayments((current) => current.map((payment, paymentIndex) => (
@@ -111,12 +117,26 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
 
   const treatwellInfo = isTreatwell ? (
     <div className="treatwell-demo-info appointment-treatwell-info">
+      <strong>Datos Treatwell</strong>
       <span><b>Origen:</b> Treatwell</span>
       <span><b>Tipo de reserva:</b> {treatwellBookingLabel(appointment.treatwellBookingType)}</span>
       <span><b>Comision Treatwell:</b> {treatwellCommissionPercent}% - {formatMoney(treatwellCommissionAmount)}</span>
       <span><b>Estado de pago:</b> {isTreatwellPrepaid ? "Prepaga en Treatwell" : "Pendiente de cobro en centro"}</span>
       <span><b>Pagado previamente:</b> {formatMoney(prepaidAmount)}</span>
       <span><b>Pendiente en centro:</b> {formatMoney(salonDue)}</span>
+      {mode === "checkout" && !isTreatwellPrepaid && (
+        <label className="treatwell-commission-adjust">
+          Ajuste de cobro demo
+          <input
+            min="0"
+            step="0.01"
+            type="number"
+            value={checkoutTreatwellCommissionPercent}
+            onChange={(event) => setCheckoutTreatwellCommissionPercent(event.target.value)}
+          />
+        </label>
+      )}
+      {mode === "checkout" && isTreatwellPrepaid && <small>Reserva prepaga: la comision Treatwell queda fijada al 2 % en este flujo demo.</small>}
     </div>
   ) : null;
 
@@ -250,8 +270,10 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
             </div>
 
             <section className="checkout-demo-total">
+              <span><b>Venta bruta demo:</b> {formatMoney(basePrice)}</span>
               <span><b>Comision demo profesional:</b> {commissionPercent}% - {formatMoney(commissionAmount)}</span>
               {isTreatwell && <span><b>Comision Treatwell separada:</b> {treatwellCommissionPercent}% - {formatMoney(treatwellCommissionAmount)}</span>}
+              {isTreatwell && <span><b>Resultado demo despues de ambas comisiones:</b> {formatMoney(demoResultAfterCommissions)}</span>}
               <span><b>Total a cobrar en centro:</b> {formatMoney(total)}</span>
               <small>Preparado para futura relacion appointmentId: {appointment.id}, saleId: {demoSaleId}, services, payments y estado pagada.</small>
             </section>
