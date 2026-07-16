@@ -1819,6 +1819,29 @@ h3 {
   gap: 14px;
 }
 
+.agenda-demo-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.agenda-demo-toolbar h2,
+.agenda-demo-toolbar p {
+  margin: 0;
+}
+
+.agenda-demo-toolbar p {
+  color: #786f64;
+  font-size: 0.92rem;
+  margin-top: 4px;
+}
+
+.new-appointment-demo-dialog {
+  max-width: 1120px;
+  width: min(1120px, 100%);
+}
+
 .compact-section-title {
   margin-bottom: 0;
 }
@@ -2242,6 +2265,7 @@ h3 {
   .stat-row,
   .client-row,
   .section-title,
+  .agenda-demo-toolbar,
   .loyalty-summary {
     align-items: stretch;
     flex-direction: column;

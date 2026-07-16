@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import NewAppointmentDemo from "./NewAppointmentDemo.jsx";
+import NewAppointmentModalDemo from "./NewAppointmentModalDemo.jsx";
 import OperationalDayAgenda from "./OperationalDayAgenda.jsx";
 import { getTodayLocalDateString } from "../utils/date.js";
 import {
@@ -52,7 +52,7 @@ function ReadonlyAgendaList({ rows = [] }) {
 
 function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
   const [selectedDate, setSelectedDate] = useState(getTodayLocalDateString());
-  const [activeDemoView, setActiveDemoView] = useState("new-appointment");
+  const [showNewAppointmentModal, setShowNewAppointmentModal] = useState(false);
   const demoMode = shouldUseDemoAgenda();
   const clientMap = useMemo(() => Object.fromEntries((clients || []).map((client) => [client.id, client])), [clients]);
   const services = config.services || [];
@@ -116,31 +116,23 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
 
       {demoMode ? (
         <>
-          <div className="demo-view-tabs" role="tablist" aria-label="Agenda operativa demo">
-            <button
-              className={activeDemoView === "new-appointment" ? "active" : ""}
-              type="button"
-              onClick={() => setActiveDemoView("new-appointment")}
-            >
-              Nueva cita
-            </button>
-            <button
-              className={activeDemoView === "day-agenda" ? "active" : ""}
-              type="button"
-              onClick={() => setActiveDemoView("day-agenda")}
-            >
-              Agenda del dia
-            </button>
-          </div>
+          <section className="panel agenda-demo-toolbar">
+            <div>
+              <h2>Agenda del dia</h2>
+              <p>Vista principal del POS demo. Las citas se crean desde la agenda.</p>
+            </div>
+            <button type="button" onClick={() => setShowNewAppointmentModal(true)}>Nueva cita</button>
+          </section>
 
-          {activeDemoView === "new-appointment" ? (
-            <NewAppointmentDemo
+          <OperationalDayAgenda rows={rows} />
+
+          {showNewAppointmentModal && (
+            <NewAppointmentModalDemo
               appointments={visibleAppointments}
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}
+              onClose={() => setShowNewAppointmentModal(false)}
             />
-          ) : (
-            <OperationalDayAgenda rows={rows} />
           )}
         </>
       ) : (
