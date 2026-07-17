@@ -37,7 +37,7 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
 
   if (!appointment) return null;
 
-  const basePrice = service?.price || 30;
+  const basePrice = Number(appointment.expectedPrice || service?.price || 30);
   const isTreatwell = appointment.appointmentSource === "Treatwell" || Boolean(appointment.treatwellBookingType);
   const isTreatwellPrepaid = isTreatwell && appointment.isPrepaid;
   const salonDue = Number(appointment.amountDueAtSalon ?? basePrice);
@@ -162,6 +162,9 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
               <span><b>Profesional:</b> {appointment.employee}</span>
               <span><b>Duracion:</b> {appointment.duration}</span>
               <span><b>Estado:</b> {appointment.status}</span>
+              <span><b>Origen:</b> {appointment.appointmentSource || "No indicado"}</span>
+              <span><b>Referido por:</b> {appointment.referralText || "Sin indicar"}</span>
+              <span><b>Observaciones cita:</b> {appointment.appointmentNotes || "Sin notas"}</span>
             </div>
             {treatwellInfo}
             <div className="reset-actions">

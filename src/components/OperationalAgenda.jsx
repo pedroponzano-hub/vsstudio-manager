@@ -53,12 +53,18 @@ function ReadonlyAgendaList({ rows = [] }) {
 function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
   const [selectedDate, setSelectedDate] = useState(getTodayLocalDateString());
   const [showNewAppointmentModal, setShowNewAppointmentModal] = useState(false);
+  const [demoCreatedAppointments, setDemoCreatedAppointments] = useState([]);
   const demoMode = shouldUseDemoAgenda();
   const clientMap = useMemo(() => Object.fromEntries((clients || []).map((client) => [client.id, client])), [clients]);
   const services = config.services || [];
   const visibleAppointments = useMemo(() => (
-    demoMode ? demoAppointmentsForDate(selectedDate) : appointments
-  ), [appointments, demoMode, selectedDate]);
+    demoMode ? [...demoAppointmentsForDate(selectedDate), ...demoCreatedAppointments] : appointments
+  ), [appointments, demoCreatedAppointments, demoMode, selectedDate]);
+
+  const createDemoAppointment = (appointmentDraft) => {
+    setDemoCreatedAppointments((current) => [...current, appointmentDraft]);
+    setShowNewAppointmentModal(false);
+  };
 
   const rows = useMemo(() => (
     (visibleAppointments || [])
@@ -74,15 +80,18 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
         return {
           id: appointment.id || `${appointment.date}-${appointment.startTime || appointment.time}-${appointment.clientId || appointment.clientName}`,
           serviceId: appointment.serviceId || service.id || "",
+          professionalId: appointment.professionalId || "",
           time: normalizeTime(appointment.startTime || appointment.time),
+          endTime: normalizeTime(appointment.endTime || ""),
           clientName: valueOrFallback(
             appointment.clientName
             || `${client.name || ""} ${client.lastName || ""}`.trim(),
           ),
           phone: valueOrFallback(appointment.clientPhone || client.phone, "No disponible"),
           serviceName: valueOrFallback(appointment.serviceName || appointment.service || service.name),
-          employee: valueOrFallback(appointment.employee),
+          employee: valueOrFallback(appointment.employee || appointment.professionalName),
           duration: formatDuration(appointment.duration || service.duration),
+          expectedPrice: Number(appointment.expectedPrice ?? service.price ?? 0),
           status: valueOrFallback(appointment.status || "Pendiente"),
           appointmentSource: appointment.appointmentSource || "",
           treatwellBookingType: appointment.treatwellBookingType || "",
@@ -91,6 +100,10 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           prepaidMethod: appointment.prepaidMethod || null,
           prepaidAmount: Number(appointment.prepaidAmount || 0),
           amountDueAtSalon: Number(appointment.amountDueAtSalon ?? service.price ?? 0),
+          referralText: appointment.referralText || "",
+          appointmentNotes: appointment.appointmentNotes || "",
+          appointmentType: appointment.appointmentType || "",
+          createdAt: appointment.createdAt || "",
         };
       })
       .sort((first, second) => String(first.time || "99:99").localeCompare(String(second.time || "99:99")))
@@ -111,7 +124,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
 
       {demoMode && (
         <section className="version-notice operational-demo-notice" aria-live="polite">
-          <span>Modo demo local - no se guarda en Firebase</span>
+          <span>Modo demo local — la cita no se guarda en Firebase y desaparecerá al recargar</span>
         </section>
       )}
 
@@ -136,6 +149,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           {showNewAppointmentModal && (
             <NewAppointmentModalDemo
               appointments={visibleAppointments}
+              onCreateAppointment={createDemoAppointment}
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}
               onClose={() => setShowNewAppointmentModal(false)}

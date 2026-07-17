@@ -62,7 +62,7 @@ function resolveTreatwellDetails(bookingTypeId, expectedPrice) {
   };
 }
 
-function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
+function NewAppointmentDemo({ appointments = [], onCancel, onCreateAppointment, selectedDate, onDateChange }) {
   const [serviceId, setServiceId] = useState("");
   const [professionalId, setProfessionalId] = useState("any");
   const [requestedTime, setRequestedTime] = useState("12:00");
@@ -72,6 +72,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientDraft, setClientDraft] = useState(emptyClientDraft);
   const [commercialDetails, setCommercialDetails] = useState(defaultCommercialDetails);
+  const [submitError, setSubmitError] = useState("");
 
   const selectedService = DEMO_SERVICES.find((service) => service.id === serviceId);
   const enabledProfessionals = useMemo(() => (
@@ -116,12 +117,24 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
   const treatwellTypeRequired = commercialDetails.appointmentSource === "Treatwell" && !commercialDetails.treatwellBookingType;
   const canShowSummary = selectedSlot && selectedClient?.name && !treatwellTypeRequired;
   const appointmentType = selectedSlot ? automaticAppointmentType(selectedDate, selectedSlot.start) : "";
+  const appointmentStatus = appointmentType.includes("Walk-in") ? "Cliente llegado" : "Confirmada";
+  const missingFields = [
+    !serviceId && "servicio",
+    !selectedDate && "fecha",
+    !selectedSlot && "horario",
+    !selectedSlot?.professionalName && "profesional",
+    !selectedClient?.name && "cliente",
+    !commercialDetails.appointmentSource && "origen",
+    treatwellTypeRequired && "tipo de reserva Treatwell",
+  ].filter(Boolean);
+  const canCreateAppointment = missingFields.length === 0;
 
   const resetSlot = () => setSelectedSlot(null);
   const selectService = (service) => {
     setServiceId(service?.id || "");
     setProfessionalId("any");
     resetSlot();
+    setSubmitError("");
   };
   const updateCommercialDetail = (event) => {
     const { name, value } = event.target;
@@ -149,6 +162,46 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
 
       return { ...current, [name]: value };
     });
+    setSubmitError("");
+  };
+
+  const createDemoAppointment = () => {
+    if (!canCreateAppointment) {
+      setSubmitError(`Falta completar: ${missingFields.join(", ")}.`);
+      return;
+    }
+
+    const appointmentDraft = {
+      id: `demo-created-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: selectedDate,
+      startTime: minutesToTime(selectedSlot.start),
+      endTime: minutesToTime(selectedSlot.end),
+      duration: selectedSlot.duration,
+      clientId: clientMode === "existing" ? selectedClient.id : "demo-new-client",
+      clientName: selectedClient.name,
+      clientPhone: selectedClient.phone || "",
+      serviceId: selectedService.id,
+      serviceName: selectedService.name,
+      professionalId: selectedSlot.professionalId,
+      professionalName: selectedSlot.professionalName,
+      employee: selectedSlot.professionalName,
+      expectedPrice,
+      status: appointmentStatus,
+      appointmentSource: resolvedCommercialDetails.appointmentSource,
+      treatwellBookingType: resolvedCommercialDetails.treatwellBookingType,
+      treatwellCommissionPercent: resolvedCommercialDetails.treatwellCommissionPercent || 0,
+      isPrepaid: resolvedCommercialDetails.isPrepaid,
+      prepaidMethod: resolvedCommercialDetails.prepaidMethod,
+      prepaidAmount: resolvedCommercialDetails.prepaidAmount,
+      amountDueAtSalon: resolvedCommercialDetails.amountDueAtSalon,
+      referralText: commercialDetails.referralText,
+      appointmentNotes: commercialDetails.appointmentNotes,
+      appointmentType,
+      createdAt: new Date().toISOString(),
+    };
+
+    setSubmitError("");
+    onCreateAppointment?.(appointmentDraft);
   };
 
   return (
@@ -157,7 +210,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
         <div className="section-title compact-section-title">
           <div>
             <h2>Nueva cita demo</h2>
-            <span>Modo demo local - no se guarda en Firebase</span>
+            <span>Modo demo local — la cita no se guarda en Firebase y desaparecerá al recargar</span>
           </div>
         </div>
 
@@ -324,7 +377,7 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
         <section className="panel demo-appointment-summary">
           <div>
             <h2>Resumen final</h2>
-            <p>Modo demo local - no se guarda en Firebase</p>
+            <p>Modo demo local — la cita no se guarda en Firebase y desaparecerá al recargar</p>
           </div>
           <div className="summary-list">
             <span><b>Servicio:</b> {selectedService?.name}</span>
@@ -344,10 +397,27 @@ function NewAppointmentDemo({ appointments = [], selectedDate, onDateChange }) {
             <span><b>referralText:</b> {commercialDetails.referralText || "Sin indicar"}</span>
             <span><b>appointmentNotes:</b> {commercialDetails.appointmentNotes || "Sin notas"}</span>
             <span><b>expectedPrice:</b> {selectedService?.price ? `${expectedPrice.toFixed(2)} EUR` : "No disponible"}</span>
-            <span><b>Estado sugerido:</b> Confirmada</span>
+            <span><b>Estado sugerido:</b> {appointmentStatus}</span>
           </div>
         </section>
       )}
+
+      <section className="panel demo-appointment-actions">
+        <div className="section-title compact-section-title">
+          <div>
+            <h2>Confirmar cita demo</h2>
+            <span>Modo demo local — la cita no se guarda en Firebase y desaparecerá al recargar</span>
+          </div>
+        </div>
+        {missingFields.length > 0 && (
+          <p className="empty-state">Falta completar: {missingFields.join(", ")}.</p>
+        )}
+        {submitError && <p className="auth-error">{submitError}</p>}
+        <div className="reset-actions">
+          <button type="button" disabled={!canCreateAppointment} onClick={createDemoAppointment}>Crear cita demo</button>
+          <button className="secondary-button" type="button" onClick={onCancel}>Cancelar</button>
+        </div>
+      </section>
     </section>
   );
 }
