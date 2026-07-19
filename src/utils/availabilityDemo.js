@@ -50,6 +50,14 @@ export const DEMO_CLIENTS = [
   { id: "demo-client-3", name: "Cliente Demo Luna", phone: "600 100 303" },
 ];
 
+export const DEMO_APPOINTMENT_TRANSITIONS = {
+  Confirmada: ["En servicio", "Cancelada", "No se presentó"],
+  "En servicio": ["Finalizada"],
+  Finalizada: [],
+  Cancelada: [],
+  "No se presentó": [],
+};
+
 export function valueOrFallback(value, fallback = "Sin asignar") {
   const text = String(value || "").trim();
   return text || fallback;
@@ -119,12 +127,26 @@ export function getStatusClassName(status = "") {
     .replace(/[\u0300-\u036f]/g, "");
 
   if (normalizedStatus.includes("confirmada")) return "agenda-status-confirmada";
-  if (normalizedStatus.includes("cliente llegado")) return "agenda-status-llegado";
   if (normalizedStatus.includes("en servicio")) return "agenda-status-servicio";
-  if (normalizedStatus.includes("pendiente de cobro")) return "agenda-status-cobro";
   if (normalizedStatus.includes("finalizada")) return "agenda-status-finalizada";
   if (normalizedStatus.includes("cancelada")) return "agenda-status-cancelada";
+  if (normalizedStatus.includes("no se presento")) return "agenda-status-no-show";
   return "agenda-status-default";
+}
+
+export function normalizeDemoAppointmentStatus(appointment = {}) {
+  const status = appointment.appointmentStatus || appointment.status || "Confirmada";
+  if (status === "Cliente llegado") return "Confirmada";
+  if (status === "Pendiente de cobro") return "En servicio";
+  if (status === "No asistió") return "No se presentó";
+  return status;
+}
+
+export function normalizeDemoPaymentStatus(appointment = {}) {
+  if (appointment.paymentStatus) return appointment.paymentStatus;
+  if (appointment.isPrepaid) return "prepaid";
+  if (normalizeDemoAppointmentStatus(appointment) === "Finalizada") return "paid";
+  return "pending";
 }
 
 export function demoAppointmentsForDate(date) {
@@ -139,6 +161,8 @@ export function demoAppointmentsForDate(date) {
       serviceName: "Manicura semipermanente demo",
       employee: "Marianne",
       duration: "45 min",
+      appointmentStatus: "Confirmada",
+      paymentStatus: "pending",
       status: "Confirmada",
     },
     {
@@ -151,7 +175,9 @@ export function demoAppointmentsForDate(date) {
       serviceName: "Diseno de cejas demo",
       employee: "Ambar",
       duration: "30 min",
-      status: "Cliente llegado",
+      appointmentStatus: "Confirmada",
+      paymentStatus: "pending",
+      status: "Confirmada",
       appointmentSource: "Treatwell",
       treatwellBookingType: "commission_25",
       treatwellCommissionPercent: 25,
@@ -170,6 +196,8 @@ export function demoAppointmentsForDate(date) {
       serviceName: "Lifting de pestanas demo",
       employee: "Grace",
       duration: "1 h",
+      appointmentStatus: "En servicio",
+      paymentStatus: "pending",
       status: "En servicio",
     },
     {
@@ -182,7 +210,9 @@ export function demoAppointmentsForDate(date) {
       serviceName: "Pedicura completa demo",
       employee: "Leidys",
       duration: "1 h 15 min",
-      status: "Pendiente de cobro",
+      appointmentStatus: "En servicio",
+      paymentStatus: "prepaid",
+      status: "En servicio",
       appointmentSource: "Treatwell",
       treatwellBookingType: "prepaid_2",
       treatwellCommissionPercent: 2,
@@ -201,6 +231,8 @@ export function demoAppointmentsForDate(date) {
       serviceName: "Tratamiento facial demo",
       employee: "Marianne",
       duration: "1 h",
+      appointmentStatus: "Finalizada",
+      paymentStatus: "paid",
       status: "Finalizada",
     },
     {
@@ -213,6 +245,8 @@ export function demoAppointmentsForDate(date) {
       serviceName: "Masaje corporal demo",
       employee: "Grace",
       duration: "45 min",
+      appointmentStatus: "Cancelada",
+      paymentStatus: "pending",
       status: "Cancelada",
     },
   ];

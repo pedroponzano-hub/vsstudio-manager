@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import AppointmentDetailModalDemo from "./AppointmentDetailModalDemo.jsx";
 import { getStatusClassName } from "../utils/availabilityDemo.js";
 
-function OperationalDayAgenda({ rows = [] }) {
-  const [selectedAppointment, setSelectedAppointment] = useState(null);
+function OperationalDayAgenda({ onUpdateAppointment, rows = [] }) {
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
+  const selectedAppointment = useMemo(() => (
+    rows.find((row) => row.id === selectedAppointmentId) || null
+  ), [rows, selectedAppointmentId]);
 
   return (
     <section className="day-agenda-demo-layout">
@@ -21,7 +24,7 @@ function OperationalDayAgenda({ rows = [] }) {
               className={`operational-appointment-card agenda-button-card ${getStatusClassName(row.status)}`}
               key={row.id}
               type="button"
-              onClick={() => setSelectedAppointment(row)}
+              onClick={() => setSelectedAppointmentId(row.id)}
             >
               <div className="appointment-time-block">
                 <strong>{row.time || "No disponible"}</strong>
@@ -41,6 +44,7 @@ function OperationalDayAgenda({ rows = [] }) {
                 <div className="appointment-meta">
                   <span>Duracion: <b>{row.duration}</b></span>
                   <span>Telefono: <b>{row.phone}</b></span>
+                  <span>Pago: <b>{row.paymentStatus}</b></span>
                 </div>
               </div>
             </button>
@@ -52,7 +56,8 @@ function OperationalDayAgenda({ rows = [] }) {
       {selectedAppointment && (
         <AppointmentDetailModalDemo
           appointment={selectedAppointment}
-          onClose={() => setSelectedAppointment(null)}
+          onClose={() => setSelectedAppointmentId(null)}
+          onUpdateAppointment={onUpdateAppointment}
         />
       )}
     </section>

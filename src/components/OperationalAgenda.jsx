@@ -7,6 +7,8 @@ import {
   demoAppointmentsForDate,
   formatDuration,
   getStatusClassName,
+  normalizeDemoAppointmentStatus,
+  normalizeDemoPaymentStatus,
   normalizeTime,
   valueOrFallback,
 } from "../utils/availabilityDemo.js";
@@ -54,16 +56,33 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
   const [selectedDate, setSelectedDate] = useState(getTodayLocalDateString());
   const [showNewAppointmentModal, setShowNewAppointmentModal] = useState(false);
   const [demoCreatedAppointments, setDemoCreatedAppointments] = useState([]);
+  const [demoAppointmentUpdates, setDemoAppointmentUpdates] = useState({});
   const demoMode = shouldUseDemoAgenda();
   const clientMap = useMemo(() => Object.fromEntries((clients || []).map((client) => [client.id, client])), [clients]);
   const services = config.services || [];
   const visibleAppointments = useMemo(() => (
-    demoMode ? [...demoAppointmentsForDate(selectedDate), ...demoCreatedAppointments] : appointments
-  ), [appointments, demoCreatedAppointments, demoMode, selectedDate]);
+    demoMode
+      ? [...demoAppointmentsForDate(selectedDate), ...demoCreatedAppointments].map((appointment) => ({
+        ...appointment,
+        ...(demoAppointmentUpdates[appointment.id] || {}),
+      }))
+      : appointments
+  ), [appointments, demoAppointmentUpdates, demoCreatedAppointments, demoMode, selectedDate]);
 
   const createDemoAppointment = (appointmentDraft) => {
     setDemoCreatedAppointments((current) => [...current, appointmentDraft]);
     setShowNewAppointmentModal(false);
+  };
+
+  const updateDemoAppointment = (appointmentId, updates) => {
+    setDemoAppointmentUpdates((current) => ({
+      ...current,
+      [appointmentId]: {
+        ...(current[appointmentId] || {}),
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
   };
 
   const rows = useMemo(() => (
@@ -76,6 +95,9 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           || item.name === appointment.serviceName
           || item.name === appointment.service
         )) || {};
+
+        const appointmentStatus = normalizeDemoAppointmentStatus(appointment);
+        const paymentStatus = normalizeDemoPaymentStatus(appointment);
 
         return {
           id: appointment.id || `${appointment.date}-${appointment.startTime || appointment.time}-${appointment.clientId || appointment.clientName}`,
@@ -92,7 +114,12 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           employee: valueOrFallback(appointment.employee || appointment.professionalName),
           duration: formatDuration(appointment.duration || service.duration),
           expectedPrice: Number(appointment.expectedPrice ?? service.price ?? 0),
-          status: valueOrFallback(appointment.status || "Pendiente"),
+          appointmentStatus,
+          paymentStatus,
+          status: valueOrFallback(appointmentStatus),
+          demoPaymentCompleted: Boolean(appointment.demoPaymentCompleted),
+          demoSaleId: appointment.demoSaleId || "",
+          demoPaymentSummary: appointment.demoPaymentSummary || null,
           appointmentSource: appointment.appointmentSource || "",
           treatwellBookingType: appointment.treatwellBookingType || "",
           treatwellCommissionPercent: appointment.treatwellCommissionPercent || 0,
@@ -104,6 +131,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           appointmentNotes: appointment.appointmentNotes || "",
           appointmentType: appointment.appointmentType || "",
           createdAt: appointment.createdAt || "",
+          updatedAt: appointment.updatedAt || "",
         };
       })
       .sort((first, second) => String(first.time || "99:99").localeCompare(String(second.time || "99:99")))
@@ -144,7 +172,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
             <button type="button" onClick={() => setShowNewAppointmentModal(true)}>Nueva cita</button>
           </section>
 
-          <OperationalDayAgenda rows={rows} />
+          <OperationalDayAgenda rows={rows} onUpdateAppointment={updateDemoAppointment} />
 
           {showNewAppointmentModal && (
             <NewAppointmentModalDemo

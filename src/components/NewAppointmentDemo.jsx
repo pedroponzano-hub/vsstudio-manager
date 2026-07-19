@@ -117,7 +117,8 @@ function NewAppointmentDemo({ appointments = [], onCancel, onCreateAppointment, 
   const treatwellTypeRequired = commercialDetails.appointmentSource === "Treatwell" && !commercialDetails.treatwellBookingType;
   const canShowSummary = selectedSlot && selectedClient?.name && !treatwellTypeRequired;
   const appointmentType = selectedSlot ? automaticAppointmentType(selectedDate, selectedSlot.start) : "";
-  const appointmentStatus = appointmentType.includes("Walk-in") ? "Cliente llegado" : "Confirmada";
+  const appointmentStatus = "Confirmada";
+  const paymentStatus = resolvedCommercialDetails.isPrepaid ? "prepaid" : "pending";
   const missingFields = [
     !serviceId && "servicio",
     !selectedDate && "fecha",
@@ -186,6 +187,8 @@ function NewAppointmentDemo({ appointments = [], onCancel, onCreateAppointment, 
       professionalName: selectedSlot.professionalName,
       employee: selectedSlot.professionalName,
       expectedPrice,
+      appointmentStatus,
+      paymentStatus,
       status: appointmentStatus,
       appointmentSource: resolvedCommercialDetails.appointmentSource,
       treatwellBookingType: resolvedCommercialDetails.treatwellBookingType,

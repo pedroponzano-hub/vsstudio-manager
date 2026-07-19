@@ -1699,6 +1699,12 @@ h3 {
   --agenda-status-bg: #fff0f0;
 }
 
+.operational-appointment-card.agenda-status-no-show,
+.operational-status-badge.agenda-status-no-show {
+  --agenda-status-color: #8f3f46;
+  --agenda-status-bg: #f8e8ea;
+}
+
 .appointment-time-block {
   align-content: center;
   background: #fbf8f1;

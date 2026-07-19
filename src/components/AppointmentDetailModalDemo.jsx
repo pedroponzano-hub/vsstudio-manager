@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { DEMO_SERVICES, DEMO_TREATWELL_BOOKING_TYPES } from "../utils/availabilityDemo.js";
+import { DEMO_APPOINTMENT_TRANSITIONS, DEMO_SERVICES, DEMO_TREATWELL_BOOKING_TYPES } from "../utils/availabilityDemo.js";
 
 const demoPaymentMethods = ["Efectivo", "Tarjeta", "Bizum", "Bono / tarjeta regalo", "Treatwell", "Otro"];
 
@@ -20,7 +20,7 @@ function treatwellBookingLabel(typeId) {
   return DEMO_TREATWELL_BOOKING_TYPES.find((item) => item.id === typeId)?.label || "No indicado";
 }
 
-function AppointmentDetailModalDemo({ appointment, onClose }) {
+function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment }) {
   const [mode, setMode] = useState("detail");
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("Tarjeta");
@@ -38,8 +38,12 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   if (!appointment) return null;
 
   const basePrice = Number(appointment.expectedPrice || service?.price || 30);
+  const appointmentStatus = appointment.appointmentStatus || appointment.status || "Confirmada";
+  const paymentStatus = appointment.paymentStatus || (appointment.isPrepaid ? "prepaid" : "pending");
   const isTreatwell = appointment.appointmentSource === "Treatwell" || Boolean(appointment.treatwellBookingType);
-  const isTreatwellPrepaid = isTreatwell && appointment.isPrepaid;
+  const isTreatwellPrepaid = isTreatwell && paymentStatus === "prepaid";
+  const isTerminal = ["Finalizada", "Cancelada", "No se presentó"].includes(appointmentStatus);
+  const canTransitionTo = (nextStatus) => (DEMO_APPOINTMENT_TRANSITIONS[appointmentStatus] || []).includes(nextStatus);
   const salonDue = Number(appointment.amountDueAtSalon ?? basePrice);
   const prepaidAmount = Number(appointment.prepaidAmount || 0);
   const treatwellCommissionPercent = Number(checkoutTreatwellCommissionPercent || 0);
@@ -54,6 +58,43 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   const splitPaidTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const paidTotal = useSplitPayment ? splitPaidTotal : singlePaidTotal;
   const paymentDifference = total - paidTotal;
+
+  const applyStatusChange = (nextStatus, extraUpdates = {}) => {
+    if (!canTransitionTo(nextStatus)) return;
+    onUpdateAppointment?.(appointment.id, {
+      appointmentStatus: nextStatus,
+      status: nextStatus,
+      ...extraUpdates,
+    });
+  };
+
+  const cancelAppointment = () => {
+    if (!canTransitionTo("Cancelada")) return;
+    if (!window.confirm("¿Seguro que deseas cancelar esta cita demo?")) return;
+    applyStatusChange("Cancelada");
+  };
+
+  const markNoShow = () => {
+    if (!canTransitionTo("No se presentó")) return;
+    if (!window.confirm("¿Seguro que deseas marcar esta cita demo como no se presentó?")) return;
+    applyStatusChange("No se presentó");
+  };
+
+  const finalizePrepaidService = () => {
+    if (appointmentStatus !== "En servicio" || paymentStatus !== "prepaid") return;
+    onUpdateAppointment?.(appointment.id, {
+      appointmentStatus: "Finalizada",
+      status: "Finalizada",
+      paymentStatus: "prepaid",
+      demoPaymentCompleted: true,
+      demoPaymentSummary: {
+        method: appointment.prepaidMethod || "Treatwell",
+        paidAmount: prepaidAmount,
+        completedAt: new Date().toISOString(),
+      },
+    });
+    setMode("detail");
+  };
 
   useEffect(() => {
     if (!useSplitPayment) setSinglePaymentAmount(total.toFixed(2));
@@ -89,9 +130,14 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
   };
 
   const finishDemoPayment = () => {
+    if (appointmentStatus !== "En servicio" || appointment.demoPaymentCompleted || paymentStatus === "paid") {
+      setPaymentError("Esta cita demo no permite un nuevo cobro.");
+      return;
+    }
+
     if (isTreatwellPrepaid) {
       setPaymentError("");
-      setMode("complete");
+      finalizePrepaidService();
       return;
     }
 
@@ -112,7 +158,19 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
     }
 
     setPaymentError("");
-    setMode("complete");
+    onUpdateAppointment?.(appointment.id, {
+      appointmentStatus: "Finalizada",
+      status: "Finalizada",
+      paymentStatus: "paid",
+      demoPaymentCompleted: true,
+      demoSaleId,
+      demoPaymentSummary: {
+        total,
+        payments: validPayments,
+        completedAt: new Date().toISOString(),
+      },
+    });
+    setMode("detail");
   };
 
   const treatwellInfo = isTreatwell ? (
@@ -145,7 +203,7 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
       <article className="sale-history-dialog appointment-demo-dialog">
         <div className="section-title compact-section-title">
           <div>
-            <h2>{mode === "checkout" ? "Cobro demo" : mode === "complete" ? "Cobro completado" : "Detalle de cita"}</h2>
+            <h2>{mode === "checkout" ? "Cobro demo" : "Detalle de cita"}</h2>
             <span>Modo demo local - no se guarda en Firebase</span>
           </div>
           <button className="secondary-button" type="button" onClick={onClose}>Cerrar</button>
@@ -161,14 +219,35 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
               <span><b>Servicio:</b> {appointment.serviceName}</span>
               <span><b>Profesional:</b> {appointment.employee}</span>
               <span><b>Duracion:</b> {appointment.duration}</span>
-              <span><b>Estado:</b> {appointment.status}</span>
+              <span><b>Estado cita:</b> {appointmentStatus}</span>
+              <span><b>Estado pago:</b> {paymentStatus}</span>
               <span><b>Origen:</b> {appointment.appointmentSource || "No indicado"}</span>
               <span><b>Referido por:</b> {appointment.referralText || "Sin indicar"}</span>
               <span><b>Observaciones cita:</b> {appointment.appointmentNotes || "Sin notas"}</span>
             </div>
             {treatwellInfo}
+            {appointment.demoPaymentSummary && (
+              <div className="checkout-demo-total appointment-payment-summary">
+                <span><b>Cobro demo:</b> {appointment.paymentStatus}</span>
+                <span><b>Importe:</b> {formatMoney(appointment.demoPaymentSummary.total || appointment.demoPaymentSummary.paidAmount || 0)}</span>
+                <span><b>Completado:</b> {appointment.demoPaymentSummary.completedAt || "No disponible"}</span>
+              </div>
+            )}
             <div className="reset-actions">
-              <button type="button" onClick={() => setMode("checkout")}>Cobrar demo</button>
+              {appointmentStatus === "Confirmada" && (
+                <>
+                  <button type="button" onClick={() => applyStatusChange("En servicio")}>Iniciar servicio</button>
+                  <button className="secondary-button" type="button" onClick={cancelAppointment}>Cancelar</button>
+                  <button className="danger-button" type="button" onClick={markNoShow}>Marcar no se presentó</button>
+                </>
+              )}
+              {appointmentStatus === "En servicio" && paymentStatus !== "prepaid" && !appointment.demoPaymentCompleted && (
+                <button type="button" onClick={() => setMode("checkout")}>Finalizar y cobrar</button>
+              )}
+              {appointmentStatus === "En servicio" && paymentStatus === "prepaid" && !appointment.demoPaymentCompleted && (
+                <button type="button" onClick={finalizePrepaidService}>Finalizar servicio demo</button>
+              )}
+              {isTerminal && <p className="empty-state">Cita en solo lectura. No hay acciones disponibles.</p>}
               <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
             </div>
           </>
@@ -288,13 +367,6 @@ function AppointmentDetailModalDemo({ appointment, onClose }) {
           </>
         )}
 
-        {mode === "complete" && (
-          <section className="checkout-demo-complete">
-            <strong>{isTreatwellPrepaid ? "Servicio demo finalizado - no se ha guardado ningun dato" : "Cobro demo completado - no se ha guardado ningun dato"}</strong>
-            <p>En la version real se crearia la venta, se vincularia con la cita y se marcaria como pagada/finalizada.</p>
-            <button type="button" onClick={onClose}>Cerrar</button>
-          </section>
-        )}
       </article>
     </section>
   );
