@@ -237,7 +237,7 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
               {appointmentStatus === "Confirmada" && (
                 <>
                   <button type="button" onClick={() => applyStatusChange("En servicio")}>Iniciar servicio</button>
-                  <button className="secondary-button" type="button" onClick={cancelAppointment}>Cancelar</button>
+                  <button className="secondary-button" type="button" onClick={cancelAppointment}>Cancelar cita</button>
                   <button className="danger-button" type="button" onClick={markNoShow}>Marcar no se presentó</button>
                 </>
               )}
@@ -248,7 +248,6 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
                 <button type="button" onClick={finalizePrepaidService}>Finalizar servicio demo</button>
               )}
               {isTerminal && <p className="empty-state">Cita en solo lectura. No hay acciones disponibles.</p>}
-              <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
             </div>
           </>
         )}
