@@ -4,6 +4,7 @@ import {
   durationToMinutes,
   minutesToTime,
   normalizeDemoAppointmentStatus,
+  normalizeDemoDate,
   timeToMinutes,
 } from "./availabilityDemo.js";
 import { getTodayLocalDateString } from "./date.js";
@@ -101,8 +102,8 @@ export function appointmentBlocksSlot({
   if (!selectedDate || !professionalName || startMinute === undefined || startMinute === null || !durationMinutes) return false;
 
   return appointments.some((appointment) => {
-    const appointmentDate = appointment.date || appointment.fechaOperativa || "";
-    if (appointmentDate !== selectedDate || appointment.id === excludeId) return false;
+    const appointmentDate = normalizeDemoDate(appointment.date || appointment.fechaOperativa || "");
+    if (appointmentDate !== normalizeDemoDate(selectedDate) || appointment.id === excludeId) return false;
 
     const status = normalizeText(normalizeDemoAppointmentStatus(appointment));
     if (status.includes("cancelada") || status.includes("no se present")) return false;

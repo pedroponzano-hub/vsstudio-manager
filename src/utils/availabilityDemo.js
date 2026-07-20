@@ -1,4 +1,5 @@
 export const DEMO_SLOT_INTERVALS = [5, 10, 15, 30];
+export const DEMO_AGENDA_BASE_DATE = "2026-07-20";
 
 export const DEMO_APPOINTMENT_SOURCES = [
   "Walk-in",
@@ -61,6 +62,21 @@ export const DEMO_APPOINTMENT_TRANSITIONS = {
 export function valueOrFallback(value, fallback = "Sin asignar") {
   const text = String(value || "").trim();
   return text || fallback;
+}
+
+export function normalizeDemoDate(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return "";
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return text;
+
+  const spanishMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (spanishMatch) {
+    return `${spanishMatch[3]}-${String(spanishMatch[2]).padStart(2, "0")}-${String(spanishMatch[1]).padStart(2, "0")}`;
+  }
+
+  return text;
 }
 
 export function normalizeTime(value = "") {
@@ -149,11 +165,14 @@ export function normalizeDemoPaymentStatus(appointment = {}) {
   return "pending";
 }
 
-export function demoAppointmentsForDate(date) {
+export function demoAppointmentsForDate(date = DEMO_AGENDA_BASE_DATE) {
+  const normalizedDate = normalizeDemoDate(date);
+  if (normalizedDate !== DEMO_AGENDA_BASE_DATE) return [];
+
   return [
     {
       id: "demo-agenda-confirmada",
-      date,
+      date: DEMO_AGENDA_BASE_DATE,
       serviceId: "mani-semi",
       startTime: "09:15",
       clientName: "Cliente Demo Aurora",
@@ -169,7 +188,7 @@ export function demoAppointmentsForDate(date) {
     },
     {
       id: "demo-agenda-llegado",
-      date,
+      date: DEMO_AGENDA_BASE_DATE,
       serviceId: "cejas-diseno",
       startTime: "10:20",
       clientName: "Cliente Demo Brisa",
@@ -192,7 +211,7 @@ export function demoAppointmentsForDate(date) {
     },
     {
       id: "demo-agenda-servicio",
-      date,
+      date: DEMO_AGENDA_BASE_DATE,
       serviceId: "lifting-pestanas",
       startTime: "11:30",
       clientName: "Cliente Demo Coral",
@@ -208,7 +227,7 @@ export function demoAppointmentsForDate(date) {
     },
     {
       id: "demo-agenda-cobro",
-      date,
+      date: DEMO_AGENDA_BASE_DATE,
       serviceId: "pedicura-completa",
       startTime: "13:00",
       clientName: "Cliente Demo Dalia",
@@ -231,7 +250,7 @@ export function demoAppointmentsForDate(date) {
     },
     {
       id: "demo-agenda-finalizada",
-      date,
+      date: DEMO_AGENDA_BASE_DATE,
       serviceId: "facial-demo",
       startTime: "16:10",
       clientName: "Cliente Demo Elara",
@@ -247,7 +266,7 @@ export function demoAppointmentsForDate(date) {
     },
     {
       id: "demo-agenda-cancelada",
-      date,
+      date: DEMO_AGENDA_BASE_DATE,
       serviceId: "masaje-demo",
       startTime: "18:30",
       clientName: "Cliente Demo Fenix",
@@ -275,7 +294,7 @@ export function calculateDemoAvailability({ appointments, durationOverride, inte
   ));
 
   const dayAppointments = (appointments || [])
-    .filter((appointment) => (appointment.date || appointment.fechaOperativa || "") === selectedDate)
+    .filter((appointment) => normalizeDemoDate(appointment.date || appointment.fechaOperativa || "") === normalizeDemoDate(selectedDate))
     .filter((appointment) => {
       const status = normalizeDemoAppointmentStatus(appointment)
         .toLowerCase()

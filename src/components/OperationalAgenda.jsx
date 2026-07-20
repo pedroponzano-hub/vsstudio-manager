@@ -8,6 +8,7 @@ import {
   demoAppointmentsForDate,
   formatDuration,
   getStatusClassName,
+  normalizeDemoDate,
   normalizeDemoAppointmentStatus,
   normalizeDemoPaymentStatus,
   normalizeTime,
@@ -102,7 +103,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
 
   const rows = useMemo(() => (
     (visibleAppointments || [])
-      .filter((appointment) => (appointment.date || appointment.fechaOperativa || "") === selectedDate)
+      .filter((appointment) => normalizeDemoDate(appointment.date || appointment.fechaOperativa || "") === normalizeDemoDate(selectedDate))
       .map((appointment) => {
         const client = clientMap[appointment.clientId] || {};
         const service = services.find((item) => (

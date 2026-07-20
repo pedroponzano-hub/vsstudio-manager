@@ -11,6 +11,7 @@ import {
   durationToMinutes,
   formatMinutes,
   minutesToTime,
+  normalizeDemoDate,
   normalizeDemoAppointmentStatus,
   timeToMinutes,
 } from "../utils/availabilityDemo.js";
@@ -144,7 +145,7 @@ function AppointmentEditFormDemo({
   const conflictAppointment = shouldValidateAvailability && professionalCompatible
     ? appointments.find((item) => {
       if (item.id === appointment.id) return false;
-      if ((item.date || item.fechaOperativa || "") !== draft.date) return false;
+      if (normalizeDemoDate(item.date || item.fechaOperativa || "") !== normalizeDemoDate(draft.date)) return false;
       const status = normalizeText(normalizeDemoAppointmentStatus(item));
       if (status.includes("cancelada") || status.includes("no se present")) return false;
       const professionalMatches = item.professionalId === selectedProfessional.id || item.employee === selectedProfessional.name;
