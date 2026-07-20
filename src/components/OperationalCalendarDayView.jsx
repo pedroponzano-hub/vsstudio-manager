@@ -13,6 +13,8 @@ import {
 import { getStatusClassName, minutesToTime } from "../utils/availabilityDemo.js";
 
 function OperationalCalendarDayView({
+  appointmentHistory = {},
+  clients = [],
   onDateChange,
   onNewAppointment,
   onUpdateAppointment,
@@ -190,6 +192,9 @@ function OperationalCalendarDayView({
       {selectedAppointment && (
         <AppointmentDetailModalDemo
           appointment={selectedAppointment}
+          appointments={rows}
+          clients={clients}
+          appointmentHistory={appointmentHistory[selectedAppointment.id] || []}
           onClose={() => setSelectedAppointmentId(null)}
           onUpdateAppointment={onUpdateAppointment}
         />

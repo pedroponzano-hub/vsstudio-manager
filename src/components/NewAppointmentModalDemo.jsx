@@ -2,6 +2,7 @@ import NewAppointmentDemo from "./NewAppointmentDemo.jsx";
 
 function NewAppointmentModalDemo({
   appointments = [],
+  clients = [],
   initialInterval,
   initialProfessionalId,
   initialRequestedTime,
@@ -22,6 +23,7 @@ function NewAppointmentModalDemo({
         </div>
         <NewAppointmentDemo
           appointments={appointments}
+          clients={clients}
           initialInterval={initialInterval}
           initialProfessionalId={initialProfessionalId}
           initialRequestedTime={initialRequestedTime}

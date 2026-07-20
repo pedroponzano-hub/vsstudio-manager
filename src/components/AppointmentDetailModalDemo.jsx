@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import AppointmentEditFormDemo from "./AppointmentEditFormDemo.jsx";
+import AppointmentEditHistoryDemo from "./AppointmentEditHistoryDemo.jsx";
 import {
   DEMO_APPOINTMENT_TRANSITIONS,
   DEMO_SERVICES,
@@ -28,7 +30,21 @@ function treatwellBookingLabel(typeId) {
   return DEMO_TREATWELL_BOOKING_TYPES.find((item) => item.id === typeId)?.label || "No indicado";
 }
 
-function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment }) {
+function normalizeText(value = "") {
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function AppointmentDetailModalDemo({
+  appointment,
+  appointmentHistory = [],
+  appointments = [],
+  clients = [],
+  onClose,
+  onUpdateAppointment,
+}) {
   const [mode, setMode] = useState("detail");
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("Tarjeta");
@@ -56,7 +72,9 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
   const paymentStatus = appointment.paymentStatus || (appointment.isPrepaid ? "prepaid" : "pending");
   const isTreatwell = appointment.appointmentSource === "Treatwell" || Boolean(appointment.treatwellBookingType);
   const isTreatwellPrepaid = isTreatwell && paymentStatus === "prepaid";
-  const isTerminal = ["Finalizada", "Cancelada", "No se presentó"].includes(appointmentStatus);
+  const normalizedAppointmentStatus = normalizeText(appointmentStatus);
+  const isTerminal = ["Finalizada", "Cancelada"].includes(appointmentStatus) || normalizedAppointmentStatus.includes("no se present");
+  const canEditAppointment = ["Confirmada", "Cancelada"].includes(appointmentStatus) || normalizedAppointmentStatus.includes("no se present");
   const canTransitionTo = (nextStatus) => (DEMO_APPOINTMENT_TRANSITIONS[appointmentStatus] || []).includes(nextStatus);
   const salonDue = Number(appointment.amountDueAtSalon ?? basePrice);
   const prepaidAmount = Number(appointment.prepaidAmount || 0);
@@ -107,6 +125,11 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
         completedAt: new Date().toISOString(),
       },
     });
+    setMode("detail");
+  };
+
+  const saveAppointmentEdit = (updates, auditEntry) => {
+    onUpdateAppointment?.(appointment.id, updates, auditEntry);
     setMode("detail");
   };
 
@@ -223,6 +246,16 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
           <button className="secondary-button" type="button" onClick={onClose}>Cerrar</button>
         </div>
 
+        {mode === "edit" && (
+          <AppointmentEditFormDemo
+            appointment={appointment}
+            appointments={appointments}
+            clients={clients}
+            onCancel={() => setMode("detail")}
+            onSave={saveAppointmentEdit}
+          />
+        )}
+
         {mode === "detail" && (
           <>
             <div className="summary-list appointment-modal-summary">
@@ -249,7 +282,11 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
                 <span><b>Completado:</b> {appointment.demoPaymentSummary.completedAt || "No disponible"}</span>
               </div>
             )}
+            <AppointmentEditHistoryDemo history={appointmentHistory} />
             <div className="reset-actions">
+              {canEditAppointment && (
+                <button className="secondary-button" type="button" onClick={() => setMode("edit")}>Editar cita</button>
+              )}
               {appointmentStatus === "Confirmada" && (
                 <>
                   <button type="button" onClick={() => applyStatusChange("En servicio")}>Iniciar servicio</button>

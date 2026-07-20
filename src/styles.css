@@ -2212,6 +2212,11 @@ h3 {
   margin-top: 14px;
 }
 
+.form-field {
+  display: grid;
+  gap: 6px;
+}
+
 .commercial-notes-field {
   grid-column: 1 / -1;
 }
@@ -2299,6 +2304,59 @@ h3 {
 .appointment-demo-dialog {
   max-width: 860px;
   width: min(860px, 100%);
+}
+
+.appointment-edit-form-demo {
+  display: grid;
+  gap: 12px;
+  max-height: min(72vh, 760px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.appointment-edit-block,
+.appointment-edit-history-demo {
+  background: #fffaf1;
+  border: 1px solid #eadfcd;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.appointment-edit-block h3 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.referral-combobox-demo {
+  display: grid;
+  gap: 8px;
+}
+
+.appointment-edit-history-demo summary {
+  color: #171412;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.edit-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.edit-history-entry {
+  background: #fff;
+  border: 1px solid #eee5da;
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+}
+
+.edit-change-summary {
+  display: grid;
+  gap: 7px;
 }
 
 .appointment-modal-summary {

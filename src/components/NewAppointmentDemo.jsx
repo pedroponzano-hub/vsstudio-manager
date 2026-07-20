@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import SearchableCombobox from "./SearchableCombobox.jsx";
+import ClientReferralComboboxDemo from "./ClientReferralComboboxDemo.jsx";
+import ProfessionalServiceSelectorDemo from "./ProfessionalServiceSelectorDemo.jsx";
 import {
   DEMO_APPOINTMENT_SOURCES,
   DEMO_CLIENTS,
@@ -25,6 +27,9 @@ const defaultCommercialDetails = {
   prepaidMethod: null,
   prepaidAmount: 0,
   amountDueAtSalon: 0,
+  referralMode: "none",
+  referralClientId: "",
+  referralClientName: "",
   referralText: "",
   appointmentNotes: "",
 };
@@ -67,6 +72,7 @@ function resolveTreatwellDetails(bookingTypeId, expectedPrice) {
 
 function NewAppointmentDemo({
   appointments = [],
+  clients = [],
   initialInterval,
   initialProfessionalId,
   initialRequestedTime,
@@ -87,6 +93,7 @@ function NewAppointmentDemo({
   const [clientDraft, setClientDraft] = useState(emptyClientDraft);
   const [commercialDetails, setCommercialDetails] = useState(defaultCommercialDetails);
   const [submitError, setSubmitError] = useState("");
+  const [professionalCompatibilityMessage, setProfessionalCompatibilityMessage] = useState("");
 
   const selectedService = DEMO_SERVICES.find((service) => service.id === serviceId);
   const serviceDefaultDuration = Number(selectedService?.duration || 0);
@@ -97,7 +104,7 @@ function NewAppointmentDemo({
   const enabledProfessionals = useMemo(() => (
     serviceId
       ? DEMO_PROFESSIONALS.filter((professional) => professional.serviceIds.includes(serviceId))
-      : []
+      : DEMO_PROFESSIONALS
   ), [serviceId]);
   const selectedProfessional = enabledProfessionals.some((professional) => professional.id === professionalId)
     ? professionalId
@@ -171,6 +178,7 @@ function NewAppointmentDemo({
     !hasValidAppointmentDuration && "duracion valida",
     !selectedSlot && "horario",
     !selectedSlotStillFits && "hueco disponible para la duracion",
+    serviceId && enabledProfessionals.length === 0 && "profesional compatible",
     !selectedSlot?.professionalName && "profesional",
     !selectedClient?.name && "cliente",
     !commercialDetails.appointmentSource && "origen",
@@ -186,6 +194,9 @@ function NewAppointmentDemo({
     setCustomDuration(durationOptions.includes(defaultDuration) ? "" : String(defaultDuration || ""));
     const preferredProfessional = DEMO_PROFESSIONALS.find((professional) => professional.id === initialProfessionalId);
     setProfessionalId(preferredProfessional?.serviceIds.includes(service?.id) ? preferredProfessional.id : "any");
+    if (preferredProfessional && service?.id && !preferredProfessional.serviceIds.includes(service.id)) {
+      setProfessionalCompatibilityMessage("La profesional seleccionada no realiza este servicio");
+    }
     resetSlot();
     setSubmitError("");
   };
@@ -281,6 +292,9 @@ function NewAppointmentDemo({
       prepaidMethod: resolvedCommercialDetails.prepaidMethod,
       prepaidAmount: resolvedCommercialDetails.prepaidAmount,
       amountDueAtSalon: resolvedCommercialDetails.amountDueAtSalon,
+      referralMode: commercialDetails.referralMode,
+      referralClientId: commercialDetails.referralClientId,
+      referralClientName: commercialDetails.referralClientName,
       referralText: commercialDetails.referralText,
       appointmentNotes: commercialDetails.appointmentNotes,
       appointmentType,
@@ -351,15 +365,15 @@ function NewAppointmentDemo({
             Hora aproximada
             <input type="time" value={requestedTime} onChange={(event) => { setRequestedTime(event.target.value); resetSlot(); }} />
           </label>
-          <label>
-            Profesional
-            <select value={selectedProfessional} onChange={(event) => { setProfessionalId(event.target.value); resetSlot(); }} disabled={!serviceId}>
-              <option value="any">Cualquiera</option>
-              {enabledProfessionals.map((professional) => (
-                <option key={professional.id} value={professional.id}>{professional.name}</option>
-              ))}
-            </select>
-          </label>
+          <ProfessionalServiceSelectorDemo
+            onChange={(nextProfessionalId) => {
+              setProfessionalId(nextProfessionalId);
+              resetSlot();
+            }}
+            onCompatibilityMessage={setProfessionalCompatibilityMessage}
+            selectedProfessionalId={selectedProfessional}
+            serviceId={serviceId}
+          />
           <label>
             Intervalo
             <select value={slotInterval} onChange={(event) => { setSlotInterval(Number(event.target.value)); resetSlot(); }}>
@@ -399,15 +413,17 @@ function NewAppointmentDemo({
                 <span><b>Pendiente en centro:</b> {resolvedCommercialDetails.amountDueAtSalon.toFixed(2)} EUR</span>
               </div>
             )}
-            <label>
+            <div className="form-field">
               Referido por
-              <input
-                name="referralText"
-                value={commercialDetails.referralText}
-                onChange={updateCommercialDetail}
-                placeholder="Cliente existente o texto libre demo"
+              <ClientReferralComboboxDemo
+                clients={clients}
+                value={commercialDetails}
+                onChange={(referral) => {
+                  setCommercialDetails((current) => ({ ...current, ...referral }));
+                  setSubmitError("");
+                }}
               />
-            </label>
+            </div>
             <label>
               Precio previsto
               <input readOnly value={selectedService?.price ? `${selectedService.price.toFixed(2)} EUR` : "Selecciona un servicio"} />
@@ -427,6 +443,12 @@ function NewAppointmentDemo({
 
         {serviceId && !hasValidAppointmentDuration && (
           <p className="auth-error">La duracion de la cita debe ser de al menos 5 minutos.</p>
+        )}
+        {professionalCompatibilityMessage && (
+          <p className="auth-error">{professionalCompatibilityMessage}</p>
+        )}
+        {serviceId && enabledProfessionals.length === 0 && (
+          <p className="auth-error">No hay profesionales asignadas a este servicio</p>
         )}
         {requestedSlotBlocked && !selectedSlot && (
           <p className="auth-error">El servicio no cabe desde la hora seleccionada para esa profesional. Revisa las alternativas disponibles.</p>
@@ -516,6 +538,8 @@ function NewAppointmentDemo({
             <span><b>prepaidAmount:</b> {resolvedCommercialDetails.prepaidAmount.toFixed(2)} EUR</span>
             <span><b>amountDueAtSalon:</b> {resolvedCommercialDetails.amountDueAtSalon.toFixed(2)} EUR</span>
             <span><b>referralText:</b> {commercialDetails.referralText || "Sin indicar"}</span>
+            <span><b>referralClientId:</b> {commercialDetails.referralClientId || "Sin referido"}</span>
+            <span><b>referralClientName:</b> {commercialDetails.referralClientName || "Sin referido"}</span>
             <span><b>appointmentNotes:</b> {commercialDetails.appointmentNotes || "Sin notas"}</span>
             <span><b>expectedPrice:</b> {selectedService?.price ? `${expectedPrice.toFixed(2)} EUR` : "No disponible"}</span>
             <span><b>Estado sugerido:</b> {appointmentStatus}</span>

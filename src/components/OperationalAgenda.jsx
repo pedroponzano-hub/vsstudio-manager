@@ -60,6 +60,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
   const [newAppointmentDefaults, setNewAppointmentDefaults] = useState({});
   const [demoCreatedAppointments, setDemoCreatedAppointments] = useState([]);
   const [demoAppointmentUpdates, setDemoAppointmentUpdates] = useState({});
+  const [demoAppointmentHistory, setDemoAppointmentHistory] = useState({});
   const demoMode = shouldUseDemoAgenda();
   const clientMap = useMemo(() => Object.fromEntries((clients || []).map((client) => [client.id, client])), [clients]);
   const services = config.services || [];
@@ -77,7 +78,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
     setShowNewAppointmentModal(false);
   };
 
-  const updateDemoAppointment = (appointmentId, updates) => {
+  const updateDemoAppointment = (appointmentId, updates, auditEntry) => {
     setDemoAppointmentUpdates((current) => ({
       ...current,
       [appointmentId]: {
@@ -86,6 +87,12 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
         updatedAt: new Date().toISOString(),
       },
     }));
+    if (auditEntry) {
+      setDemoAppointmentHistory((current) => ({
+        ...current,
+        [appointmentId]: [...(current[appointmentId] || []), auditEntry],
+      }));
+    }
   };
 
   const openNewAppointmentModal = (defaults = {}) => {
@@ -111,6 +118,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           id: appointment.id || `${appointment.date}-${appointment.startTime || appointment.time}-${appointment.clientId || appointment.clientName}`,
           serviceId: appointment.serviceId || service.id || "",
           professionalId: appointment.professionalId || "",
+          date: appointment.date || appointment.fechaOperativa || selectedDate,
           time: normalizeTime(appointment.startTime || appointment.time),
           endTime: normalizeTime(appointment.endTime || ""),
           clientName: valueOrFallback(
@@ -120,7 +128,10 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           phone: valueOrFallback(appointment.clientPhone || client.phone, "No disponible"),
           serviceName: valueOrFallback(appointment.serviceName || appointment.service || service.name),
           employee: valueOrFallback(appointment.employee || appointment.professionalName),
+          professionalName: valueOrFallback(appointment.professionalName || appointment.employee),
           duration: formatDuration(appointment.duration || service.duration),
+          appointmentDuration: appointment.appointmentDuration || appointment.duration || service.duration,
+          serviceDefaultDuration: appointment.serviceDefaultDuration || service.duration || "",
           expectedPrice: Number(appointment.expectedPrice ?? service.price ?? 0),
           appointmentStatus,
           paymentStatus,
@@ -136,6 +147,9 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           prepaidAmount: Number(appointment.prepaidAmount || 0),
           amountDueAtSalon: Number(appointment.amountDueAtSalon ?? service.price ?? 0),
           referralText: appointment.referralText || "",
+          referralMode: appointment.referralMode || "",
+          referralClientId: appointment.referralClientId || "",
+          referralClientName: appointment.referralClientName || "",
           appointmentNotes: appointment.appointmentNotes || "",
           appointmentType: appointment.appointmentType || "",
           createdAt: appointment.createdAt || "",
@@ -186,6 +200,8 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           {agendaDemoView === "calendar" ? (
             <OperationalCalendarDayView
               rows={rows}
+              clients={clients}
+              appointmentHistory={demoAppointmentHistory}
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}
               onNewAppointment={openNewAppointmentModal}
@@ -200,13 +216,19 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
                 </div>
                 <button type="button" onClick={() => openNewAppointmentModal()}>Nueva cita</button>
               </section>
-              <OperationalDayAgenda rows={rows} onUpdateAppointment={updateDemoAppointment} />
+              <OperationalDayAgenda
+                rows={rows}
+                clients={clients}
+                appointmentHistory={demoAppointmentHistory}
+                onUpdateAppointment={updateDemoAppointment}
+              />
             </>
           )}
 
           {showNewAppointmentModal && (
             <NewAppointmentModalDemo
               appointments={visibleAppointments}
+              clients={clients}
               initialInterval={newAppointmentDefaults.initialInterval}
               initialProfessionalId={newAppointmentDefaults.initialProfessionalId}
               initialRequestedTime={newAppointmentDefaults.initialRequestedTime}

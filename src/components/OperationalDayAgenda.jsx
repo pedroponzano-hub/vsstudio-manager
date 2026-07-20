@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import AppointmentDetailModalDemo from "./AppointmentDetailModalDemo.jsx";
 import { getStatusClassName } from "../utils/availabilityDemo.js";
 
-function OperationalDayAgenda({ onUpdateAppointment, rows = [] }) {
+function OperationalDayAgenda({ appointmentHistory = {}, clients = [], onUpdateAppointment, rows = [] }) {
   const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
   const selectedAppointment = useMemo(() => (
     rows.find((row) => row.id === selectedAppointmentId) || null
@@ -56,6 +56,9 @@ function OperationalDayAgenda({ onUpdateAppointment, rows = [] }) {
       {selectedAppointment && (
         <AppointmentDetailModalDemo
           appointment={selectedAppointment}
+          appointments={rows}
+          clients={clients}
+          appointmentHistory={appointmentHistory[selectedAppointment.id] || []}
           onClose={() => setSelectedAppointmentId(null)}
           onUpdateAppointment={onUpdateAppointment}
         />
