@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { DEMO_APPOINTMENT_TRANSITIONS, DEMO_SERVICES, DEMO_TREATWELL_BOOKING_TYPES } from "../utils/availabilityDemo.js";
+import {
+  DEMO_APPOINTMENT_TRANSITIONS,
+  DEMO_SERVICES,
+  DEMO_TREATWELL_BOOKING_TYPES,
+  durationToMinutes,
+  formatMinutes,
+  minutesToTime,
+  timeToMinutes,
+} from "../utils/availabilityDemo.js";
 
 const demoPaymentMethods = ["Efectivo", "Tarjeta", "Bizum", "Bono / tarjeta regalo", "Treatwell", "Otro"];
 
@@ -38,6 +46,12 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
   if (!appointment) return null;
 
   const basePrice = Number(appointment.expectedPrice || service?.price || 30);
+  const serviceDefaultDuration = durationToMinutes(appointment.serviceDefaultDuration || service?.duration);
+  const appointmentDuration = durationToMinutes(appointment.appointmentDuration || appointment.duration || serviceDefaultDuration);
+  const startTime = appointment.startTime || appointment.time || "No disponible";
+  const calculatedEndTime = startTime === "No disponible"
+    ? (appointment.endTime || "No disponible")
+    : (appointment.endTime || minutesToTime(timeToMinutes(startTime) + appointmentDuration));
   const appointmentStatus = appointment.appointmentStatus || appointment.status || "Confirmada";
   const paymentStatus = appointment.paymentStatus || (appointment.isPrepaid ? "prepaid" : "pending");
   const isTreatwell = appointment.appointmentSource === "Treatwell" || Boolean(appointment.treatwellBookingType);
@@ -213,12 +227,14 @@ function AppointmentDetailModalDemo({ appointment, onClose, onUpdateAppointment 
           <>
             <div className="summary-list appointment-modal-summary">
               <span><b>appointmentId:</b> {appointment.id}</span>
-              <span><b>Hora:</b> {appointment.time || "No disponible"}</span>
+              <span><b>Hora inicio:</b> {startTime}</span>
+              <span><b>Hora final calculada:</b> {calculatedEndTime}</span>
               <span><b>Cliente:</b> {appointment.clientName}</span>
               <span><b>Telefono:</b> {appointment.phone}</span>
               <span><b>Servicio:</b> {appointment.serviceName}</span>
               <span><b>Profesional:</b> {appointment.employee}</span>
-              <span><b>Duracion:</b> {appointment.duration}</span>
+              <span><b>Duracion estandar servicio:</b> {formatMinutes(serviceDefaultDuration)}</span>
+              <span><b>Duracion aplicada cita:</b> {formatMinutes(appointmentDuration)}</span>
               <span><b>Estado cita:</b> {appointmentStatus}</span>
               <span><b>Estado pago:</b> {paymentStatus}</span>
               <span><b>Origen:</b> {appointment.appointmentSource || "No indicado"}</span>

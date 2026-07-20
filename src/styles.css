@@ -1891,6 +1891,10 @@ h3 {
   padding-left: 4px;
 }
 
+.calendar-date-input {
+  min-width: 148px;
+}
+
 .calendar-filter-bar label {
   display: grid;
   gap: 5px;
@@ -2011,6 +2015,9 @@ h3 {
 .calendar-appointment-block strong {
   color: var(--agenda-status-color);
   font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .calendar-appointment-block span {
@@ -2024,11 +2031,24 @@ h3 {
 .calendar-appointment-block small,
 .calendar-appointment-block em {
   color: #5f564d;
+  display: -webkit-box;
   font-size: 0.7rem;
   font-style: normal;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.compact-calendar-appointment {
+  align-content: center;
+  gap: 1px;
+  padding: 4px 7px;
+}
+
+.compact-calendar-appointment small,
+.compact-calendar-appointment em {
+  display: none;
 }
 
 .calendar-empty-professionals {

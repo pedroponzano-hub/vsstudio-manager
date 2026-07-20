@@ -3,6 +3,7 @@ import {
   DEMO_SERVICES,
   durationToMinutes,
   minutesToTime,
+  normalizeDemoAppointmentStatus,
   timeToMinutes,
 } from "./availabilityDemo.js";
 import { getTodayLocalDateString } from "./date.js";
@@ -69,11 +70,54 @@ export function createCalendarSlots(startTime = DEMO_CALENDAR_START, endTime = D
 export function getAppointmentLayout(row) {
   const dayStart = timeToMinutes(DEMO_CALENDAR_START);
   const start = timeToMinutes(row.time);
-  const duration = durationToMinutes(row.duration);
+  const duration = getAppointmentDurationMinutes(row);
   const startOffset = Math.max(0, start - dayStart);
   const rowStart = Math.floor(startOffset / DEMO_CALENDAR_INTERVAL) + 1;
   const rowSpan = Math.max(1, Math.ceil(duration / DEMO_CALENDAR_INTERVAL));
   return { rowStart, rowSpan, endTime: minutesToTime(start + duration) };
+}
+
+export function getAppointmentDurationMinutes(row = {}) {
+  const service = DEMO_SERVICES.find((item) => item.id === row.serviceId || item.name === row.serviceName);
+  return durationToMinutes(row.appointmentDuration || row.duration || service?.duration);
+}
+
+export function getAppointmentEndMinute(row = {}) {
+  const start = timeToMinutes(row.startTime || row.time);
+  const explicitEnd = timeToMinutes(row.endTime);
+  return explicitEnd > start ? explicitEnd : start + getAppointmentDurationMinutes(row);
+}
+
+export function appointmentBlocksSlot({
+  appointments = [],
+  durationMinutes,
+  excludeId,
+  professionalId,
+  professionalName,
+  selectedDate,
+  startMinute,
+}) {
+  const endMinute = startMinute + Number(durationMinutes || 0);
+  if (!selectedDate || !professionalName || startMinute === undefined || startMinute === null || !durationMinutes) return false;
+
+  return appointments.some((appointment) => {
+    const appointmentDate = appointment.date || appointment.fechaOperativa || "";
+    if (appointmentDate !== selectedDate || appointment.id === excludeId) return false;
+
+    const status = normalizeText(normalizeDemoAppointmentStatus(appointment));
+    if (status.includes("cancelada") || status.includes("no se present")) return false;
+
+    const appointmentProfessionalMatches = (
+      appointment.professionalId === professionalId
+      || appointment.professionalName === professionalName
+      || appointment.employee === professionalName
+    );
+    if (!appointmentProfessionalMatches) return false;
+
+    const appointmentStart = timeToMinutes(appointment.startTime || appointment.time);
+    const appointmentEnd = getAppointmentEndMinute(appointment);
+    return startMinute < appointmentEnd && endMinute > appointmentStart;
+  });
 }
 
 export function shiftLocalDate(dateText, days) {

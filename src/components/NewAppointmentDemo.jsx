@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import SearchableCombobox from "./SearchableCombobox.jsx";
 import {
@@ -11,9 +11,12 @@ import {
   calculateDemoAvailability,
   formatMinutes,
   minutesToTime,
+  timeToMinutes,
 } from "../utils/availabilityDemo.js";
+import { appointmentBlocksSlot } from "../utils/agendaCalendarDemo.js";
 
 const emptyClientDraft = { name: "", phone: "" };
+const durationOptions = [15, 30, 45, 60, 75, 90, 120];
 const defaultCommercialDetails = {
   appointmentSource: "Walk-in",
   treatwellBookingType: "",
@@ -73,6 +76,8 @@ function NewAppointmentDemo({
   onDateChange,
 }) {
   const [serviceId, setServiceId] = useState("");
+  const [durationMode, setDurationMode] = useState("");
+  const [customDuration, setCustomDuration] = useState("");
   const [professionalId, setProfessionalId] = useState(initialProfessionalId || "any");
   const [requestedTime, setRequestedTime] = useState(initialRequestedTime || "12:00");
   const [slotInterval, setSlotInterval] = useState(initialInterval || 15);
@@ -84,6 +89,11 @@ function NewAppointmentDemo({
   const [submitError, setSubmitError] = useState("");
 
   const selectedService = DEMO_SERVICES.find((service) => service.id === serviceId);
+  const serviceDefaultDuration = Number(selectedService?.duration || 0);
+  const appointmentDuration = durationMode === "custom"
+    ? Number(customDuration || 0)
+    : Number(durationMode || serviceDefaultDuration || 0);
+  const hasValidAppointmentDuration = appointmentDuration >= 5;
   const enabledProfessionals = useMemo(() => (
     serviceId
       ? DEMO_PROFESSIONALS.filter((professional) => professional.serviceIds.includes(serviceId))
@@ -94,22 +104,49 @@ function NewAppointmentDemo({
     : "any";
 
   const availabilityResults = useMemo(() => (
-    serviceId
+    serviceId && hasValidAppointmentDuration
       ? calculateDemoAvailability({
         appointments,
         interval: Number(slotInterval),
+        durationOverride: appointmentDuration,
         professionalId: selectedProfessional,
         requestedTime,
         selectedDate,
         serviceId,
       })
       : []
-  ), [appointments, requestedTime, selectedDate, selectedProfessional, serviceId, slotInterval]);
+  ), [appointmentDuration, appointments, hasValidAppointmentDuration, requestedTime, selectedDate, selectedProfessional, serviceId, slotInterval]);
 
   const selectedClient = clientMode === "existing"
     ? DEMO_CLIENTS.find((client) => client.id === selectedClientId)
     : { id: "demo-new-client", ...clientDraft };
   const expectedPrice = Number(selectedService?.price || 0);
+  const selectedSlotStart = selectedSlot ? timeToMinutes(minutesToTime(selectedSlot.start)) : 0;
+  const selectedSlotStillFits = selectedSlot
+    ? hasValidAppointmentDuration && !appointmentBlocksSlot({
+      appointments,
+      durationMinutes: appointmentDuration,
+      professionalId: selectedSlot.professionalId,
+      professionalName: selectedSlot.professionalName,
+      selectedDate,
+      startMinute: selectedSlotStart,
+    })
+    : true;
+  const requestedProfessional = enabledProfessionals.find((professional) => professional.id === selectedProfessional);
+  const requestedStartMinute = timeToMinutes(requestedTime);
+  const requestedSlotBlocked = Boolean(
+    serviceId
+    && hasValidAppointmentDuration
+    && requestedProfessional
+    && appointmentBlocksSlot({
+      appointments,
+      durationMinutes: appointmentDuration,
+      professionalId: requestedProfessional.id,
+      professionalName: requestedProfessional.name,
+      selectedDate,
+      startMinute: requestedStartMinute,
+    }),
+  );
   const resolvedCommercialDetails = {
     ...commercialDetails,
     ...(commercialDetails.appointmentSource === "Treatwell"
@@ -131,7 +168,9 @@ function NewAppointmentDemo({
   const missingFields = [
     !serviceId && "servicio",
     !selectedDate && "fecha",
+    !hasValidAppointmentDuration && "duracion valida",
     !selectedSlot && "horario",
+    !selectedSlotStillFits && "hueco disponible para la duracion",
     !selectedSlot?.professionalName && "profesional",
     !selectedClient?.name && "cliente",
     !commercialDetails.appointmentSource && "origen",
@@ -142,11 +181,44 @@ function NewAppointmentDemo({
   const resetSlot = () => setSelectedSlot(null);
   const selectService = (service) => {
     setServiceId(service?.id || "");
+    const defaultDuration = Number(service?.duration || 0);
+    setDurationMode(durationOptions.includes(defaultDuration) ? String(defaultDuration) : defaultDuration ? "custom" : "");
+    setCustomDuration(durationOptions.includes(defaultDuration) ? "" : String(defaultDuration || ""));
     const preferredProfessional = DEMO_PROFESSIONALS.find((professional) => professional.id === initialProfessionalId);
     setProfessionalId(preferredProfessional?.serviceIds.includes(service?.id) ? preferredProfessional.id : "any");
     resetSlot();
     setSubmitError("");
   };
+  const updateDurationMode = (event) => {
+    const nextMode = event.target.value;
+    setDurationMode(nextMode);
+    if (nextMode !== "custom") setCustomDuration("");
+    setSubmitError("");
+  };
+  const updateCustomDuration = (event) => {
+    setCustomDuration(event.target.value);
+    setSubmitError("");
+  };
+
+  useEffect(() => {
+    if (!selectedSlot || !hasValidAppointmentDuration) return;
+    const refreshedSlot = availabilityResults.find((slot) => (
+      slot.professionalId === selectedSlot.professionalId && slot.start === selectedSlot.start
+    ));
+    if (refreshedSlot) {
+      setSelectedSlot(refreshedSlot);
+    }
+  }, [appointmentDuration, availabilityResults, hasValidAppointmentDuration, selectedSlot]);
+
+  useEffect(() => {
+    if (selectedSlot || !serviceId || !initialProfessionalId || initialProfessionalId === "any") return;
+    const initialStart = timeToMinutes(initialRequestedTime || requestedTime);
+    const initialSlot = availabilityResults.find((slot) => (
+      slot.professionalId === initialProfessionalId && slot.start === initialStart
+    ));
+    if (initialSlot) setSelectedSlot(initialSlot);
+  }, [availabilityResults, initialProfessionalId, initialRequestedTime, requestedTime, selectedSlot, serviceId]);
+
   const updateCommercialDetail = (event) => {
     const { name, value } = event.target;
     setCommercialDetails((current) => {
@@ -186,8 +258,10 @@ function NewAppointmentDemo({
       id: `demo-created-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: selectedDate,
       startTime: minutesToTime(selectedSlot.start),
-      endTime: minutesToTime(selectedSlot.end),
-      duration: selectedSlot.duration,
+      endTime: minutesToTime(selectedSlot.start + appointmentDuration),
+      serviceDefaultDuration,
+      appointmentDuration,
+      duration: appointmentDuration,
       clientId: clientMode === "existing" ? selectedClient.id : "demo-new-client",
       clientName: selectedClient.name,
       clientPhone: selectedClient.phone || "",
@@ -250,6 +324,29 @@ function NewAppointmentDemo({
             Fecha
             <input type="date" value={selectedDate} onChange={(event) => { onDateChange(event.target.value); resetSlot(); }} />
           </label>
+          <label>
+            Duracion de la cita
+            <select value={durationMode} onChange={updateDurationMode} disabled={!serviceId}>
+              <option value="">Seleccionar duracion...</option>
+              {durationOptions.map((duration) => (
+                <option key={duration} value={duration}>{formatMinutes(duration)}</option>
+              ))}
+              <option value="custom">Personalizada</option>
+            </select>
+          </label>
+          {durationMode === "custom" && (
+            <label>
+              Minutos personalizados
+              <input
+                min="5"
+                step="1"
+                type="number"
+                value={customDuration}
+                onChange={updateCustomDuration}
+                placeholder="Minimo 5"
+              />
+            </label>
+          )}
           <label>
             Hora aproximada
             <input type="time" value={requestedTime} onChange={(event) => { setRequestedTime(event.target.value); resetSlot(); }} />
@@ -328,6 +425,16 @@ function NewAppointmentDemo({
           <p className="empty-state">Informacion comercial de la cita. No es metodo de pago ni total cobrado.</p>
         </details>
 
+        {serviceId && !hasValidAppointmentDuration && (
+          <p className="auth-error">La duracion de la cita debe ser de al menos 5 minutos.</p>
+        )}
+        {requestedSlotBlocked && !selectedSlot && (
+          <p className="auth-error">El servicio no cabe desde la hora seleccionada para esa profesional. Revisa las alternativas disponibles.</p>
+        )}
+        {selectedSlot && !selectedSlotStillFits && (
+          <p className="auth-error">El hueco seleccionado ya no admite la duracion completa. Selecciona una alternativa disponible.</p>
+        )}
+
         <div className="availability-results">
           {!serviceId && <p className="empty-state">Selecciona un servicio para buscar disponibilidad demo.</p>}
           {serviceId && availabilityResults.map((slot) => (
@@ -352,7 +459,7 @@ function NewAppointmentDemo({
           <div className="section-title compact-section-title">
             <div>
               <h2>Cliente</h2>
-              <span>Horario seleccionado: {minutesToTime(selectedSlot.start)} - {minutesToTime(selectedSlot.end)}</span>
+              <span>Horario seleccionado: {minutesToTime(selectedSlot.start)} - {minutesToTime(selectedSlot.start + appointmentDuration)}</span>
             </div>
           </div>
 
@@ -394,9 +501,10 @@ function NewAppointmentDemo({
           </div>
           <div className="summary-list">
             <span><b>Servicio:</b> {selectedService?.name}</span>
-            <span><b>Duracion:</b> {formatMinutes(selectedSlot.duration)}</span>
+            <span><b>Duracion estandar:</b> {formatMinutes(serviceDefaultDuration)}</span>
+            <span><b>Duracion de la cita:</b> {formatMinutes(appointmentDuration)}</span>
             <span><b>Fecha:</b> {selectedDate}</span>
-            <span><b>Hora:</b> {minutesToTime(selectedSlot.start)} - {minutesToTime(selectedSlot.end)}</span>
+            <span><b>Hora:</b> {minutesToTime(selectedSlot.start)} - {minutesToTime(selectedSlot.start + appointmentDuration)}</span>
             <span><b>Profesional:</b> {selectedSlot.professionalName}</span>
             <span><b>Cliente:</b> {selectedClient.name}</span>
             <span><b>Tipo automatico:</b> {appointmentType}</span>

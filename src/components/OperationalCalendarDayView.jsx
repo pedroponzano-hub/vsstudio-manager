@@ -60,6 +60,13 @@ function OperationalCalendarDayView({
           <button className="secondary-button" type="button" onClick={() => onDateChange(shiftLocalDate(selectedDate, -1))}>Dia anterior</button>
           <button className="secondary-button" type="button" onClick={() => onDateChange(getTodayLocalDateString())}>Hoy</button>
           <button className="secondary-button" type="button" onClick={() => onDateChange(shiftLocalDate(selectedDate, 1))}>Dia siguiente</button>
+          <input
+            aria-label="Seleccionar fecha del calendario"
+            className="calendar-date-input"
+            type="date"
+            value={selectedDate}
+            onChange={(event) => onDateChange(event.target.value)}
+          />
           <strong>{selectedDate}</strong>
         </div>
       </section>
@@ -140,15 +147,28 @@ function OperationalCalendarDayView({
                 <div className="calendar-appointments-layer">
                   {columnRows.map((row) => {
                     const layout = getAppointmentLayout(row);
+                    const endTime = row.endTime || layout.endTime;
+                    const appointmentTitle = [
+                      `${row.time} - ${endTime}`,
+                      row.clientName,
+                      row.serviceName,
+                      row.employee,
+                      row.status,
+                      row.paymentStatus,
+                    ].filter(Boolean).join(" | ");
                     return (
                       <button
-                        className={`calendar-appointment-block ${getStatusClassName(row.status)}`}
+                        className={`calendar-appointment-block ${layout.rowSpan <= 2 ? "compact-calendar-appointment" : ""} ${getStatusClassName(row.status)}`}
                         key={row.id}
                         style={{ gridRow: `${layout.rowStart} / span ${layout.rowSpan}` }}
+                        title={appointmentTitle}
                         type="button"
-                        onClick={() => setSelectedAppointmentId(row.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedAppointmentId(row.id);
+                        }}
                       >
-                        <strong>{row.time} - {row.endTime || layout.endTime}</strong>
+                        <strong>{row.time} - {endTime}</strong>
                         <span>{row.clientName}</span>
                         <small>{row.serviceName}</small>
                         <em>{row.status} · {row.paymentStatus}</em>

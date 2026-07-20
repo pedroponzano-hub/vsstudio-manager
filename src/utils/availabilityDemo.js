@@ -160,6 +160,8 @@ export function demoAppointmentsForDate(date) {
       clientPhone: "600 000 101",
       serviceName: "Manicura semipermanente demo",
       employee: "Marianne",
+      serviceDefaultDuration: 45,
+      appointmentDuration: 45,
       duration: "45 min",
       appointmentStatus: "Confirmada",
       paymentStatus: "pending",
@@ -174,6 +176,8 @@ export function demoAppointmentsForDate(date) {
       clientPhone: "600 000 202",
       serviceName: "Diseno de cejas demo",
       employee: "Ambar",
+      serviceDefaultDuration: 30,
+      appointmentDuration: 30,
       duration: "30 min",
       appointmentStatus: "Confirmada",
       paymentStatus: "pending",
@@ -195,6 +199,8 @@ export function demoAppointmentsForDate(date) {
       clientPhone: "600 000 303",
       serviceName: "Lifting de pestanas demo",
       employee: "Grace",
+      serviceDefaultDuration: 60,
+      appointmentDuration: 60,
       duration: "1 h",
       appointmentStatus: "En servicio",
       paymentStatus: "pending",
@@ -209,6 +215,8 @@ export function demoAppointmentsForDate(date) {
       clientPhone: "600 000 404",
       serviceName: "Pedicura completa demo",
       employee: "Leidys",
+      serviceDefaultDuration: 75,
+      appointmentDuration: 75,
       duration: "1 h 15 min",
       appointmentStatus: "En servicio",
       paymentStatus: "prepaid",
@@ -230,6 +238,8 @@ export function demoAppointmentsForDate(date) {
       clientPhone: "600 000 505",
       serviceName: "Tratamiento facial demo",
       employee: "Marianne",
+      serviceDefaultDuration: 60,
+      appointmentDuration: 60,
       duration: "1 h",
       appointmentStatus: "Finalizada",
       paymentStatus: "paid",
@@ -244,6 +254,8 @@ export function demoAppointmentsForDate(date) {
       clientPhone: "600 000 606",
       serviceName: "Masaje corporal demo",
       employee: "Grace",
+      serviceDefaultDuration: 45,
+      appointmentDuration: 45,
       duration: "45 min",
       appointmentStatus: "Cancelada",
       paymentStatus: "pending",
@@ -252,9 +264,10 @@ export function demoAppointmentsForDate(date) {
   ];
 }
 
-export function calculateDemoAvailability({ appointments, interval, professionalId, requestedTime, selectedDate, serviceId }) {
+export function calculateDemoAvailability({ appointments, durationOverride, interval, professionalId, requestedTime, selectedDate, serviceId }) {
   const service = DEMO_SERVICES.find((item) => item.id === serviceId);
   if (!service) return [];
+  const serviceDuration = Math.max(5, durationToMinutes(durationOverride || service.duration));
 
   const enabledProfessionals = DEMO_PROFESSIONALS.filter((professional) => (
     professional.serviceIds.includes(service.id)
@@ -263,7 +276,13 @@ export function calculateDemoAvailability({ appointments, interval, professional
 
   const dayAppointments = (appointments || [])
     .filter((appointment) => (appointment.date || appointment.fechaOperativa || "") === selectedDate)
-    .filter((appointment) => !String(appointment.status || "").toLowerCase().includes("cancelada"));
+    .filter((appointment) => {
+      const status = normalizeDemoAppointmentStatus(appointment)
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      return !status.includes("cancelada") && !status.includes("no se present");
+    });
 
   const slots = enabledProfessionals.flatMap((professional) => {
     const busyBlocks = dayAppointments
@@ -271,7 +290,7 @@ export function calculateDemoAvailability({ appointments, interval, professional
       .map((appointment) => {
         const start = timeToMinutes(appointment.startTime || appointment.time);
         const appointmentService = DEMO_SERVICES.find((item) => item.id === appointment.serviceId);
-        const duration = appointmentService?.duration || durationToMinutes(appointment.duration);
+        const duration = durationToMinutes(appointment.appointmentDuration || appointment.duration || appointmentService?.duration);
         return { start, end: start + duration };
       })
       .sort((first, second) => first.start - second.start);
@@ -289,16 +308,16 @@ export function calculateDemoAvailability({ appointments, interval, professional
 
     return gaps.flatMap((gap) => {
       const results = [];
-      for (let start = gap.start; start + service.duration <= gap.end; start += interval) {
+      for (let start = gap.start; start + serviceDuration <= gap.end; start += interval) {
         results.push({
           id: `${professional.id}-${service.id}-${start}`,
           start,
-          end: start + service.duration,
+          end: start + serviceDuration,
           professionalId: professional.id,
           professionalName: professional.name,
           serviceId: service.id,
           serviceName: service.name,
-          duration: service.duration,
+          duration: serviceDuration,
           proximity: Math.abs(start - timeToMinutes(requestedTime)),
           proximityText: proximityLabel(start, requestedTime),
         });
