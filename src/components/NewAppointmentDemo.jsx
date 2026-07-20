@@ -62,11 +62,20 @@ function resolveTreatwellDetails(bookingTypeId, expectedPrice) {
   };
 }
 
-function NewAppointmentDemo({ appointments = [], onCancel, onCreateAppointment, selectedDate, onDateChange }) {
+function NewAppointmentDemo({
+  appointments = [],
+  initialInterval,
+  initialProfessionalId,
+  initialRequestedTime,
+  onCancel,
+  onCreateAppointment,
+  selectedDate,
+  onDateChange,
+}) {
   const [serviceId, setServiceId] = useState("");
-  const [professionalId, setProfessionalId] = useState("any");
-  const [requestedTime, setRequestedTime] = useState("12:00");
-  const [slotInterval, setSlotInterval] = useState(15);
+  const [professionalId, setProfessionalId] = useState(initialProfessionalId || "any");
+  const [requestedTime, setRequestedTime] = useState(initialRequestedTime || "12:00");
+  const [slotInterval, setSlotInterval] = useState(initialInterval || 15);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [clientMode, setClientMode] = useState("existing");
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -133,7 +142,8 @@ function NewAppointmentDemo({ appointments = [], onCancel, onCreateAppointment, 
   const resetSlot = () => setSelectedSlot(null);
   const selectService = (service) => {
     setServiceId(service?.id || "");
-    setProfessionalId("any");
+    const preferredProfessional = DEMO_PROFESSIONALS.find((professional) => professional.id === initialProfessionalId);
+    setProfessionalId(preferredProfessional?.serviceIds.includes(service?.id) ? preferredProfessional.id : "any");
     resetSlot();
     setSubmitError("");
   };

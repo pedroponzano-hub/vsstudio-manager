@@ -1,6 +1,15 @@
 import NewAppointmentDemo from "./NewAppointmentDemo.jsx";
 
-function NewAppointmentModalDemo({ appointments = [], onClose, onCreateAppointment, onDateChange, selectedDate }) {
+function NewAppointmentModalDemo({
+  appointments = [],
+  initialInterval,
+  initialProfessionalId,
+  initialRequestedTime,
+  onClose,
+  onCreateAppointment,
+  onDateChange,
+  selectedDate,
+}) {
   return (
     <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Nueva cita demo">
       <article className="sale-history-dialog new-appointment-demo-dialog">
@@ -13,6 +22,9 @@ function NewAppointmentModalDemo({ appointments = [], onClose, onCreateAppointme
         </div>
         <NewAppointmentDemo
           appointments={appointments}
+          initialInterval={initialInterval}
+          initialProfessionalId={initialProfessionalId}
+          initialRequestedTime={initialRequestedTime}
           onCancel={onClose}
           onCreateAppointment={onCreateAppointment}
           selectedDate={selectedDate}
