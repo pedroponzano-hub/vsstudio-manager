@@ -15,6 +15,7 @@ import Statistics from "./components/Statistics.jsx";
 import Login from "./components/Login.jsx";
 import OperationalAgenda from "./components/OperationalAgenda.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
+import ProfessionalsSettingsDemo from "./components/ProfessionalsSettingsDemo.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import { allowedTabsForRole, canAccessTab, canPerform, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
 import DataService from "./services/DataService.js";
@@ -114,6 +115,7 @@ const navigationSections = [
     label: "Configuracion",
     items: [
       { key: "settings-general", pageId: "settings.general", tabId: "settings", label: "Configuracion general" },
+      { key: "settings-professionals", pageId: "settings.professionals", tabId: "settings", label: "Profesionales" },
     ],
   },
 ];
@@ -761,6 +763,21 @@ function App() {
     setActiveNavKey(item.key);
     setModalEditingSale(null);
     setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const switchPlatform = (targetPlatform) => {
+    if (effectiveRole !== "admin") return;
+    const nextPage = targetPlatform === "pos" ? "pos.agendaV2" : "dashboard.daily";
+    const nextTab = targetPlatform === "pos" ? "agenda" : "dashboard";
+    const nextPath = targetPlatform === "pos" ? "/pos/agenda-v2?demoAgenda=1" : "/manager";
+    window.history.pushState(null, "", nextPath);
+    setPlatformMode(targetPlatform);
+    setActivePage(nextPage);
+    setActiveTab(nextTab);
+    setActiveNavKey("");
+    setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const renderSalesFormPage = () => (
@@ -1050,6 +1067,8 @@ function App() {
             canManageEmployeeCommissions={effectiveRole === "admin"}
           />
         ) : accessDeniedPage;
+      case "settings.professionals":
+        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsDemo /> : accessDeniedPage;
       case "dashboard.daily":
       default:
         return canAccessTab(effectiveRole, "dashboard")
@@ -1084,6 +1103,11 @@ function App() {
           </button>
           <span className={isOnline ? "status-pill online" : "status-pill offline"}>{isOnline ? "Conectado a Firebase" : "Modo local / sin conexión"}</span>
           <span className="user-pill">{user.nombre} - {effectiveRole}</span>
+          {effectiveRole === "admin" && (
+            <button className="ghost-button" type="button" onClick={() => switchPlatform(platformMode === "pos" ? "manager" : "pos")}>
+              {platformMode === "pos" ? "Ir a Manager" : "Ir al POS"}
+            </button>
+          )}
           <button className="ghost-button" type="button" onClick={logout}>Cerrar sesion</button>
           {canShowRestoreData && <button className="ghost-button" onClick={() => setShowResetOptions(true)}>Restaurar datos (limpiar todo)</button>}
         </div>
