@@ -5,6 +5,7 @@ function ProfessionalsListDemo({
   onAction,
   professionals = [],
   query,
+  servicesCatalog = [],
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const rows = professionals.filter((professional) => {
@@ -25,7 +26,7 @@ function ProfessionalsListDemo({
             </div>
           </div>
           <span className={professional.active ? "status-pill online" : "status-pill offline"}>{professional.active ? "Activa" : "Inactiva"}</span>
-          <span>{professionalSpecialtiesText(professional)}</span>
+          <span>{professionalSpecialtiesText(professional, servicesCatalog)}</span>
           <span>{todayScheduleText(professional)}</span>
           <span>{professional.employmentType}</span>
           <strong>{Number(professional.economics.defaultServiceCommissionPercent || 0).toFixed(2)}%</strong>

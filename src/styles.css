@@ -1928,7 +1928,7 @@ h3 {
   border-top: 1px solid #f1e8dc;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) max-content minmax(140px, 180px);
+  grid-template-columns: minmax(0, 1fr) max-content minmax(120px, 170px) max-content minmax(140px, 180px);
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -1941,11 +1941,17 @@ h3 {
 }
 
 .professional-service-row .inline-check span,
-.professional-standard-duration {
+.professional-standard-duration,
+.professional-service-meta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.professional-service-meta {
+  color: #7a6a5b;
+  font-size: 0.82rem;
 }
 
 .professional-service-row input[type="number"] {
@@ -2044,7 +2050,8 @@ h3 {
   }
 
   .professional-service-row .inline-check span,
-  .professional-standard-duration {
+  .professional-standard-duration,
+  .professional-service-meta {
     white-space: normal;
   }
 }

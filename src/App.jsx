@@ -1068,7 +1068,7 @@ function App() {
           />
         ) : accessDeniedPage;
       case "settings.professionals":
-        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsDemo /> : accessDeniedPage;
+        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsDemo servicesCatalog={scopedData.config?.services || []} /> : accessDeniedPage;
       case "dashboard.daily":
       default:
         return canAccessTab(effectiveRole, "dashboard")

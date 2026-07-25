@@ -5,13 +5,17 @@ import {
   demoServiceCategories,
   exceptionTypesDemo,
   formatServiceDuration,
+  getAvailableProfessionalServices,
   getCategorySelectionState,
+  getServiceDefaultDurationMinutes,
+  getServiceDisplayPrice,
+  groupServicesByOperationalCategory,
   isServiceActive,
   normalizeAssignedServiceIds,
+  normalizeText,
   professionalDemoRoles,
   professionalPermissionGroups,
   selectEntireCategory,
-  servicesByDemoCategory,
   synchronizeProfessionalServiceSettings,
   toggleProfessionalService,
   weekDaysDemo,
@@ -65,14 +69,15 @@ function validateSchedule(weeklySchedule) {
   return "";
 }
 
-function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional }) {
+function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional, servicesCatalog = [] }) {
   const [draft, setDraft] = useState(() => clone(professional));
   const [activeTab, setActiveTab] = useState("professional-basic-info");
   const [serviceQuery, setServiceQuery] = useState("");
   const [openCategories, setOpenCategories] = useState(Object.fromEntries(demoServiceCategories.map((category, index) => [category, index === 0])));
   const [error, setError] = useState("");
-  const groupedServices = useMemo(() => servicesByDemoCategory(), []);
-  const selectedCount = normalizeAssignedServiceIds(draft.assignedServiceIds).length;
+  const assignmentServices = useMemo(() => getAvailableProfessionalServices(servicesCatalog), [servicesCatalog]);
+  const groupedServices = useMemo(() => groupServicesByOperationalCategory(assignmentServices), [assignmentServices]);
+  const selectedCount = normalizeAssignedServiceIds(draft.assignedServiceIds, assignmentServices).length;
 
   const update = (updates) => {
     setDraft((current) => ({ ...current, ...updates }));
@@ -83,11 +88,13 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
     setError("");
   };
   const toggleService = (serviceId) => {
-    setDraft((current) => toggleProfessionalService(current, serviceId));
+    setDraft((current) => toggleProfessionalService(current, serviceId, assignmentServices));
     setError("");
   };
   const setCategoryServices = (services, selected) => {
-    setDraft((current) => (selected ? selectEntireCategory(current, services) : clearEntireCategory(current, services)));
+    setDraft((current) => (selected
+      ? selectEntireCategory(current, services, assignmentServices)
+      : clearEntireCategory(current, services, assignmentServices)));
     setError("");
   };
   const updateServiceDuration = (serviceId, value) => {
@@ -147,15 +154,23 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
       setError("El nombre es obligatorio.");
       return;
     }
-    const finalAssignedServiceIds = normalizeAssignedServiceIds(draft.assignedServiceIds);
+    const finalAssignedServiceIds = normalizeAssignedServiceIds(draft.assignedServiceIds, assignmentServices);
     const finalProfessionalServiceSettings = synchronizeProfessionalServiceSettings(
       finalAssignedServiceIds,
       draft.professionalServiceSettings,
-      { keepDisabled: false },
+      { keepDisabled: false, services: assignmentServices },
     );
     const badCustomDuration = finalProfessionalServiceSettings.some((setting) => setting.customDurationMinutes !== "" && Number(setting.customDurationMinutes) < 5);
     if (badCustomDuration) {
       setError("Las duraciones personalizadas deben ser de al menos 5 minutos.");
+      return;
+    }
+    const missingDuration = finalProfessionalServiceSettings.some((setting) => {
+      const service = assignmentServices.find((item) => item.id === setting.serviceId);
+      return service && !getServiceDefaultDurationMinutes(service) && !Number(setting.customDurationMinutes);
+    });
+    if (missingDuration) {
+      setError("Los servicios sin duraciÃ³n estÃ¡ndar necesitan una duraciÃ³n personalizada.");
       return;
     }
     const scheduleError = validateSchedule(draft.weeklySchedule);
@@ -208,7 +223,8 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
               </div>
               <div className="professional-service-category-list">
                 {Object.entries(groupedServices).map(([category, services]) => {
-                  const filtered = services.filter((service) => `${service.name} ${service.category}`.toLowerCase().includes(serviceQuery.toLowerCase()));
+                  const normalizedQuery = normalizeText(serviceQuery);
+                  const filtered = services.filter((service) => normalizeText(`${service.name} ${service.categoryName} ${service.operationalCategoryName}`).includes(normalizedQuery));
                   const categoryState = getCategorySelectionState(services, draft.assignedServiceIds);
                   return (
                     <details className="professional-service-category" key={category} open={openCategories[category]} onToggle={(event) => updateCategoryOpen(category, event.currentTarget.open)}>
@@ -242,13 +258,15 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
                               <input
                                 aria-label={`Asignar ${service.name} a ${draft.displayName || draft.firstName || "profesional"}`}
                                 checked={selected}
-                                disabled={!active}
+                                disabled={!active && !selected}
                                 type="checkbox"
                                 onChange={() => toggleService(service.id)}
                               />
                               <span>{service.name}</span>
                             </label>
                             <span className="professional-standard-duration">Estándar: {formatServiceDuration(service)}</span>
+                            <span className="professional-service-meta">{service.categoryName} - {getServiceDisplayPrice(service)}</span>
+                            {!active && <span className="status-pill offline">Servicio inactivo</span>}
                             {selected && (
                               <label className="professional-duration-field">
                                 <span>Personalizada</span>

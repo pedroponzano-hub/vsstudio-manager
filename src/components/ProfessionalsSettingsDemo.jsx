@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import ProfessionalHistoryDemo from "./ProfessionalHistoryDemo.jsx";
 import ProfessionalModalDemo from "./ProfessionalModalDemo.jsx";
@@ -8,6 +8,8 @@ import {
   buildProfessional,
   cloneProfessionalsDemo,
   createProfessionalId,
+  getAvailableProfessionalServices,
+  migrateDemoProfessionalsToCatalog,
 } from "../utils/professionalsConfigDemo.js";
 
 const emptyProfessional = () => buildProfessional({
@@ -48,13 +50,21 @@ function changedFields(previous = {}, next = {}) {
   return trackedFields.filter((field) => JSON.stringify(previous[field]) !== JSON.stringify(next[field]));
 }
 
-function ProfessionalsSettingsDemo() {
+function ProfessionalsSettingsDemo({ servicesCatalog = [] }) {
   const [professionals, setProfessionals] = useState(() => cloneProfessionalsDemo());
   const [history, setHistory] = useState([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [modalState, setModalState] = useState(null);
   const [notice, setNotice] = useState("");
+  const hasMigratedCatalogRef = useRef(false);
+  const professionalServices = useMemo(() => getAvailableProfessionalServices(servicesCatalog), [servicesCatalog]);
+
+  useEffect(() => {
+    if (hasMigratedCatalogRef.current || !Array.isArray(servicesCatalog) || servicesCatalog.length === 0) return;
+    hasMigratedCatalogRef.current = true;
+    setProfessionals((current) => migrateDemoProfessionalsToCatalog(current, professionalServices));
+  }, [professionalServices, servicesCatalog]);
 
   const totals = useMemo(() => {
     const active = professionals.filter((professional) => professional.active !== false).length;
@@ -151,6 +161,13 @@ function ProfessionalsSettingsDemo() {
         <span>No escribe en Firebase, no modifica permisos reales y no toca la configuración actual.</span>
       </section>
 
+      {import.meta.env.DEV && (!Array.isArray(servicesCatalog) || servicesCatalog.length === 0) && (
+        <section className="panel professional-demo-notice">
+          <strong>CatÃ¡logo demo utilizado porque no hay servicios disponibles.</strong>
+          <span>La asignaciÃ³n volverÃ¡ al catÃ¡logo real cuando config.services estÃ© cargado en memoria.</span>
+        </section>
+      )}
+
       <section className="summary-grid compact">
         <article className="metric"><span>Total profesionales</span><strong>{totals.total}</strong></article>
         <article className="metric"><span>Activas</span><strong>{totals.active}</strong></article>
@@ -174,6 +191,7 @@ function ProfessionalsSettingsDemo() {
         onAction={handleAction}
         professionals={professionals}
         query={query}
+        servicesCatalog={professionalServices}
       />
 
       <ProfessionalHistoryDemo history={history} />
@@ -184,6 +202,7 @@ function ProfessionalsSettingsDemo() {
           onClose={() => setModalState(null)}
           onSave={saveProfessional}
           professional={modalState.professional}
+          servicesCatalog={professionalServices}
         />
       )}
     </section>
