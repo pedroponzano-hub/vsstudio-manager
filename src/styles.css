@@ -1890,11 +1890,16 @@ h3 {
 .professional-service-category summary {
   align-items: center;
   cursor: pointer;
-  display: flex;
+  display: grid;
   gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   font-weight: 700;
-  justify-content: space-between;
   min-width: 0;
+}
+
+.professional-service-category summary input {
+  min-height: auto;
+  width: auto;
 }
 
 .professional-service-category summary span {
@@ -1946,6 +1951,23 @@ h3 {
 .professional-service-row input[type="number"] {
   min-width: 0;
   width: 100%;
+}
+
+.professional-duration-field {
+  align-items: center;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.professional-duration-field span {
+  color: #6e6358;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.disabled-service-row {
+  opacity: 0.58;
 }
 
 .professional-day-row,

@@ -191,6 +191,107 @@ export function servicesByDemoCategory(services = DEMO_SERVICES) {
   return groups;
 }
 
+export function isServiceActive(service = {}) {
+  return service.active !== false;
+}
+
+export function normalizeAssignedServiceIds(assignedServiceIds = [], services = DEMO_SERVICES) {
+  const validActiveIds = new Set(services.filter(isServiceActive).map((service) => service.id));
+  return assignedServiceIds.filter((serviceId, index, list) => (
+    validActiveIds.has(serviceId) && list.indexOf(serviceId) === index
+  ));
+}
+
+function serviceSettingFor(serviceId, settings = [], enabled = true) {
+  const existing = settings.find((setting) => setting.serviceId === serviceId);
+  return {
+    serviceId,
+    enabled,
+    customDurationMinutes: existing?.customDurationMinutes || "",
+  };
+}
+
+export function synchronizeProfessionalServiceSettings(
+  assignedServiceIds = [],
+  professionalServiceSettings = [],
+  { keepDisabled = false, services = DEMO_SERVICES } = {},
+) {
+  const normalizedAssignedIds = normalizeAssignedServiceIds(assignedServiceIds, services);
+  const validIds = new Set(services.map((service) => service.id));
+  const assignedSet = new Set(normalizedAssignedIds);
+  const enabledSettings = normalizedAssignedIds.map((serviceId) => serviceSettingFor(serviceId, professionalServiceSettings, true));
+  const disabledSettings = keepDisabled
+    ? professionalServiceSettings
+      .filter((setting) => validIds.has(setting.serviceId) && !assignedSet.has(setting.serviceId))
+      .filter((setting, index, list) => list.findIndex((item) => item.serviceId === setting.serviceId) === index)
+      .map((setting) => ({ ...setting, enabled: false }))
+    : [];
+  return enabledSettings.concat(disabledSettings);
+}
+
+export function toggleProfessionalService(draft, serviceId, services = DEMO_SERVICES) {
+  const service = services.find((item) => item.id === serviceId);
+  if (!service || !isServiceActive(service)) return draft;
+  const currentlyAssigned = draft.assignedServiceIds.includes(serviceId);
+  const assignedServiceIds = currentlyAssigned
+    ? draft.assignedServiceIds.filter((id) => id !== serviceId)
+    : [...draft.assignedServiceIds, serviceId];
+  return {
+    ...draft,
+    assignedServiceIds: normalizeAssignedServiceIds(assignedServiceIds, services),
+    professionalServiceSettings: synchronizeProfessionalServiceSettings(
+      assignedServiceIds,
+      draft.professionalServiceSettings,
+      { keepDisabled: true, services },
+    ),
+  };
+}
+
+export function selectEntireCategory(draft, categoryServices = [], services = DEMO_SERVICES) {
+  const activeIds = categoryServices.filter(isServiceActive).map((service) => service.id);
+  const assignedServiceIds = normalizeAssignedServiceIds([...draft.assignedServiceIds, ...activeIds], services);
+  return {
+    ...draft,
+    assignedServiceIds,
+    professionalServiceSettings: synchronizeProfessionalServiceSettings(
+      assignedServiceIds,
+      draft.professionalServiceSettings,
+      { keepDisabled: true, services },
+    ),
+  };
+}
+
+export function clearEntireCategory(draft, categoryServices = [], services = DEMO_SERVICES) {
+  const categoryIds = new Set(categoryServices.filter(isServiceActive).map((service) => service.id));
+  const assignedServiceIds = normalizeAssignedServiceIds(
+    draft.assignedServiceIds.filter((serviceId) => !categoryIds.has(serviceId)),
+    services,
+  );
+  return {
+    ...draft,
+    assignedServiceIds,
+    professionalServiceSettings: synchronizeProfessionalServiceSettings(
+      assignedServiceIds,
+      draft.professionalServiceSettings,
+      { keepDisabled: true, services },
+    ),
+  };
+}
+
+export function getCategorySelectionState(categoryServices = [], assignedServiceIds = []) {
+  const activeServices = categoryServices.filter(isServiceActive);
+  const activeIds = activeServices.map((service) => service.id);
+  const selectedCount = activeIds.filter((serviceId) => assignedServiceIds.includes(serviceId)).length;
+  const totalCount = activeIds.length;
+  return {
+    checked: totalCount > 0 && selectedCount === totalCount,
+    disabled: totalCount === 0,
+    indeterminate: selectedCount > 0 && selectedCount < totalCount,
+    selectedCount,
+    totalCount,
+  };
+}
+
 export function getActiveProfessionals(professionals = initialProfessionalsDemo) {
   return professionals.filter((professional) => professional.active !== false);
 }

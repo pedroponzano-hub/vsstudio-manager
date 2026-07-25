@@ -1,12 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  clearEntireCategory,
   demoServiceCategories,
   exceptionTypesDemo,
   formatServiceDuration,
+  getCategorySelectionState,
+  isServiceActive,
+  normalizeAssignedServiceIds,
   professionalDemoRoles,
   professionalPermissionGroups,
+  selectEntireCategory,
   servicesByDemoCategory,
+  synchronizeProfessionalServiceSettings,
+  toggleProfessionalService,
   weekDaysDemo,
 } from "../utils/professionalsConfigDemo.js";
 
@@ -21,6 +28,26 @@ const tabs = [
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function CategoryCheckbox({ category, checked, disabled, indeterminate, onChange }) {
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (inputRef.current) inputRef.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+
+  return (
+    <input
+      aria-label={`Seleccionar todos los servicios de ${category}`}
+      checked={checked}
+      disabled={disabled}
+      ref={inputRef}
+      type="checkbox"
+      onChange={(event) => onChange(event.target.checked)}
+      onClick={(event) => event.stopPropagation()}
+    />
+  );
 }
 
 function validateSchedule(weeklySchedule) {
@@ -45,7 +72,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
   const [openCategories, setOpenCategories] = useState(Object.fromEntries(demoServiceCategories.map((category, index) => [category, index === 0])));
   const [error, setError] = useState("");
   const groupedServices = useMemo(() => servicesByDemoCategory(), []);
-  const selectedCount = draft.assignedServiceIds.length;
+  const selectedCount = normalizeAssignedServiceIds(draft.assignedServiceIds).length;
 
   const update = (updates) => {
     setDraft((current) => ({ ...current, ...updates }));
@@ -56,24 +83,12 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
     setError("");
   };
   const toggleService = (serviceId) => {
-    const enabled = draft.assignedServiceIds.includes(serviceId);
-    const assignedServiceIds = enabled
-      ? draft.assignedServiceIds.filter((id) => id !== serviceId)
-      : [...draft.assignedServiceIds, serviceId];
-    const professionalServiceSettings = assignedServiceIds.map((id) => (
-      draft.professionalServiceSettings.find((item) => item.serviceId === id) || { serviceId: id, enabled: true, customDurationMinutes: "" }
-    ));
-    update({ assignedServiceIds, professionalServiceSettings });
+    setDraft((current) => toggleProfessionalService(current, serviceId));
+    setError("");
   };
   const setCategoryServices = (services, selected) => {
-    const ids = services.map((service) => service.id);
-    const assignedServiceIds = selected
-      ? Array.from(new Set([...draft.assignedServiceIds, ...ids]))
-      : draft.assignedServiceIds.filter((id) => !ids.includes(id));
-    const professionalServiceSettings = assignedServiceIds.map((id) => (
-      draft.professionalServiceSettings.find((item) => item.serviceId === id) || { serviceId: id, enabled: true, customDurationMinutes: "" }
-    ));
-    update({ assignedServiceIds, professionalServiceSettings });
+    setDraft((current) => (selected ? selectEntireCategory(current, services) : clearEntireCategory(current, services)));
+    setError("");
   };
   const updateServiceDuration = (serviceId, value) => {
     update({
@@ -132,7 +147,13 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
       setError("El nombre es obligatorio.");
       return;
     }
-    const badCustomDuration = draft.professionalServiceSettings.some((setting) => setting.customDurationMinutes !== "" && Number(setting.customDurationMinutes) < 5);
+    const finalAssignedServiceIds = normalizeAssignedServiceIds(draft.assignedServiceIds);
+    const finalProfessionalServiceSettings = synchronizeProfessionalServiceSettings(
+      finalAssignedServiceIds,
+      draft.professionalServiceSettings,
+      { keepDisabled: false },
+    );
+    const badCustomDuration = finalProfessionalServiceSettings.some((setting) => setting.customDurationMinutes !== "" && Number(setting.customDurationMinutes) < 5);
     if (badCustomDuration) {
       setError("Las duraciones personalizadas deben ser de al menos 5 minutos.");
       return;
@@ -142,7 +163,11 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
       setError(scheduleError);
       return;
     }
-    onSave?.(draft);
+    onSave?.({
+      ...draft,
+      assignedServiceIds: finalAssignedServiceIds,
+      professionalServiceSettings: finalProfessionalServiceSettings,
+    });
   };
 
   return (
@@ -184,26 +209,52 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
               <div className="professional-service-category-list">
                 {Object.entries(groupedServices).map(([category, services]) => {
                   const filtered = services.filter((service) => `${service.name} ${service.category}`.toLowerCase().includes(serviceQuery.toLowerCase()));
-                  if (filtered.length === 0) return null;
-                  const selectedInCategory = filtered.filter((service) => draft.assignedServiceIds.includes(service.id)).length;
+                  const categoryState = getCategorySelectionState(services, draft.assignedServiceIds);
                   return (
                     <details className="professional-service-category" key={category} open={openCategories[category]} onToggle={(event) => updateCategoryOpen(category, event.currentTarget.open)}>
-                      <summary><span>{category}</span><strong>{selectedInCategory}/{filtered.length}</strong></summary>
+                      <summary>
+                        <CategoryCheckbox
+                          category={category}
+                          checked={categoryState.checked}
+                          disabled={categoryState.disabled}
+                          indeterminate={categoryState.indeterminate}
+                          onChange={(checked) => setCategoryServices(services, checked)}
+                        />
+                        <span>{category}</span>
+                        <strong>{categoryState.selectedCount} de {categoryState.totalCount} seleccionados</strong>
+                      </summary>
                       <div className="reset-actions">
-                        <button type="button" onClick={() => setCategoryServices(filtered, true)}>Seleccionar categoría</button>
-                        <button className="secondary-button" type="button" onClick={() => setCategoryServices(filtered, false)}>Quitar categoría</button>
+                        <button type="button" disabled={categoryState.disabled} onClick={() => setCategoryServices(services, true)}>Seleccionar todos</button>
+                        <button className="secondary-button" type="button" disabled={categoryState.disabled} onClick={() => setCategoryServices(services, false)}>Quitar todos</button>
                       </div>
+                      {filtered.length === 0 && (
+                        <p className="empty-state">
+                          {services.length === 0 ? "No hay servicios disponibles en esta categoría" : "No hay coincidencias para la búsqueda en esta categoría"}
+                        </p>
+                      )}
                       {filtered.map((service) => {
                         const selected = draft.assignedServiceIds.includes(service.id);
                         const setting = draft.professionalServiceSettings.find((item) => item.serviceId === service.id);
+                        const active = isServiceActive(service);
                         return (
-                          <div className="professional-service-row" key={service.id}>
+                          <div className={active ? "professional-service-row" : "professional-service-row disabled-service-row"} key={service.id}>
                             <label className="inline-check" title={service.name}>
-                              <input checked={selected} type="checkbox" onChange={() => toggleService(service.id)} />
+                              <input
+                                aria-label={`Asignar ${service.name} a ${draft.displayName || draft.firstName || "profesional"}`}
+                                checked={selected}
+                                disabled={!active}
+                                type="checkbox"
+                                onChange={() => toggleService(service.id)}
+                              />
                               <span>{service.name}</span>
                             </label>
                             <span className="professional-standard-duration">Estándar: {formatServiceDuration(service)}</span>
-                            {selected && <input min="5" placeholder="Duración personalizada" type="number" value={setting?.customDurationMinutes || ""} onChange={(event) => updateServiceDuration(service.id, event.target.value)} />}
+                            {selected && (
+                              <label className="professional-duration-field">
+                                <span>Personalizada</span>
+                                <input min="5" placeholder="Usar duración estándar" type="number" value={setting?.customDurationMinutes || ""} onChange={(event) => updateServiceDuration(service.id, event.target.value)} />
+                              </label>
+                            )}
                           </div>
                         );
                       })}
