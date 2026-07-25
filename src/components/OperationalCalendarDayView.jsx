@@ -5,6 +5,7 @@ import { getTodayLocalDateString } from "../utils/date.js";
 import {
   DEMO_BUSINESS_AREAS,
   DEMO_CALENDAR_INTERVAL,
+  appointmentBlocksSlot,
   createCalendarSlots,
   filterDemoProfessionals,
   getAppointmentLayout,
@@ -49,6 +50,7 @@ function OperationalCalendarDayView({
 
   const openNewAppointment = (defaults = {}) => {
     onNewAppointment?.({
+      initialDate: defaults.date || selectedDate,
       initialInterval: DEMO_CALENDAR_INTERVAL,
       initialProfessionalId: defaults.professionalId || (selectedProfessionalId !== "all" ? selectedProfessionalId : "any"),
       initialRequestedTime: defaults.requestedTime || "12:00",
@@ -135,16 +137,43 @@ function OperationalCalendarDayView({
                 style={{ gridColumn: professionalIndex + 2, gridRow: `2 / span ${slots.length}` }}
               >
                 <div className="calendar-column-slots">
-                  {slots.map((slot) => (
-                    <button
-                      className="calendar-free-slot"
-                      key={`${professional.id}-${slot.minute}`}
-                      type="button"
-                      onClick={() => openNewAppointment({ professionalId: professional.id, requestedTime: minutesToTime(slot.minute) })}
-                    >
-                      <span>Crear cita</span>
-                    </button>
-                  ))}
+                  {slots.map((slot) => {
+                    const slotStartTime = minutesToTime(slot.minute);
+                    const slotEndTime = minutesToTime(slot.minute + DEMO_CALENDAR_INTERVAL);
+                    const slotIsBlocked = appointmentBlocksSlot({
+                      appointments: rows,
+                      durationMinutes: DEMO_CALENDAR_INTERVAL,
+                      professionalId: professional.id,
+                      professionalName: professional.name,
+                      selectedDate,
+                      startMinute: slot.minute,
+                    });
+                    const slotTitle = slotIsBlocked
+                      ? `${professional.name} ocupado de ${slotStartTime} a ${slotEndTime}`
+                      : `Crear cita con ${professional.name} a las ${slotStartTime}`;
+                    return (
+                      <button
+                        aria-label={slotTitle}
+                        className={slotIsBlocked ? "calendar-free-slot calendar-free-slot-blocked" : "calendar-free-slot"}
+                        data-date={selectedDate}
+                        data-interval-minutes={DEMO_CALENDAR_INTERVAL}
+                        data-professional-id={professional.id}
+                        data-slot-end-time={slotEndTime}
+                        data-slot-start-time={slotStartTime}
+                        disabled={slotIsBlocked}
+                        key={`${professional.id}-${slot.minute}`}
+                        title={slotTitle}
+                        type="button"
+                        onClick={() => openNewAppointment({
+                          date: selectedDate,
+                          professionalId: professional.id,
+                          requestedTime: slotStartTime,
+                        })}
+                      >
+                        <span>Crear cita a las {slotStartTime}</span>
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="calendar-appointments-layer">
                   {columnRows.map((row) => {

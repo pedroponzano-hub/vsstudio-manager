@@ -2391,6 +2391,17 @@ h3 {
   grid-template-rows: repeat(44, 32px);
 }
 
+.calendar-column-slots {
+  position: relative;
+  z-index: 1;
+}
+
+.calendar-appointments-layer {
+  pointer-events: none;
+  position: relative;
+  z-index: 2;
+}
+
 .calendar-free-slot {
   background: transparent;
   border: 0;
@@ -2399,11 +2410,24 @@ h3 {
   color: transparent;
   min-height: 32px;
   padding: 0;
+  pointer-events: auto;
+  transition: background 0.16s ease, color 0.16s ease;
 }
 
-.calendar-free-slot:hover {
+.calendar-free-slot:not(:disabled):hover,
+.calendar-free-slot:not(:disabled):focus-visible {
   background: #fbf6ee;
   color: #a98b54;
+}
+
+.calendar-free-slot:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.calendar-free-slot-blocked {
+  color: transparent;
+  pointer-events: none;
 }
 
 .calendar-free-slot span {
@@ -2424,9 +2448,10 @@ h3 {
   min-height: 28px;
   overflow: hidden;
   padding: 6px 8px;
+  pointer-events: auto;
   position: relative;
   text-align: left;
-  z-index: 2;
+  z-index: 3;
 }
 
 .calendar-appointment-block strong {
