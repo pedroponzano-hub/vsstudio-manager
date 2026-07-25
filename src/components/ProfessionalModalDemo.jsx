@@ -11,12 +11,12 @@ import {
 } from "../utils/professionalsConfigDemo.js";
 
 const tabs = [
-  ["basic", "Información básica"],
-  ["services", "Servicios"],
-  ["schedule", "Horarios"],
-  ["permissions", "Permisos"],
-  ["economics", "Datos económicos"],
-  ["public", "Perfil público"],
+  ["professional-basic-info", "Información básica"],
+  ["professional-services", "Servicios"],
+  ["professional-schedule", "Horarios"],
+  ["professional-permissions", "Permisos"],
+  ["professional-economics", "Datos económicos"],
+  ["professional-public-profile", "Perfil público"],
 ];
 
 function clone(value) {
@@ -40,7 +40,7 @@ function validateSchedule(weeklySchedule) {
 
 function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional }) {
   const [draft, setDraft] = useState(() => clone(professional));
-  const [activeTab, setActiveTab] = useState("basic");
+  const [activeTab, setActiveTab] = useState("professional-basic-info");
   const [serviceQuery, setServiceQuery] = useState("");
   const [openCategories, setOpenCategories] = useState(Object.fromEntries(demoServiceCategories.map((category, index) => [category, index === 0])));
   const [error, setError] = useState("");
@@ -117,6 +117,16 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
     updateNested("access", { permissions, role: "Personalizado" });
   };
   const changeRole = (role) => updateNested("access", { role, permissions: professionalDemoRoles[role] || [] });
+  const changeTab = (event, tabKey) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setActiveTab(tabKey);
+  };
+  const updateCategoryOpen = (category, isOpen) => {
+    setOpenCategories((current) => (
+      current[category] === isOpen ? current : { ...current, [category]: isOpen }
+    ));
+  };
   const save = () => {
     if (!draft.firstName.trim()) {
       setError("El nombre es obligatorio.");
@@ -137,7 +147,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
 
   return (
     <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Profesional demo">
-      <article className="sale-history-dialog professional-modal-demo">
+      <article className="sale-history-dialog professional-modal-demo" onClick={(event) => event.stopPropagation()}>
         <div className="section-title compact-section-title">
           <div>
             <h2>{mode === "create" ? "Añadir profesional" : `Editar ${draft.displayName}`}</h2>
@@ -147,11 +157,11 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
         </div>
         <div className="professional-modal-tabs">
           {tabs.map(([key, label]) => (
-            <button className={activeTab === key ? "active" : ""} key={key} type="button" onClick={() => setActiveTab(key)}>{label}</button>
+            <button className={activeTab === key ? "active" : ""} key={key} type="button" onClick={(event) => changeTab(event, key)}>{label}</button>
           ))}
         </div>
         <div className="professional-modal-body">
-          {activeTab === "basic" && (
+          {activeTab === "professional-basic-info" && (
             <section className="professional-tab-grid">
               <label>Nombre<input value={draft.firstName} onChange={(event) => update({ firstName: event.target.value, displayName: draft.displayName || event.target.value })} /></label>
               <label>Apellidos<input value={draft.lastName} onChange={(event) => update({ lastName: event.target.value })} /></label>
@@ -165,7 +175,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
               <label className="wide-field">Observaciones internas<textarea value={draft.internalNotes} onChange={(event) => update({ internalNotes: event.target.value })} /></label>
             </section>
           )}
-          {activeTab === "services" && (
+          {activeTab === "professional-services" && (
             <section className="professional-services-tab">
               <div className="professional-services-toolbar">
                 <input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Buscar servicios" />
@@ -177,7 +187,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
                   if (filtered.length === 0) return null;
                   const selectedInCategory = filtered.filter((service) => draft.assignedServiceIds.includes(service.id)).length;
                   return (
-                    <details className="professional-service-category" key={category} open={openCategories[category]} onToggle={(event) => setOpenCategories((current) => ({ ...current, [category]: event.currentTarget.open }))}>
+                    <details className="professional-service-category" key={category} open={openCategories[category]} onToggle={(event) => updateCategoryOpen(category, event.currentTarget.open)}>
                       <summary><span>{category}</span><strong>{selectedInCategory}/{filtered.length}</strong></summary>
                       <div className="reset-actions">
                         <button type="button" onClick={() => setCategoryServices(filtered, true)}>Seleccionar categoría</button>
@@ -203,7 +213,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
               </div>
             </section>
           )}
-          {activeTab === "schedule" && (
+          {activeTab === "professional-schedule" && (
             <section className="professional-schedule-tab">
               <button className="secondary-button" type="button" onClick={copyMondayToAll}>Copiar lunes a toda la semana</button>
               {weekDaysDemo.map(([dayKey, label]) => {
@@ -237,7 +247,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
               </section>
             </section>
           )}
-          {activeTab === "permissions" && (
+          {activeTab === "professional-permissions" && (
             <section className="professional-permissions-tab">
               <label className="inline-check"><input checked={draft.access.enabled} type="checkbox" onChange={(event) => updateNested("access", { enabled: event.target.checked })} /> Tiene acceso al sistema</label>
               <label>Rol demo<select value={draft.access.role} onChange={(event) => changeRole(event.target.value)}>{Object.keys(professionalDemoRoles).map((role) => <option key={role}>{role}</option>)}</select></label>
@@ -251,7 +261,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
               ))}
             </section>
           )}
-          {activeTab === "economics" && (
+          {activeTab === "professional-economics" && (
             <section className="professional-tab-grid">
               <label>Comisión predeterminada de servicios<input min="0" step="0.01" type="number" value={draft.economics.defaultServiceCommissionPercent} onChange={(event) => updateNested("economics", { defaultServiceCommissionPercent: event.target.value })} /></label>
               <label>Comisión de productos<input min="0" step="0.01" type="number" value={draft.economics.productCommissionPercent} onChange={(event) => updateNested("economics", { productCommissionPercent: event.target.value })} /></label>
@@ -260,7 +270,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
               <label className="wide-field">Observaciones económicas internas<textarea value={draft.economics.internalEconomicNotes} onChange={(event) => updateNested("economics", { internalEconomicNotes: event.target.value })} /></label>
             </section>
           )}
-          {activeTab === "public" && (
+          {activeTab === "professional-public-profile" && (
             <section className="professional-tab-grid">
               <label>Nombre público<input value={draft.publicProfile.publicName} onChange={(event) => updateNested("publicProfile", { publicName: event.target.value })} /></label>
               <label>Título profesional<input value={draft.publicProfile.professionalTitle} onChange={(event) => updateNested("publicProfile", { professionalTitle: event.target.value })} /></label>
@@ -283,3 +293,4 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
 }
 
 export default ProfessionalModalDemo;
+
