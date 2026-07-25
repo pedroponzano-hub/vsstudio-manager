@@ -42,7 +42,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
   const [draft, setDraft] = useState(() => clone(professional));
   const [activeTab, setActiveTab] = useState("basic");
   const [serviceQuery, setServiceQuery] = useState("");
-  const [openCategories, setOpenCategories] = useState(Object.fromEntries(demoServiceCategories.map((category) => [category, true])));
+  const [openCategories, setOpenCategories] = useState(Object.fromEntries(demoServiceCategories.map((category, index) => [category, index === 0])));
   const [error, setError] = useState("");
   const groupedServices = useMemo(() => servicesByDemoCategory(), []);
   const selectedCount = draft.assignedServiceIds.length;
@@ -167,33 +167,40 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional 
           )}
           {activeTab === "services" && (
             <section className="professional-services-tab">
-              <input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Buscar servicios" />
-              <p className="empty-state">{selectedCount} servicios seleccionados</p>
-              {Object.entries(groupedServices).map(([category, services]) => {
-                const filtered = services.filter((service) => `${service.name} ${service.category}`.toLowerCase().includes(serviceQuery.toLowerCase()));
-                if (filtered.length === 0) return null;
-                const selectedInCategory = filtered.filter((service) => draft.assignedServiceIds.includes(service.id)).length;
-                return (
-                  <details className="professional-service-category" key={category} open={openCategories[category]} onToggle={(event) => setOpenCategories((current) => ({ ...current, [category]: event.currentTarget.open }))}>
-                    <summary>{category} · {selectedInCategory}/{filtered.length}</summary>
-                    <div className="reset-actions">
-                      <button type="button" onClick={() => setCategoryServices(filtered, true)}>Seleccionar categoría</button>
-                      <button className="secondary-button" type="button" onClick={() => setCategoryServices(filtered, false)}>Quitar categoría</button>
-                    </div>
-                    {filtered.map((service) => {
-                      const selected = draft.assignedServiceIds.includes(service.id);
-                      const setting = draft.professionalServiceSettings.find((item) => item.serviceId === service.id);
-                      return (
-                        <div className="professional-service-row" key={service.id}>
-                          <label className="inline-check"><input checked={selected} type="checkbox" onChange={() => toggleService(service.id)} /> {service.name}</label>
-                          <span>Estándar: {formatServiceDuration(service)}</span>
-                          {selected && <input min="5" placeholder="Duración personalizada" type="number" value={setting?.customDurationMinutes || ""} onChange={(event) => updateServiceDuration(service.id, event.target.value)} />}
-                        </div>
-                      );
-                    })}
-                  </details>
-                );
-              })}
+              <div className="professional-services-toolbar">
+                <input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Buscar servicios" />
+                <p className="empty-state">{selectedCount} servicios seleccionados</p>
+              </div>
+              <div className="professional-service-category-list">
+                {Object.entries(groupedServices).map(([category, services]) => {
+                  const filtered = services.filter((service) => `${service.name} ${service.category}`.toLowerCase().includes(serviceQuery.toLowerCase()));
+                  if (filtered.length === 0) return null;
+                  const selectedInCategory = filtered.filter((service) => draft.assignedServiceIds.includes(service.id)).length;
+                  return (
+                    <details className="professional-service-category" key={category} open={openCategories[category]} onToggle={(event) => setOpenCategories((current) => ({ ...current, [category]: event.currentTarget.open }))}>
+                      <summary><span>{category}</span><strong>{selectedInCategory}/{filtered.length}</strong></summary>
+                      <div className="reset-actions">
+                        <button type="button" onClick={() => setCategoryServices(filtered, true)}>Seleccionar categoría</button>
+                        <button className="secondary-button" type="button" onClick={() => setCategoryServices(filtered, false)}>Quitar categoría</button>
+                      </div>
+                      {filtered.map((service) => {
+                        const selected = draft.assignedServiceIds.includes(service.id);
+                        const setting = draft.professionalServiceSettings.find((item) => item.serviceId === service.id);
+                        return (
+                          <div className="professional-service-row" key={service.id}>
+                            <label className="inline-check" title={service.name}>
+                              <input checked={selected} type="checkbox" onChange={() => toggleService(service.id)} />
+                              <span>{service.name}</span>
+                            </label>
+                            <span className="professional-standard-duration">Estándar: {formatServiceDuration(service)}</span>
+                            {selected && <input min="5" placeholder="Duración personalizada" type="number" value={setting?.customDurationMinutes || ""} onChange={(event) => updateServiceDuration(service.id, event.target.value)} />}
+                          </div>
+                        );
+                      })}
+                    </details>
+                  );
+                })}
+              </div>
             </section>
           )}
           {activeTab === "schedule" && (
