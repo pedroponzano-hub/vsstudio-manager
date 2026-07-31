@@ -1,7 +1,7 @@
 const permissionsByRole = {
   admin: {
     tabs: ["dashboard", "sales", "expenses", "commissions", "clients", "loyalty", "agenda", "statistics", "finance", "cashClosing", "settings"],
-    actions: ["manageSales", "manageExpenses", "manageClients", "manageAppointments", "manageCommissions", "manageSettings", "manageServices", "restoreData", "importClients", "viewFinance", "manageCashClosing"],
+    actions: ["manageSales", "manageExpenses", "manageClients", "manageAppointments", "manageCommissions", "manageSettings", "manageServices", "restoreData", "importClients", "viewFinance", "manageCashClosing", "sales.create_backdated"],
   },
   direccion: {
     tabs: ["dashboard", "sales", "expenses", "clients", "loyalty", "agenda", "cashClosing", "commissions", "salesHistory"],

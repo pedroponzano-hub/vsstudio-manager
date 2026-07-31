@@ -11,7 +11,7 @@ function getSaleServices(sale) {
 }
 
 function operationalDate(item = {}) {
-  return item.fechaOperativa || item.date || "";
+  return item.saleDate || item.fechaOperativa || item.date || "";
 }
 
 function servicesCount(sale) {

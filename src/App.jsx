@@ -156,7 +156,7 @@ function isCollectedSale(sale) {
 }
 
 function operationalDate(item = {}) {
-  return item.fechaOperativa || item.date || "";
+  return item.saleDate || item.fechaOperativa || item.date || "";
 }
 
 function saleServicesText(sale) {
@@ -413,7 +413,7 @@ function App() {
   const roleCanManageClients = canPerform(effectiveRole, "manageClients");
   const roleCanManageCommissions = canPerform(effectiveRole, "manageCommissions");
   const roleCanManageServices = canPerform(effectiveRole, "manageServices");
-  const roleCanEditSaleDate = canPerform(effectiveRole, "viewFinance");
+  const roleCanCreateBackdatedSale = canPerform(effectiveRole, "sales.create_backdated") || effectiveRole === "admin";
   const roleCanEditSalesFully = effectiveRole === "admin" || effectiveRole === "direccion";
   const canShowRestoreData = platformMode !== "pos" && canPerform(effectiveRole, "restoreData");
   const scopedData = useMemo(() => {
@@ -575,14 +575,44 @@ function App() {
 
   const refresh = () => setData(DataService.getData());
 
+  const saleBusinessDate = (sale = {}) => sale.saleDate || sale.fechaOperativa || sale.date || getTodayLocalDateString();
+  const closureForSaleDate = (saleDate) => (data.cashClosings || []).find((closing) => closing.date === saleDate);
+  const withBackdatedContext = (sale = {}) => {
+    const saleDate = saleBusinessDate(sale);
+    const today = getTodayLocalDateString();
+    const isBackdated = saleDate < today;
+    const closure = isBackdated ? closureForSaleDate(saleDate) : null;
+    return {
+      ...sale,
+      saleDate,
+      fechaOperativa: saleDate,
+      date: saleDate,
+      createdBy: sale.createdBy || user?.email || user?.nombre || "",
+      isBackdated,
+      registeredAfterClosure: Boolean(sale.registeredAfterClosure || closure),
+      relatedClosureId: sale.relatedClosureId || closure?.id || "",
+      closureStatusAtCreation: sale.closureStatusAtCreation || closure?.status || closure?.estado || (closure ? "confirmado" : ""),
+    };
+  };
+
   const addSale = (sale) => {
     if (!canPerform(effectiveRole, "manageSales")) return;
-    setData(DataService.addSale(sale));
+    const preparedSale = withBackdatedContext(sale);
+    if (preparedSale.isBackdated && !roleCanCreateBackdatedSale) return;
+    if (preparedSale.saleDate > getTodayLocalDateString()) return;
+    setData(DataService.addSale(preparedSale));
     setEditingSale(null);
   };
   const updateSale = (saleId, updates) => {
     if (!canPerform(effectiveRole, "manageSales")) return;
-    const nextData = DataService.updateSale(saleId, { ...updates, editedBy: user?.email || user?.nombre || "" });
+    const existingSale = data.sales.find((sale) => sale.id === saleId) || {};
+    const preparedUpdates = withBackdatedContext({ ...existingSale, ...updates });
+    const existingSaleDate = saleBusinessDate(existingSale);
+    const requestedSaleDate = updates.saleDate || updates.fechaOperativa || updates.date || existingSaleDate;
+    const isChangingSaleDate = requestedSaleDate !== existingSaleDate;
+    if (isChangingSaleDate && requestedSaleDate < getTodayLocalDateString() && !roleCanCreateBackdatedSale) return;
+    if (preparedUpdates.saleDate > getTodayLocalDateString()) return;
+    const nextData = DataService.updateSale(saleId, { ...preparedUpdates, editedBy: user?.email || user?.nombre || "" });
     setData(nextData);
     setEditingSale(null);
     setSalesFormHighlight(false);
@@ -793,8 +823,10 @@ function App() {
             onCreateClient={createClientFromSale}
             onCreateService={createServiceFromSale}
             canCreateService={roleCanManageServices}
-            canEditSaleDate={editingSale ? roleCanEditSalesFully : roleCanEditSaleDate}
+            canEditSaleDate={roleCanCreateBackdatedSale}
             canEditCommission={editingSale ? roleCanEditSalesFully : effectiveRole === "admin"}
+            cashClosings={scopedData.cashClosings || []}
+            currentUser={user}
             onCancelEdit={() => {
               setEditingSale(null);
               setSalesFormHighlight(false);
@@ -889,8 +921,10 @@ function App() {
                 onCreateClient={createClientFromSale}
                 onCreateService={createServiceFromSale}
                 canCreateService={roleCanManageServices}
-                canEditSaleDate={roleCanEditSalesFully}
+                canEditSaleDate={roleCanCreateBackdatedSale}
                 canEditCommission={roleCanEditSalesFully}
+                cashClosings={scopedData.cashClosings || []}
+                currentUser={user}
                 onCancelEdit={() => setModalEditingSale(null)}
                 onDateChange={() => {}}
               />
@@ -1048,8 +1082,10 @@ function App() {
             onCreateClient={createClientFromSale}
             onCreateService={createServiceFromSale}
             canCreateService={roleCanManageServices}
-            canEditSaleDate={roleCanEditSalesFully}
+            canEditSaleDate={roleCanCreateBackdatedSale}
             canEditCommission={roleCanEditSalesFully}
+            cashClosings={scopedData.cashClosings || []}
+            currentUser={user}
           />
         ) : accessDeniedPage;
       case "statistics.salesHistory":

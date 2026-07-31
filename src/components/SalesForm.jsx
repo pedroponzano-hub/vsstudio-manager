@@ -14,6 +14,14 @@ const durationOptions = [
 
 const emptyServiceForm = { category: "", name: "", durationMinutes: "", price: "", active: true };
 const defaultPaymentMethods = ["Efectivo", "Tarjeta", "Bizum", "Bono / tarjeta regalo", "Treatwell", "Otro"];
+const backdatedReasonOptions = [
+  ["not_registered", "Venta no registrada en su momento"],
+  ["cash_closing_correction", "Correccion de cierre"],
+  ["system_issue", "Fallo del sistema"],
+  ["reported_later", "Venta informada posteriormente"],
+  ["administrative_regularization", "Regularizacion administrativa"],
+  ["other", "Otro"],
+];
 const tpvCategories = [
   { id: "Manicura", label: "Manicura" },
   { id: "Pedicura", label: "Pedicura" },
@@ -123,6 +131,17 @@ function saleStatus(sale) {
   return "cobrado";
 }
 
+function isValidDateString(value = "") {
+  const text = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const date = new Date(`${text}T12:00:00`);
+  return !Number.isNaN(date.getTime()) && text === `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function backdatedReasonLabel(code = "") {
+  return backdatedReasonOptions.find(([value]) => value === code)?.[1] || "";
+}
+
 function emptySaleForm() {
   return {
     date: getMadridDateString(),
@@ -137,6 +156,8 @@ function emptySaleForm() {
     treatwellCommissionPercent: "0",
     treatwellCommissionAmount: "0",
     commissionPercent: "0",
+    backdatedReasonCode: "",
+    backdatedReasonText: "",
     notes: "",
   };
 }
@@ -154,6 +175,8 @@ function SalesForm({
   canEditCommission = false,
   onCancelEdit,
   onDateChange,
+  cashClosings = [],
+  currentUser,
 }) {
   const catalogServices = (config.services || []).filter((service) => service.active !== false);
   const employeeSettings = useMemo(() => normalizeEmployeeSettings(config), [config]);
@@ -197,6 +220,8 @@ function SalesForm({
       treatwellCommissionPercent: String(editingSale.treatwellCommissionPercent ?? 0),
       treatwellCommissionAmount: String(editingSale.treatwellCommissionAmount ?? 0),
       commissionPercent: String(editingSale.commissionPercent ?? 0),
+      backdatedReasonCode: editingSale.backdatedReasonCode || "",
+      backdatedReasonText: editingSale.backdatedReasonText || "",
       notes: editingSale.notes || "",
     });
     setPayments(Array.isArray(editingSale.payments) && editingSale.payments.length > 0
@@ -293,9 +318,29 @@ function SalesForm({
   const paymentsTotal = useMemo(() => payments.reduce((total, payment) => total + Number(payment.amount || 0), 0), [payments]);
   const paymentsDifference = totals.total - paymentsTotal;
   const isInternalService = form.operationType === "servicio_interno";
+  const today = getMadridDateString();
+  const saleDateIsValid = isValidDateString(form.date);
+  const isBackdated = saleDateIsValid && form.date < today;
+  const isFutureDate = saleDateIsValid && form.date > today;
+  const backdatedClosure = useMemo(() => (
+    isBackdated ? (cashClosings || []).find((closing) => closing.date === form.date) : null
+  ), [cashClosings, form.date, isBackdated]);
+  const closureStatusAtCreation = backdatedClosure?.status || backdatedClosure?.estado || backdatedClosure?.summary?.status || (backdatedClosure ? "confirmado" : "");
 
   const updateField = (event) => {
     const { name, value } = event.target;
+    if (name === "date" && !canEditSaleDate) return;
+    if (name === "date") {
+      setForm({
+        ...form,
+        date: value,
+        backdatedReasonCode: value >= getMadridDateString() ? "" : form.backdatedReasonCode,
+        backdatedReasonText: value >= getMadridDateString() ? "" : form.backdatedReasonText,
+      });
+      setSaleError("");
+      onDateChange?.(value);
+      return;
+    }
     if (name === "employee") {
       const employee = employeeSettings.find((item) => String(item.name || "") === value);
       setForm({ ...form, employee: value, commissionPercent: String(employee?.commissionPercent ?? 0) });
@@ -303,7 +348,6 @@ function SalesForm({
       setForm({ ...form, [name]: value });
     }
     setSaleError("");
-    if (name === "date") onDateChange?.(value);
   };
 
   const updateTreatwellPercent = (event) => {
@@ -502,6 +546,10 @@ function SalesForm({
   const buildPayload = (validPayments, effectiveDate, status) => {
     const client = clients.find((item) => item.id === form.clientId);
     const referralClient = clients.find((item) => item.id === form.referralClientId);
+    const backdatedReasonText = form.backdatedReasonCode === "other"
+      ? form.backdatedReasonText.trim()
+      : backdatedReasonLabel(form.backdatedReasonCode);
+    const historicalSale = effectiveDate < getMadridDateString();
     const financialTotals = isInternalService
       ? { ...totals, ivaAmount: 0, netWithoutVat: 0, netAfterCommission: -totals.commissionAmount, netAfterTreatwellAndCommission: -totals.commissionAmount }
       : totals;
@@ -509,8 +557,16 @@ function SalesForm({
     return {
       ...form,
       date: effectiveDate,
+      saleDate: effectiveDate,
       fechaOperativa: effectiveDate,
       status,
+      createdBy: currentUser?.email || currentUser?.nombre || "",
+      isBackdated: historicalSale,
+      backdatedReasonCode: historicalSale ? form.backdatedReasonCode : "",
+      backdatedReasonText: historicalSale ? backdatedReasonText : "",
+      registeredAfterClosure: Boolean(historicalSale && backdatedClosure),
+      relatedClosureId: historicalSale && backdatedClosure ? (backdatedClosure.id || "") : "",
+      closureStatusAtCreation: historicalSale ? closureStatusAtCreation : "",
       operationType: form.operationType,
       clientName: client?.name || clientQuery.trim() || "Cliente mostrador",
       referralClientId: status === "cobrado" && !isInternalService ? (referralClient?.id || "") : "",
@@ -537,7 +593,35 @@ function SalesForm({
     const editingPending = editingSale && String(editingSale.status || "").toLowerCase() === "pendiente_pago";
     if (!editingSale) return canEditSaleDate ? (form.date || today) : today;
     if (editingPending && status === "cobrado") return canEditSaleDate ? (form.date || today) : today;
-    return form.date || editingSale.fechaOperativa || editingSale.date || today;
+    return canEditSaleDate ? (form.date || editingSale.saleDate || editingSale.fechaOperativa || editingSale.date || today) : (editingSale.saleDate || editingSale.fechaOperativa || editingSale.date || today);
+  };
+
+  const validateOperationalDate = (effectiveDate) => {
+    const originalDate = editingSale ? (editingSale.saleDate || editingSale.fechaOperativa || editingSale.date || "") : "";
+    const isUnchangedHistoricalSale = Boolean(editingSale && originalDate && effectiveDate === originalDate);
+    if (!isValidDateString(effectiveDate)) {
+      setSaleError("La fecha de la venta no es valida.");
+      return false;
+    }
+    if (effectiveDate > getMadridDateString()) {
+      setSaleError("No se pueden registrar ventas con fecha futura.");
+      return false;
+    }
+    if (effectiveDate < getMadridDateString()) {
+      if (!canEditSaleDate && !isUnchangedHistoricalSale) {
+        setSaleError("No tienes permisos para registrar ventas de dias anteriores.");
+        return false;
+      }
+      if (!isUnchangedHistoricalSale && !form.backdatedReasonCode) {
+        setSaleError("Selecciona el motivo del registro tardio.");
+        return false;
+      }
+      if (!isUnchangedHistoricalSale && form.backdatedReasonCode === "other" && !form.backdatedReasonText.trim()) {
+        setSaleError("Indica el motivo del registro tardio.");
+        return false;
+      }
+    }
+    return true;
   };
 
   const savePayload = (payload) => {
@@ -570,6 +654,7 @@ function SalesForm({
       return;
     }
     const effectiveDate = effectiveOperationalDate("pendiente_pago");
+    if (!validateOperationalDate(effectiveDate)) return;
 
     if (saleServices.length === 0 || !form.employee || totals.total <= 0) {
       setSaleError("Completa servicio, profesional y total antes de guardar pendiente.");
@@ -585,6 +670,7 @@ function SalesForm({
 
     if (isInternalService) {
       const effectiveDate = effectiveOperationalDate("servicio_interno");
+      if (!validateOperationalDate(effectiveDate)) return;
       if (saleServices.length === 0 || !clientQuery.trim() || !form.employee || totals.total <= 0 || Number(form.commissionPercent || 0) <= 0 || !form.notes.trim()) {
         setSaleError("Completa socio/persona beneficiaria, servicio, profesional, precio de referencia, comision % y motivo/observacion obligatoria.");
         return;
@@ -601,6 +687,7 @@ function SalesForm({
     const totalCents = Math.round(totals.total * 100);
 
     const effectiveDate = effectiveOperationalDate("cobrado");
+    if (!validateOperationalDate(effectiveDate)) return;
 
     if (saleServices.length === 0 || !form.employee || totals.total <= 0 || !form.entryChannel) {
       setSaleError("Completa servicio, profesional, canal de origen y total de venta.");
@@ -767,9 +854,29 @@ function SalesForm({
           {showAdvanced && (
             <div className="advanced-sale-fields">
               <div className="field-row">
-                <label>Fecha<input type="date" name="date" value={form.date} onChange={updateField} disabled={!canEditSaleDate} /></label>
+                <label>Fecha de la venta<input type="date" name="date" value={form.date} max={today} onChange={updateField} disabled={!canEditSaleDate} /></label>
                 <label>Comision aplicada %<input type="number" min="0" step="0.01" name="commissionPercent" value={form.commissionPercent} onChange={updateField} disabled={!canEditCommission} /></label>
               </div>
+              {!canEditSaleDate && <p className="empty-state">La fecha de la venta es informativa. Solo usuarios autorizados pueden registrar dias anteriores.</p>}
+              {isFutureDate && <p className="auth-error">No se pueden registrar ventas con fecha futura.</p>}
+              {isBackdated && (
+                <section className="backdated-sale-box">
+                  <strong>Registro tardio de venta</strong>
+                  <span>Esta venta se asignara comercialmente al dia {form.date}, pero quedara auditada como registrada posteriormente.</span>
+                  <label>Motivo del registro tardio<select name="backdatedReasonCode" value={form.backdatedReasonCode} onChange={updateField}>
+                    <option value="">Seleccionar motivo...</option>
+                    {backdatedReasonOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select></label>
+                  {form.backdatedReasonCode === "other" && (
+                    <label>Detalle del motivo<input name="backdatedReasonText" value={form.backdatedReasonText} onChange={updateField} placeholder="Explica el motivo" /></label>
+                  )}
+                  {backdatedClosure && (
+                    <p className="auth-warning">
+                      Esta fecha ya tiene un cierre de caja. La venta se registrara como ajuste posterior al cierre y no modificara silenciosamente el cierre original.
+                    </p>
+                  )}
+                </section>
+              )}
               <div className="field-row">
                 <label>Comision Treatwell %<input type="number" min="0" step="0.01" name="treatwellCommissionPercent" value={form.treatwellCommissionPercent} onChange={updateTreatwellPercent} /></label>
                 <label>Propina en tarjeta<input type="number" min="0" step="0.01" name="cardTipAmount" value={form.cardTipAmount} onChange={updateField} /></label>

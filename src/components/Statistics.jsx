@@ -197,6 +197,8 @@ function Statistics({
   canCreateService = false,
   canEditSaleDate = false,
   canEditCommission = false,
+  cashClosings = [],
+  currentUser,
 }) {
   const initialFilters = getStatsRange("month");
   const [periodFilter, setPeriodFilter] = useState("month");
@@ -312,6 +314,8 @@ function Statistics({
               canCreateService={canCreateService}
               canEditSaleDate={canEditSaleDate}
               canEditCommission={canEditCommission}
+              cashClosings={cashClosings}
+              currentUser={currentUser}
               onCancelEdit={() => setEditingSale(null)}
               onDateChange={() => {}}
             />

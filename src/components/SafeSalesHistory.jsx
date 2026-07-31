@@ -5,7 +5,7 @@ function money(value) {
 }
 
 function operationalDate(sale = {}) {
-  return sale.fechaOperativa || sale.date || "";
+  return sale.saleDate || sale.fechaOperativa || sale.date || "";
 }
 
 function saleStatus(sale = {}) {
@@ -161,6 +161,7 @@ function SafeSalesHistory({
                 {statusLabel(sale)}
                 {saleIsEdited(sale) && <b className="sale-tag edited"> Editada</b>}
                 {saleStatus(sale) === "anulada" && <b className="sale-tag voided"> Anulada</b>}
+                {sale.isBackdated && <b className="sale-tag backdated"> Registrada posteriormente</b>}
               </span>
               <div className="compact-actions">
                 <button className="secondary-button" type="button" onClick={() => setSelectedSale(sale)}>Ver historial</button>
@@ -184,13 +185,21 @@ function SafeSalesHistory({
               <button className="secondary-button" type="button" onClick={() => setSelectedSale(null)}>Cerrar</button>
             </div>
             <div className="client-detail-grid">
-              <div><span>Fecha operativa</span><strong>{operationalDate(selectedSale) || "-"}</strong></div>
+              <div><span>Fecha de la venta</span><strong>{operationalDate(selectedSale) || "-"}</strong></div>
+              <div><span>Registrada el</span><strong>{selectedSale.createdAt || selectedSale.horaCreacion || "-"}</strong></div>
+              <div><span>Registrada por</span><strong>{selectedSale.createdBy || "Sin usuario"}</strong></div>
               <div><span>Hora</span><strong>{saleHour(selectedSale) || "-"}</strong></div>
               <div><span>Cliente</span><strong>{clients[selectedSale.clientId] || selectedSale.clientName || "Cliente mostrador"}</strong></div>
               <div><span>Profesional</span><strong>{selectedSale.employee || "Sin profesional"}</strong></div>
               <div><span>Importe</span><strong>{money(selectedSale.total || selectedSale.amount)}</strong></div>
               <div><span>Metodo pago</span><strong>{paymentText(selectedSale)}</strong></div>
               <div><span>Estado</span><strong>{statusLabel(selectedSale)}</strong></div>
+              {selectedSale.isBackdated && (
+                <div><span>Motivo registro tardio</span><strong>{selectedSale.backdatedReasonText || selectedSale.backdatedReasonCode || "-"}</strong></div>
+              )}
+              {selectedSale.registeredAfterClosure && (
+                <div><span>Posterior a cierre</span><strong>{selectedSale.relatedClosureId || selectedSale.closureStatusAtCreation || "Si"}</strong></div>
+              )}
               <div className="wide-detail"><span>Servicios</span><p>{servicesText(selectedSale)}</p></div>
               <div className="wide-detail"><span>Observaciones</span><p>{selectedSale.notes || "Sin observaciones"}</p></div>
             </div>

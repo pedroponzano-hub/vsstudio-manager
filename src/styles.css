@@ -710,6 +710,11 @@ h3 {
   color: #9b2c1f;
 }
 
+.sale-tag.backdated {
+  background: #eef2ff;
+  color: #3f4f8f;
+}
+
 .list-item,
 .stat-row,
 .client-row {
@@ -1323,6 +1328,29 @@ h3 {
   display: grid;
   gap: 12px;
   min-width: 0;
+}
+
+.backdated-sale-box {
+  background: #f7f4ed;
+  border: 1px solid #e7dcc8;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.backdated-sale-box > span {
+  color: #6f6255;
+  font-size: 0.9rem;
+}
+
+.auth-warning {
+  background: #fff8df;
+  border: 1px solid #ead9ad;
+  border-radius: 8px;
+  color: #7a5b16;
+  margin: 0;
+  padding: 10px;
 }
 
 .service-search-primary {

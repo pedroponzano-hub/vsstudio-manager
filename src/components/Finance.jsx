@@ -38,7 +38,7 @@ function inRange(date, range) {
 }
 
 function operationalDate(item = {}) {
-  return item.fechaOperativa || item.date || "";
+  return item.saleDate || item.fechaOperativa || item.date || "";
 }
 
 function normalizeMethod(method = "", methods = paymentMethods) {

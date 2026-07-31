@@ -26,14 +26,14 @@ function todayLocal() {
 }
 
 function saleOperationalDate(sale = {}) {
-  if (sale.fechaOperativa || sale.operationalDate) return sale.fechaOperativa || sale.operationalDate;
+  if (sale.saleDate || sale.fechaOperativa || sale.operationalDate) return sale.saleDate || sale.fechaOperativa || sale.operationalDate;
   const localCreatedDate = String(sale.horaCreacion || "").match(/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2})?$/)?.[1];
   if (localCreatedDate && sale.date && localCreatedDate > sale.date) return localCreatedDate;
   return sale.fechaOperativa || sale.operationalDate || sale.date || sale.fecha || todayLocal();
 }
 
 function itemOperationalDate(item = {}) {
-  return item.fechaOperativa || item.operationalDate || item.date || item.fecha || "";
+  return item.saleDate || item.fechaOperativa || item.operationalDate || item.date || item.fecha || "";
 }
 
 function localTimeFromTimestamp(value = "") {
@@ -980,6 +980,7 @@ function normalizeSale(sale) {
   return {
     id: sale.id,
     date: fechaOperativa,
+    saleDate: sale.saleDate || fechaOperativa,
     fechaOperativa,
     operationType,
     internalService: operationType === "servicio_interno",
@@ -1020,7 +1021,16 @@ function normalizeSale(sale) {
     horaCreacion: sale.horaCreacion || sale.createdAt || "",
     horaCierre: sale.horaCierre || sale.closedAt || "",
     createdAt: sale.createdAt || "",
+    createdBy: sale.createdBy || sale.registeredBy || "",
     updatedAt: sale.updatedAt || "",
+    isBackdated: Boolean(sale.isBackdated),
+    backdatedReasonCode: sale.backdatedReasonCode || "",
+    backdatedReasonText: sale.backdatedReasonText || "",
+    registeredAfterClosure: Boolean(sale.registeredAfterClosure),
+    relatedClosureId: sale.relatedClosureId || "",
+    closureStatusAtCreation: sale.closureStatusAtCreation || "",
+    auditEvents: Array.isArray(sale.auditEvents) ? sale.auditEvents : [],
+    commissionCreatedAfterSettlement: Boolean(sale.commissionCreatedAfterSettlement),
     fechaCierre: sale.fechaCierre || "",
     fechaCancelacion: sale.fechaCancelacion || "",
     horaCancelacion: sale.horaCancelacion || "",
@@ -1061,6 +1071,24 @@ function normalizeClient(client) {
 
 function cleanFirestoreData(item) {
   return Object.fromEntries(Object.entries(item || {}).filter(([, value]) => value !== undefined));
+}
+
+function backdatedAuditEvent(type, sale = {}) {
+  if (!sale.isBackdated && !sale.backdatedReasonCode && !sale.registeredAfterClosure) return null;
+  return cleanFirestoreData({
+    id: createId("audit"),
+    type,
+    saleId: sale.id || "",
+    saleDate: sale.saleDate || saleOperationalDate(sale),
+    createdAt: sale.createdAt || getTechnicalTimestamp(),
+    createdBy: sale.createdBy || sale.registeredBy || "",
+    backdatedReasonCode: sale.backdatedReasonCode || "",
+    backdatedReasonText: sale.backdatedReasonText || "",
+    registeredAfterClosure: Boolean(sale.registeredAfterClosure),
+    relatedClosureId: sale.relatedClosureId || "",
+    total: Number(sale.total || 0),
+    paymentMethods: normalizeSalePayments(sale).map((payment) => payment.method).filter(Boolean),
+  });
 }
 
 function normalizePhone(value) {
@@ -1357,24 +1385,29 @@ const DataService = {
     const technicalTimestamp = getTechnicalTimestamp();
     const localTimestamp = getMadridTimestamp();
     const localTime = getMadridTimeString();
-    const date = saleInput.fechaOperativa || saleInput.date || todayLocal();
+    const date = saleInput.saleDate || saleInput.fechaOperativa || saleInput.date || todayLocal();
     const status = saleStatus(saleInput);
+    const saleId = createId("sale");
     const sale = {
       ...normalizeSale({
         ...saleInput,
         date,
+        saleDate: date,
         fechaOperativa: date,
         status,
         createdAt: technicalTimestamp,
+        createdBy: saleInput.createdBy || "",
         updatedAt: technicalTimestamp,
       }),
-      id: createId("sale"),
+      id: saleId,
       horaCreacion: localTimestamp,
       horaCreacionLocal: localTime,
       horaCierre: status === "cobrado" ? localTimestamp : "",
       horaCierreLocal: status === "cobrado" ? localTime : "",
       fechaCierre: status === "cobrado" ? date : "",
     };
+    const auditEvent = backdatedAuditEvent("sale_backdated_created", sale);
+    if (auditEvent) sale.auditEvents = [...(sale.auditEvents || []), auditEvent];
     writeCollection("sales", [sale, ...currentSales]);
     saveDocumentToFirestore("sales", sale, "Venta guardada en Firestore");
     const clients = this.recalculateClientData();
@@ -1391,7 +1424,7 @@ const DataService = {
     const technicalTimestamp = getTechnicalTimestamp();
     const now = getMadridTimestamp();
     const localTime = getMadridTimeString();
-    const date = updates.fechaOperativa || updates.date || existingSale.fechaOperativa || existingSale.date || todayLocal();
+    const date = updates.saleDate || updates.fechaOperativa || updates.date || existingSale.saleDate || existingSale.fechaOperativa || existingSale.date || todayLocal();
     const wasCollected = saleStatus(existingSale) === "cobrado";
     const isCollected = nextStatus === "cobrado";
     const isVoid = nextStatus === "anulada";
@@ -1403,6 +1436,7 @@ const DataService = {
       ...existingSale,
       ...updates,
       date,
+      saleDate: date,
       fechaOperativa: date,
       id: saleId,
       status: nextStatus,
@@ -1416,6 +1450,7 @@ const DataService = {
       fechaCancelacion: nextStatus === "cancelado" ? (updates.fechaCancelacion || todayLocal()) : existingSale.fechaCancelacion,
       horaCancelacion: nextStatus === "cancelado" ? (updates.horaCancelacion || now) : existingSale.horaCancelacion,
       createdAt: existingSale.createdAt || technicalTimestamp,
+      createdBy: existingSale.createdBy || updates.createdBy || "",
       updatedAt: technicalTimestamp,
       editedAt: isAuditedEdit ? now : existingSale.editedAt,
       editedBy: isAuditedEdit ? (updates.editedBy || existingSale.editedBy || "") : existingSale.editedBy,
@@ -1444,6 +1479,10 @@ const DataService = {
       editReason: isAuditedEdit ? (updates.editReason || "") : draftSale.editReason,
       editHistory,
     });
+    const backdatedEditEvent = isAuditedEdit ? backdatedAuditEvent("sale_backdated_edited", updatedSale) : null;
+    if (backdatedEditEvent) {
+      updatedSale.auditEvents = [...(updatedSale.auditEvents || []), backdatedEditEvent];
+    }
     const sales = writeCollection(
       "sales",
       currentSales.map((sale) => (sale.id === saleId ? updatedSale : sale)),

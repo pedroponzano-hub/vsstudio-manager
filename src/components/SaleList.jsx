@@ -51,7 +51,7 @@ function matchesStatusFilter(sale, filter) {
 }
 
 function operationalDate(item = {}) {
-  return item.fechaOperativa || item.date || "";
+  return item.saleDate || item.fechaOperativa || item.date || "";
 }
 
 function saleEditHistory(sale) {
@@ -95,6 +95,7 @@ function SaleItem({ sale, clients, onEditSale, onDeleteSale, onViewHistory }) {
           {saleIsEdited(sale) && <b className="sale-tag edited">[EDITADA]</b>}
           {saleStatus(sale) === "anulada" && <b className="sale-tag voided">[ANULADA]</b>}
           {saleStatus(sale) === "servicio_interno" && <b className="sale-tag edited">[SERVICIO INTERNO]</b>}
+          {sale.isBackdated && <b className="sale-tag backdated">[REGISTRADA POSTERIORMENTE]</b>}
         </span>
       </div>
       <div className="item-actions sale-card-actions">
@@ -205,7 +206,8 @@ function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDe
             </div>
             <div className="client-detail-grid">
               <div><span>Fecha creacion</span><strong>{historySale.createdAt || historySale.horaCreacion || "-"}</strong></div>
-              <div><span>Fecha operativa</span><strong>{operationalDate(historySale) || "-"}</strong></div>
+              <div><span>Fecha de la venta</span><strong>{operationalDate(historySale) || "-"}</strong></div>
+              <div><span>Registrada por</span><strong>{historySale.createdBy || "Sin usuario"}</strong></div>
               <div><span>Hora cierre</span><strong>{historySale.horaCierreLocal || historySale.horaCierre || "-"}</strong></div>
               <div><span>Cliente</span><strong>{clients[historySale.clientId] || historySale.clientName || "Cliente eliminado"}</strong></div>
               <div><span>Profesional</span><strong>{historySale.employee || "Sin profesional"}</strong></div>
@@ -217,6 +219,8 @@ function SaleList({ sales, clients, selectedDate, onDateSelect, onEditSale, onDe
               <div><span>% comision empleada</span><strong>{Number(historySale.commissionPercent || 0).toFixed(2)}%</strong></div>
               <div><span>Comision Treatwell</span><strong>{money(historySale.treatwellCommissionAmount)}</strong></div>
               <div><span>% comision Treatwell</span><strong>{Number(historySale.treatwellCommissionPercent || 0).toFixed(2)}%</strong></div>
+              {historySale.isBackdated && <div><span>Motivo registro tardio</span><strong>{historySale.backdatedReasonText || historySale.backdatedReasonCode || "-"}</strong></div>}
+              {historySale.registeredAfterClosure && <div><span>Posterior a cierre</span><strong>{historySale.relatedClosureId || historySale.closureStatusAtCreation || "Si"}</strong></div>}
               <div className="wide-detail"><span>Servicios vendidos</span><p>{servicesDetailText(historySale)}</p></div>
             </div>
             <h3>Historial de ediciones</h3>
