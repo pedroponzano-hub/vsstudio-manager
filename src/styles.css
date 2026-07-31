@@ -495,6 +495,54 @@ h3 {
   align-self: center;
 }
 
+.sale-date-header {
+  align-items: stretch;
+  background: #fbf8f1;
+  border: 1px solid #eadfcb;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  padding: 12px;
+}
+
+.sale-date-main,
+.sale-date-status {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sale-date-main input {
+  min-height: 44px;
+}
+
+.sale-date-main small,
+.sale-date-status small {
+  color: #6f6255;
+  font-size: 0.85rem;
+}
+
+.sale-date-pill {
+  align-self: start;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.28rem 0.58rem;
+  width: fit-content;
+}
+
+.sale-date-pill.today {
+  background: #edf8f0;
+  color: #24613a;
+}
+
+.sale-date-pill.backdated {
+  background: #eef2ff;
+  color: #3f4f8f;
+}
+
 .compact-date-field {
   background: #fbf8f1;
   border: 1px solid #eadfcb;
@@ -3129,6 +3177,7 @@ h3 {
   .field-row,
   .sale-top-row,
   .sale-form-heading,
+  .sale-date-header,
   .filters-panel,
   .commission-card,
   .channel-row,

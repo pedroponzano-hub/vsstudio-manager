@@ -142,6 +142,11 @@ function backdatedReasonLabel(code = "") {
   return backdatedReasonOptions.find(([value]) => value === code)?.[1] || "";
 }
 
+function formatSpanishDate(date = "") {
+  if (!isValidDateString(date)) return "Fecha no valida";
+  return `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
+}
+
 function emptySaleForm() {
   return {
     date: getMadridDateString(),
@@ -206,7 +211,7 @@ function SalesForm({
   useEffect(() => {
     if (!editingSale) return;
 
-    const nextDate = editingSale.fechaOperativa || editingSale.date || getMadridDateString();
+    const nextDate = editingSale.saleDate || editingSale.fechaOperativa || editingSale.date || getMadridDateString();
     setForm({
       date: nextDate,
       operationType: editingSale.operationType || (String(editingSale.status || "").toLowerCase() === "servicio_interno" ? "servicio_interno" : "venta"),
@@ -720,6 +725,52 @@ function SalesForm({
         <strong className="tpv-heading-total">{totals.total.toFixed(2)} EUR</strong>
       </div>
 
+      <section className="sale-date-header">
+        <div className="sale-date-main">
+          <label htmlFor="sale-business-date">Fecha de la venta</label>
+          <input
+            id="sale-business-date"
+            type="date"
+            name="date"
+            value={form.date}
+            max={today}
+            onChange={updateField}
+            disabled={!canEditSaleDate}
+            aria-describedby={!canEditSaleDate ? "sale-date-permission-help" : undefined}
+          />
+          <small>{formatSpanishDate(form.date)}</small>
+        </div>
+        <div className="sale-date-status">
+          <span className={isBackdated ? "sale-date-pill backdated" : "sale-date-pill today"}>
+            {!saleDateIsValid ? "Fecha pendiente" : isBackdated ? "Venta de fecha anterior" : "Venta del dia"}
+          </span>
+          {!canEditSaleDate && (
+            <small id="sale-date-permission-help">Solo usuarios autorizados pueden registrar ventas en fechas anteriores.</small>
+          )}
+          {isBackdated && <small>Esta venta se contabilizara en la fecha seleccionada, no en el dia actual.</small>}
+        </div>
+      </section>
+
+      {isFutureDate && <p className="auth-error">No se pueden registrar ventas con fecha futura.</p>}
+      {isBackdated && (
+        <section className="backdated-sale-box">
+          <strong>Registro de venta anterior</strong>
+          <span>Esta venta se asignara comercialmente al dia {formatSpanishDate(form.date)}, pero quedara auditada como registrada posteriormente.</span>
+          <label>Motivo del registro tardio<select name="backdatedReasonCode" value={form.backdatedReasonCode} onChange={updateField}>
+            <option value="">Seleccionar motivo...</option>
+            {backdatedReasonOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select></label>
+          {form.backdatedReasonCode === "other" && (
+            <label>Detalle del motivo<input name="backdatedReasonText" value={form.backdatedReasonText} onChange={updateField} placeholder="Explica el motivo" /></label>
+          )}
+          {backdatedClosure && (
+            <p className="auth-warning">
+              Esta fecha ya tiene un cierre de caja confirmado. La venta quedara registrada como ajuste posterior al cierre.
+            </p>
+          )}
+        </section>
+      )}
+
       <section className="sale-services-workflow">
         <section className="tpv-categories">
           {tpvCategories.map((category) => (
@@ -854,29 +905,8 @@ function SalesForm({
           {showAdvanced && (
             <div className="advanced-sale-fields">
               <div className="field-row">
-                <label>Fecha de la venta<input type="date" name="date" value={form.date} max={today} onChange={updateField} disabled={!canEditSaleDate} /></label>
                 <label>Comision aplicada %<input type="number" min="0" step="0.01" name="commissionPercent" value={form.commissionPercent} onChange={updateField} disabled={!canEditCommission} /></label>
               </div>
-              {!canEditSaleDate && <p className="empty-state">La fecha de la venta es informativa. Solo usuarios autorizados pueden registrar dias anteriores.</p>}
-              {isFutureDate && <p className="auth-error">No se pueden registrar ventas con fecha futura.</p>}
-              {isBackdated && (
-                <section className="backdated-sale-box">
-                  <strong>Registro tardio de venta</strong>
-                  <span>Esta venta se asignara comercialmente al dia {form.date}, pero quedara auditada como registrada posteriormente.</span>
-                  <label>Motivo del registro tardio<select name="backdatedReasonCode" value={form.backdatedReasonCode} onChange={updateField}>
-                    <option value="">Seleccionar motivo...</option>
-                    {backdatedReasonOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select></label>
-                  {form.backdatedReasonCode === "other" && (
-                    <label>Detalle del motivo<input name="backdatedReasonText" value={form.backdatedReasonText} onChange={updateField} placeholder="Explica el motivo" /></label>
-                  )}
-                  {backdatedClosure && (
-                    <p className="auth-warning">
-                      Esta fecha ya tiene un cierre de caja. La venta se registrara como ajuste posterior al cierre y no modificara silenciosamente el cierre original.
-                    </p>
-                  )}
-                </section>
-              )}
               <div className="field-row">
                 <label>Comision Treatwell %<input type="number" min="0" step="0.01" name="treatwellCommissionPercent" value={form.treatwellCommissionPercent} onChange={updateTreatwellPercent} /></label>
                 <label>Propina en tarjeta<input type="number" min="0" step="0.01" name="cardTipAmount" value={form.cardTipAmount} onChange={updateField} /></label>
@@ -903,10 +933,14 @@ function SalesForm({
       </section>
 
       <div className="calculated-row operational-total-row">
+        <span>Fecha venta: <b>{formatSpanishDate(form.date)}</b></span>
         <span>Subtotal servicios: <b>{totals.subtotalServices.toFixed(2)} EUR</b></span>
         {!isInternalService && <span>Pagado: <b>{paymentsTotal.toFixed(2)} EUR</b></span>}
+        {!isInternalService && <span>Metodo pago: <b>{payments.filter((payment) => payment.method).map((payment) => payment.method).join(" + ") || "Pendiente"}</b></span>}
+        <span>Profesional: <b>{form.employee || "Pendiente"}</b></span>
         <span>{isInternalService ? "Precio referencia" : "Total venta"}: <b>{totals.total.toFixed(2)} EUR</b></span>
         <span>Comision generada: <b>{totals.commissionAmount.toFixed(2)} EUR</b></span>
+        {isBackdated && <span><b>Venta de fecha anterior</b></span>}
       </div>
       <div className="form-actions">
         <button type="submit">{isInternalService ? "Guardar servicio interno" : "Cobrar y cerrar"}</button>

@@ -140,6 +140,12 @@ function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
 }
 
+function formatDisplayDate(date = "") {
+  const text = String(date || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return text || "-";
+  return `${text.slice(8, 10)}/${text.slice(5, 7)}/${text.slice(0, 4)}`;
+}
+
 function saleStatus(sale) {
   const status = String(sale.status || "cobrado").toLowerCase();
   if (status === "pendiente_pago" || status === "cancelado" || status === "anulada" || status === "servicio_interno") return status;
@@ -252,7 +258,9 @@ function PendingTickets({ sales, clients, onCharge, onCancel }) {
           <article className="pending-ticket-card" key={sale.id}>
             <div>
               <strong>{clients[sale.clientId] || sale.clientName || "Cliente mostrador"}</strong>
+              <span>Fecha de la venta: {formatDisplayDate(operationalDate(sale))}</span>
               <span>{formatMadridTime(sale.horaCreacion || sale.date)} - {sale.employee || "Sin profesional"} - {saleServicesText(sale)}</span>
+              {sale.isBackdated && <span className="sale-tag backdated">Registrada posteriormente</span>}
             </div>
             <b>{money(sale.total || sale.amount || 0)}</b>
             <span className="status-pill pending">Pendiente de pago</span>
