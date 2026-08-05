@@ -573,37 +573,71 @@ h3 {
   border: 1px solid #eadfcb;
   border-radius: 8px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 14px;
-  padding: 12px;
+  padding: 10px;
 }
 
-.section-title.compact {
-  align-items: center;
-}
-
-.section-title.compact h3 {
-  font-size: 1rem;
-  margin: 0;
-}
-
-.section-title.compact span {
-  color: #776f64;
-  font-size: 0.86rem;
-}
-
-.expense-filter-grid {
+.expense-filter-main {
   align-items: end;
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.expense-summary-grid {
+.expense-filter-main button {
+  min-height: 44px;
+}
+
+.expense-filter-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.expense-filter-meta span {
+  color: #776f64;
+  font-size: 0.86rem;
+}
+
+.expense-filter-meta button {
+  padding: 0.48rem 0.7rem;
+}
+
+.expense-more-filters {
+  border-top: 1px solid #eadfcb;
+  padding-top: 8px;
+}
+
+.expense-more-filters summary {
+  color: #8a6d2e;
+  cursor: pointer;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.expense-secondary-grid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.expense-summary-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 14px;
+}
+
+.expense-summary-grid .metric {
+  padding: 11px;
+}
+
+.expense-summary-grid .metric strong {
+  font-size: 1.08rem;
 }
 
 .success-message {
@@ -3143,7 +3177,8 @@ h3 {
   .workspace,
   .two-column,
   .filters-panel,
-  .expense-filter-grid,
+  .expense-filter-main,
+  .expense-secondary-grid,
   .expense-summary-grid,
   .commission-card,
   .reset-panel,
@@ -3242,7 +3277,8 @@ h3 {
   .sale-form-heading,
   .sale-date-header,
   .filters-panel,
-  .expense-filter-grid,
+  .expense-filter-main,
+  .expense-secondary-grid,
   .expense-summary-grid,
   .commission-card,
   .channel-row,
