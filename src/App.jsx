@@ -146,6 +146,14 @@ function formatDisplayDate(date = "") {
   return `${text.slice(8, 10)}/${text.slice(5, 7)}/${text.slice(0, 4)}`;
 }
 
+function expenseBusinessDate(expense = {}) {
+  const expenseDate = String(expense.expenseDate || "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) return expenseDate;
+  const date = String(expense.date || "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  return String(expense.createdAt || "").match(/\d{4}-\d{2}-\d{2}/)?.[0] || "";
+}
+
 function saleStatus(sale) {
   const status = String(sale.status || "cobrado").toLowerCase();
   if (status === "pendiente_pago" || status === "cancelado" || status === "anulada" || status === "servicio_interno") return status;
@@ -399,6 +407,7 @@ function App() {
   const [editingSale, setEditingSale] = useState(null);
   const [modalEditingSale, setModalEditingSale] = useState(null);
   const [editingExpense, setEditingExpense] = useState(null);
+  const [expenseNotice, setExpenseNotice] = useState("");
   const [salesFormHighlight, setSalesFormHighlight] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeNavKey, setActiveNavKey] = useState("");
@@ -629,11 +638,13 @@ function App() {
     if (!canPerform(effectiveRole, "manageExpenses")) return;
     setData(DataService.addExpense(expense));
     setEditingExpense(null);
+    setExpenseNotice("Gasto guardado correctamente");
   };
   const updateExpense = (expenseId, updates) => {
     if (!canPerform(effectiveRole, "manageExpenses")) return;
     setData(DataService.updateExpense(expenseId, updates));
     setEditingExpense(null);
+    setExpenseNotice("");
   };
   const addClient = (client) => {
     if (!canPerform(effectiveRole, "manageClients")) return;
@@ -774,8 +785,9 @@ function App() {
   const deleteExpense = (id) => {
     if (!canPerform(effectiveRole, "manageExpenses")) return;
     setData((current) => ({ ...current, expenses: DataService.deleteExpense(current.expenses, id) }));
+    setExpenseNotice("");
   };
-  const canDeleteExpense = (expense) => effectiveRole === "admin" || expense.date === getTodayLocalDateString();
+  const canDeleteExpense = (expense) => effectiveRole === "admin" || expenseBusinessDate(expense) === getTodayLocalDateString();
   const updateCommissionStatus = (saleId, status, details) => {
     if (effectiveRole !== "admin" || !canPerform(effectiveRole, "manageCommissions")) return;
     const actor = user?.email || user?.nombre || "";
@@ -1040,6 +1052,8 @@ function App() {
             />
             <ExpenseList
               expenses={scopedData.expenses}
+              config={scopedData.config}
+              notice={expenseNotice}
               onEditExpense={setEditingExpense}
               onDeleteExpense={deleteExpense}
               canDeleteExpense={canDeleteExpense}

@@ -568,6 +568,67 @@ h3 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.expense-filter-box {
+  background: #fbf8f1;
+  border: 1px solid #eadfcb;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.section-title.compact {
+  align-items: center;
+}
+
+.section-title.compact h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.section-title.compact span {
+  color: #776f64;
+  font-size: 0.86rem;
+}
+
+.expense-filter-grid {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.expense-summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.success-message {
+  background: #edf8f0;
+  border: 1px solid #c8e6d0;
+  border-radius: 8px;
+  color: #24613a;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+
+.expense-empty-state {
+  align-items: start;
+  background: #fff;
+  border: 1px dashed #d9cfae;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.expense-empty-state p {
+  margin: 0;
+}
+
 .calculated-row {
   background: #fbf8f1;
   border: 1px solid #eadfcb;
@@ -3082,6 +3143,8 @@ h3 {
   .workspace,
   .two-column,
   .filters-panel,
+  .expense-filter-grid,
+  .expense-summary-grid,
   .commission-card,
   .reset-panel,
   .service-form,
@@ -3179,6 +3242,8 @@ h3 {
   .sale-form-heading,
   .sale-date-header,
   .filters-panel,
+  .expense-filter-grid,
+  .expense-summary-grid,
   .commission-card,
   .channel-row,
   .client-detail-grid,
