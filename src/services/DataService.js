@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
   config: "business-dashboard:config",
   appointments: "business-dashboard:appointments",
   commissions: "business-dashboard:commissions",
+  commissionPaymentBatches: "business-dashboard:commissionPaymentBatches",
   cashClosings: "business-dashboard:cashClosings",
   monthlyClosings: "business-dashboard:monthlyClosings",
 };
@@ -129,6 +130,7 @@ const defaultData = {
   clients: [],
   appointments: [],
   commissions: [],
+  commissionPaymentBatches: [],
   cashClosings: [],
   monthlyClosings: [],
   config: {
@@ -170,7 +172,7 @@ const vsStudioBaseConfig = {
   loyaltyVisits: defaultData.config.loyaltyVisits,
 };
 
-const FIRESTORE_COLLECTIONS = ["sales", "expenses", "clients", "appointments", "commissions", "cashClosings", "monthlyClosings"];
+const FIRESTORE_COLLECTIONS = ["sales", "expenses", "clients", "appointments", "commissions", "commissionPaymentBatches", "cashClosings", "monthlyClosings"];
 const CONFIG_DOC_ID = "main";
 
 function clone(value) {
@@ -761,6 +763,7 @@ function commissionRows(sales, commissionStatuses) {
         metodoPagoComision: details.metodoPagoComision || details.paymentMethod || "",
         usuarioQuePago: details.usuarioQuePago || details.paidBy || "",
         observacionesPago: details.observacionesPago || details.paidObservation || "",
+        commissionPaymentBatchId: details.commissionPaymentBatchId || "",
         correctionReason: details.correctionReason || "",
         correctionHistory: Array.isArray(details.correctionHistory) ? details.correctionHistory : [],
       };
@@ -1232,6 +1235,10 @@ const DataService = {
     return readCollection("commissions");
   },
 
+  getCommissionPaymentBatches() {
+    return readCollection("commissionPaymentBatches");
+  },
+
   getCashClosings() {
     const closings = readCollection("cashClosings").map(normalizeCashClosing);
     writeCollection("cashClosings", closings);
@@ -1248,6 +1255,7 @@ const DataService = {
     const rows = commissionRows(this.getSales(), this.getCommissionStatuses());
     return {
       rows,
+      paymentBatches: this.getCommissionPaymentBatches(),
       totals: commissionTotals(rows),
     };
   },
@@ -1277,12 +1285,13 @@ const DataService = {
 
   async initializeRemoteData() {
     try {
-      const [sales, expenses, clients, appointments, commissions, cashClosings, monthlyClosings, services, remoteConfig] = await Promise.all([
+      const [sales, expenses, clients, appointments, commissions, commissionPaymentBatches, cashClosings, monthlyClosings, services, remoteConfig] = await Promise.all([
         readFirestoreCollection("sales"),
         readFirestoreCollection("expenses"),
         readFirestoreCollection("clients"),
         readFirestoreCollection("appointments"),
         readFirestoreCollection("commissions"),
+        readFirestoreCollection("commissionPaymentBatches"),
         readFirestoreCollection("cashClosings"),
         readFirestoreCollection("monthlyClosings"),
         readFirestoreCollection("services"),
@@ -1301,6 +1310,7 @@ const DataService = {
       writeCollection("clients", clients.map(normalizeClient));
       writeCollection("appointments", appointments);
       writeCollection("commissions", commissions);
+      writeCollection("commissionPaymentBatches", commissionPaymentBatches);
       writeCollection("cashClosings", cashClosings.map(normalizeCashClosing));
       writeCollection("monthlyClosings", monthlyClosings.map(normalizeMonthlyClosing));
       writeCollection("config", config);
@@ -1352,6 +1362,11 @@ const DataService = {
       onSnapshot(collection(db, "commissions"), (snapshot) => {
         const commissions = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
         writeCollection("commissions", commissions);
+        refreshFromLocal();
+      }, handleError),
+      onSnapshot(collection(db, "commissionPaymentBatches"), (snapshot) => {
+        const commissionPaymentBatches = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
+        writeCollection("commissionPaymentBatches", commissionPaymentBatches);
         refreshFromLocal();
       }, handleError),
       onSnapshot(collection(db, "cashClosings"), (snapshot) => {
@@ -1849,6 +1864,145 @@ const DataService = {
     return { ...this.getData(), commissions };
   },
 
+  bulkPayCommissions(commissionIds = [], details = {}) {
+    const uniqueIds = [...new Set((commissionIds || []).filter(Boolean))];
+    const currentStatuses = this.getCommissionStatuses();
+    const rows = commissionRows(this.getSales(), currentStatuses);
+    const rowsById = new Map(rows.map((row) => [row.saleId, row]));
+    const currentById = new Map(currentStatuses.map((item) => [item.saleId || item.id, item]));
+    const paymentDate = details.paymentDate || todayLocal();
+    const paymentMethod = details.paymentMethod || "Transferencia";
+    const actor = details.updatedBy || details.createdBy || "";
+    const notes = details.notes || "";
+    const periodStart = details.periodStart || "";
+    const periodEnd = details.periodEnd || "";
+    const now = getMadridTimestamp();
+    const selectedRows = uniqueIds
+      .map((id) => rowsById.get(id))
+      .filter((row) => row && row.status !== "pagada");
+
+    if (selectedRows.length === 0) {
+      return { data: this.getData(), result: { paidCount: 0, batchCount: 0, totalAmount: 0, skippedCount: uniqueIds.length, batches: [] } };
+    }
+
+    const skippedCount = uniqueIds.length - selectedRows.length;
+    const operationId = createId("commission-bulk-payment");
+    const groupedRows = selectedRows.reduce((groups, row) => {
+      const key = row.professionalId || row.employee || "Sin empleada";
+      const current = groups[key] || {
+        professionalId: row.professionalId || "",
+        professionalName: row.professionalName || row.employee || "Sin empleada",
+        employee: row.employee || "Sin empleada",
+        rows: [],
+      };
+      current.rows.push(row);
+      groups[key] = current;
+      return groups;
+    }, {});
+    const existingBatches = this.getCommissionPaymentBatches();
+    const batches = Object.values(groupedRows).map((group) => {
+      const totalAmount = group.rows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
+      return cleanFirestoreData({
+        id: createId("commission-payment-batch"),
+        operationId,
+        professionalId: group.professionalId,
+        professionalName: group.professionalName,
+        employee: group.employee,
+        commissionIds: group.rows.map((row) => row.saleId),
+        periodStart,
+        periodEnd,
+        paymentDate,
+        paymentMethod,
+        commissionCount: group.rows.length,
+        totalAmount,
+        status: "pagado",
+        notes,
+        createdAt: now,
+        createdBy: actor,
+        auditEvent: "commission_batch_paid",
+      });
+    });
+    const batchIdByCommission = new Map();
+    batches.forEach((batchItem) => {
+      (batchItem.commissionIds || []).forEach((commissionId) => batchIdByCommission.set(commissionId, batchItem.id));
+    });
+
+    const nextStatusesById = new Map(currentStatuses.map((item) => [item.saleId || item.id, item]));
+    selectedRows.forEach((row) => {
+      const existingStatus = currentById.get(row.saleId) || {};
+      const previousStatus = existingStatus.commissionStatus || existingStatus.status || row.status || "pendiente";
+      const newStatus = cleanFirestoreData({
+        ...existingStatus,
+        id: row.saleId,
+        saleId: row.saleId,
+        employee: existingStatus.employee || row.employee,
+        professionalId: existingStatus.professionalId || row.professionalId || "",
+        professionalName: existingStatus.professionalName || row.professionalName || row.employee || "",
+        commissionPercent: existingStatus.commissionPercent ?? row.commissionPercent,
+        commissionAmount: existingStatus.commissionAmount ?? row.commissionAmount,
+        status: "pagada",
+        commissionStatus: "pagada",
+        paidAt: now,
+        paidBy: actor,
+        paidObservation: notes,
+        paymentDate,
+        paymentMethod,
+        fechaPago: paymentDate,
+        metodoPagoComision: paymentMethod,
+        usuarioQuePago: actor,
+        observacionesPago: notes,
+        commissionPaymentBatchId: batchIdByCommission.get(row.saleId),
+        updatedBy: actor,
+        updatedAt: now,
+        statusHistory: [
+          ...(Array.isArray(existingStatus.statusHistory) ? existingStatus.statusHistory : []),
+          {
+            id: createId("commission-status"),
+            changedAt: now,
+            changedBy: actor,
+            previousStatus,
+            newStatus: "pagada",
+            paymentDate,
+            paymentMethod,
+            commissionAmount: Number(row.commissionAmount || 0),
+            commissionPaymentBatchId: batchIdByCommission.get(row.saleId),
+            auditEvent: "commission_batch_paid",
+          },
+        ],
+      });
+      nextStatusesById.set(row.saleId, newStatus);
+    });
+
+    const nextStatuses = [...nextStatusesById.values()];
+    const nextBatches = [...batches, ...existingBatches];
+    writeCollection("commissions", nextStatuses);
+    writeCollection("commissionPaymentBatches", nextBatches);
+
+    const firestoreBatch = writeBatch(db);
+    selectedRows.forEach((row) => {
+      firestoreBatch.set(doc(db, "commissions", row.saleId), cleanFirestoreData(nextStatusesById.get(row.saleId)));
+    });
+    batches.forEach((batchItem) => {
+      firestoreBatch.set(doc(db, "commissionPaymentBatches", batchItem.id), cleanFirestoreData(batchItem));
+    });
+    firestoreBatch.commit().catch((error) => {
+      console.warn("Firestore commission bulk payment failed", error);
+      console.log("Usando localStorage fallback");
+    });
+
+    const totalAmount = selectedRows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
+    return {
+      data: { ...this.getData(), commissions: nextStatuses, commissionPaymentBatches: nextBatches },
+      result: {
+        paidCount: selectedRows.length,
+        batchCount: batches.length,
+        totalAmount,
+        skippedCount,
+        batches,
+      },
+    };
+  },
+
   saveCashClosing(closingInput) {
     const date = closingInput.date || todayLocal();
     const currentClosings = this.getCashClosings();
@@ -2048,6 +2202,7 @@ const DataService = {
     writeCollection("expenses", [], true);
     writeCollection("appointments", [], true);
     writeCollection("commissions", [], true);
+    writeCollection("commissionPaymentBatches", [], true);
     writeCollection("cashClosings", [], true);
     writeCollection("monthlyClosings", [], true);
 

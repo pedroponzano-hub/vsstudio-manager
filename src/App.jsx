@@ -429,6 +429,7 @@ function App() {
   }, [activeNavKey, activePage, activeTab, visibleNavigation]);
   const roleCanManageClients = canPerform(effectiveRole, "manageClients");
   const roleCanManageCommissions = canPerform(effectiveRole, "manageCommissions");
+  const roleCanBulkPayCommissions = canPerform(effectiveRole, "commissions.pay_bulk");
   const roleCanManageServices = canPerform(effectiveRole, "manageServices");
   const roleCanCreateBackdatedSale = canPerform(effectiveRole, "sales.create_backdated") || effectiveRole === "admin";
   const roleCanEditSalesFully = effectiveRole === "admin" || effectiveRole === "direccion";
@@ -793,6 +794,13 @@ function App() {
     const actor = user?.email || user?.nombre || "";
     setData(DataService.updateCommissionStatus(saleId, status, { ...details, editedBy: actor, updatedBy: actor }));
   };
+  const bulkPayCommissions = (commissionIds, details) => {
+    if (!roleCanBulkPayCommissions) return null;
+    const actor = user?.email || user?.nombre || "";
+    const result = DataService.bulkPayCommissions(commissionIds, { ...details, createdBy: actor, updatedBy: actor });
+    setData(result.data);
+    return result.result;
+  };
 
   const resetData = (mode) => {
     if (!canPerform(effectiveRole, "restoreData")) return;
@@ -1061,7 +1069,15 @@ function App() {
           </section>
         ) : accessDeniedPage;
       case "finance.commissions":
-        return canAccessTab(effectiveRole, "commissions") ? <Commissions data={commissionsData} onStatusChange={effectiveRole === "admin" && roleCanManageCommissions ? updateCommissionStatus : null} /> : accessDeniedPage;
+        return canAccessTab(effectiveRole, "commissions") ? (
+          <Commissions
+            data={commissionsData}
+            user={user}
+            canBulkPay={roleCanBulkPayCommissions}
+            onBulkPay={roleCanBulkPayCommissions ? bulkPayCommissions : null}
+            onStatusChange={effectiveRole === "admin" && roleCanManageCommissions ? updateCommissionStatus : null}
+          />
+        ) : accessDeniedPage;
       case "finance.cashClosing":
         return canAccessTab(effectiveRole, "cashClosing") ? <CashClosing data={scopedData} commissionsData={commissionsData} user={user} onSave={saveCashClosing} /> : accessDeniedPage;
       case "finance.monthlyClosing":

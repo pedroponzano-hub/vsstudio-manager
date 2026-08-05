@@ -1789,6 +1789,77 @@ h3 {
   min-width: 1480px;
 }
 
+.finance-header.commission-detail-row.bulk,
+.finance-row.commission-detail-row.bulk {
+  grid-template-columns: 42px 100px 70px minmax(150px, 0.9fr) minmax(220px, 1.3fr) minmax(140px, 0.85fr) 110px 80px 110px 110px 150px 150px;
+  min-width: 1530px;
+}
+
+.finance-row.commission-detail-row.selected {
+  background: #fbf8f1;
+  box-shadow: inset 3px 0 0 #8a6d2e;
+}
+
+.commission-bulk-panel {
+  gap: 12px;
+}
+
+.commission-selection-bar {
+  align-items: center;
+  background: #171412;
+  border-radius: 8px;
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.commission-selection-bar span {
+  color: #d9cfae;
+}
+
+.commission-selection-bar button {
+  padding: 0.48rem 0.68rem;
+}
+
+.commission-selection-bar .secondary-button {
+  background: #fff;
+}
+
+.link-button {
+  background: transparent;
+  border: 0;
+  color: #8a6d2e;
+  padding: 0;
+  text-align: left;
+  width: fit-content;
+}
+
+.link-button:hover {
+  background: transparent;
+  color: #6f5320;
+}
+
+.finance-header.commission-batch-summary-row,
+.finance-row.commission-batch-summary-row {
+  grid-template-columns: minmax(180px, 1fr) 120px 130px;
+  min-width: 480px;
+}
+
+.finance-header.commission-payment-batch-row,
+.finance-row.commission-payment-batch-row {
+  grid-template-columns: 120px minmax(150px, 1fr) minmax(180px, 1fr) 110px 130px minmax(180px, 1fr) 110px 120px;
+  min-width: 1120px;
+}
+
+.finance-header.commission-batch-detail-row,
+.finance-row.commission-batch-detail-row {
+  grid-template-columns: minmax(190px, 1fr) 110px minmax(240px, 1.4fr) 130px;
+  min-width: 720px;
+}
+
 .finance-header.safe-sales-history-row,
 .finance-row.safe-sales-history-row {
   grid-template-columns: 120px 90px minmax(150px, 1fr) minmax(130px, 0.8fr) minmax(220px, 1.4fr) 100px minmax(160px, 1fr) 130px minmax(240px, 1.2fr);

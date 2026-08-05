@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
-import { getLocalStartOfWeek, getTodayLocalDateString } from "../utils/date.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { addLocalDays, getLocalStartOfWeek, getTodayLocalDateString } from "../utils/date.js";
 
 const periodOptions = [
   { value: "today", label: "Hoy" },
+  { value: "last10", label: "Ultimos 10 dias" },
   { value: "week", label: "Semana" },
   { value: "month", label: "Mes" },
-  { value: "year", label: "Año" },
+  { value: "previous_month", label: "Mes anterior" },
+  { value: "year", label: "Ano" },
   { value: "custom", label: "Personalizado" },
 ];
 
@@ -21,11 +23,29 @@ function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
 }
 
+function formatDate(date = "") {
+  const value = String(date || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || "-";
+  return `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)}`;
+}
+
+function previousMonthRange(today = getTodayLocalDateString()) {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const previousMonth = month === 1 ? 12 : month - 1;
+  const previousYear = month === 1 ? year - 1 : year;
+  const monthText = String(previousMonth).padStart(2, "0");
+  const lastDay = new Date(previousYear, previousMonth, 0).getDate();
+  return { from: `${previousYear}-${monthText}-01`, to: `${previousYear}-${monthText}-${String(lastDay).padStart(2, "0")}` };
+}
+
 function rangeForPeriod(period) {
   const today = getTodayLocalDateString();
   if (period === "today") return { from: today, to: today };
+  if (period === "last10") return { from: addLocalDays(today, -9), to: today };
   if (period === "week") return { from: getLocalStartOfWeek(today), to: today };
   if (period === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
+  if (period === "previous_month") return previousMonthRange(today);
   if (period === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today };
   return { from: "", to: "" };
 }
@@ -50,16 +70,36 @@ function groupByEmployee(rows) {
   }, {})).sort((first, second) => second.generated - first.generated);
 }
 
+function groupSelectionByEmployee(rows) {
+  return Object.values(rows.reduce((groups, row) => {
+    const employee = row.employee || "Sin empleada";
+    const current = groups[employee] || { employee, professionalId: row.professionalId || "", count: 0, total: 0, rows: [] };
+    current.count += 1;
+    current.total += Number(row.commissionAmount || 0);
+    current.rows.push(row);
+    groups[employee] = current;
+    return groups;
+  }, {})).sort((first, second) => first.employee.localeCompare(second.employee, "es"));
+}
+
 function originLabel(row) {
   return row.operationType === "servicio_interno" ? "Servicio interno / socio" : "Venta";
 }
 
-function Commissions({ data, onStatusChange }) {
-  const { rows = [] } = data;
+function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange }) {
+  const { rows = [], paymentBatches = [] } = data;
+  const selectAllRef = useRef(null);
   const [period, setPeriod] = useState("month");
   const [range, setRange] = useState(() => rangeForPeriod("month"));
   const [statusFilter, setStatusFilter] = useState("all");
   const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkModal, setBulkModal] = useState(null);
+  const [bulkForm, setBulkForm] = useState({ paymentDate: getTodayLocalDateString(), paymentMethod: "Transferencia", notes: "" });
+  const [bulkError, setBulkError] = useState("");
+  const [bulkResult, setBulkResult] = useState("");
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [batchDetail, setBatchDetail] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [editError, setEditError] = useState("");
@@ -89,10 +129,114 @@ function Commissions({ data, onStatusChange }) {
   }), [filteredRows]);
 
   const employeeSummary = useMemo(() => groupByEmployee(filteredRows), [filteredRows]);
+  const pendingFilteredRows = useMemo(() => filteredRows.filter((row) => row.status !== "pagada"), [filteredRows]);
+  const selectedRows = useMemo(() => {
+    const selectedSet = new Set(selectedIds);
+    return filteredRows.filter((row) => selectedSet.has(row.saleId) && row.status !== "pagada");
+  }, [filteredRows, selectedIds]);
+  const selectedTotal = useMemo(() => selectedRows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0), [selectedRows]);
+  const selectedByEmployee = useMemo(() => groupSelectionByEmployee(selectedRows), [selectedRows]);
+  const visiblePendingIds = useMemo(() => pendingFilteredRows.map((row) => row.saleId), [pendingFilteredRows]);
+  const allVisibleSelected = visiblePendingIds.length > 0 && visiblePendingIds.every((id) => selectedIds.includes(id));
+  const partiallySelected = selectedRows.length > 0 && !allVisibleSelected;
+  const sortedBatches = useMemo(() => (
+    [...paymentBatches].sort((first, second) => String(second.createdAt || second.paymentDate || "").localeCompare(String(first.createdAt || first.paymentDate || "")))
+  ), [paymentBatches]);
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = partiallySelected;
+  }, [partiallySelected]);
+
+  useEffect(() => {
+    setSelectedIds((current) => current.filter((id) => pendingFilteredRows.some((row) => row.saleId === id)));
+  }, [pendingFilteredRows]);
 
   const changePeriod = (nextPeriod) => {
     setPeriod(nextPeriod);
     if (nextPeriod !== "custom") setRange(rangeForPeriod(nextPeriod));
+    setSelectedIds([]);
+  };
+
+  const setRangeField = (field, value) => {
+    setRange((current) => ({ ...current, [field]: value }));
+    setPeriod("custom");
+    setSelectedIds([]);
+  };
+
+  const toggleRowSelection = (row) => {
+    if (!canBulkPay || row.status === "pagada") return;
+    setBulkResult("");
+    setSelectedIds((current) => (
+      current.includes(row.saleId)
+        ? current.filter((id) => id !== row.saleId)
+        : [...current, row.saleId]
+    ));
+  };
+
+  const toggleVisibleSelection = () => {
+    if (!canBulkPay) return;
+    setBulkResult("");
+    if (allVisibleSelected) {
+      setSelectedIds((current) => current.filter((id) => !visiblePendingIds.includes(id)));
+      return;
+    }
+    setSelectedIds((current) => [...new Set([...current, ...visiblePendingIds])]);
+  };
+
+  const clearSelection = () => {
+    setSelectedIds([]);
+    setBulkError("");
+  };
+
+  const openBulkPayment = (sourceRows = selectedRows) => {
+    const payableRows = sourceRows.filter((row) => row.status !== "pagada");
+    if (!canBulkPay || payableRows.length === 0) return;
+    setBulkModal({ rows: payableRows });
+    setBulkForm({ paymentDate: getTodayLocalDateString(), paymentMethod: "Transferencia", notes: "" });
+    setBulkError("");
+  };
+
+  const updateBulkField = (event) => {
+    const { name, value } = event.target;
+    setBulkForm((current) => ({ ...current, [name]: value }));
+    setBulkError("");
+  };
+
+  const confirmBulkPayment = () => {
+    if (!bulkModal || !onBulkPay || isBulkProcessing) return;
+    if (!bulkForm.paymentDate || !/^\d{4}-\d{2}-\d{2}$/.test(bulkForm.paymentDate)) {
+      setBulkError("Indica una fecha de pago valida.");
+      return;
+    }
+    if (!bulkForm.paymentMethod) {
+      setBulkError("Selecciona el metodo de pago.");
+      return;
+    }
+    const payableRows = bulkModal.rows.filter((row) => rows.some((currentRow) => (
+      currentRow.saleId === row.saleId
+      && currentRow.status !== "pagada"
+      && Number(currentRow.commissionAmount || 0) === Number(row.commissionAmount || 0)
+    )));
+    if (payableRows.length === 0) {
+      setBulkError("Las comisiones seleccionadas ya no estan pendientes.");
+      return;
+    }
+    setIsBulkProcessing(true);
+    const result = onBulkPay(payableRows.map((row) => row.saleId), {
+      paymentDate: bulkForm.paymentDate,
+      paymentMethod: bulkForm.paymentMethod,
+      notes: bulkForm.notes.trim(),
+      periodStart: range.from,
+      periodEnd: range.to,
+    });
+    setIsBulkProcessing(false);
+    if (!result || result.paidCount === 0) {
+      setBulkError("No se pudo completar el pago. Revisa si las comisiones siguen pendientes.");
+      return;
+    }
+    setBulkResult(`Se pagaron ${result.paidCount} comisiones en ${result.batchCount} lotes por un total de ${money(result.totalAmount)}.${result.skippedCount ? ` ${result.skippedCount} comisiones fueron excluidas porque ya no estaban pendientes.` : ""}`);
+    setBulkModal(null);
+    setSelectedIds([]);
   };
 
   const startEdit = (row) => {
@@ -162,7 +306,7 @@ function Commissions({ data, onStatusChange }) {
     }
 
     if (normalizedStatus === "pendiente") {
-      const confirmed = window.confirm("¿Seguro que deseas volver esta comisión a pendiente?");
+      const confirmed = window.confirm("Seguro que deseas volver esta comision a pendiente?");
       if (!confirmed) return;
     }
 
@@ -237,17 +381,91 @@ function Commissions({ data, onStatusChange }) {
         </section>
       )}
 
+      {bulkModal && (
+        <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Pago de comisiones">
+          <article className="sale-history-dialog commission-payment-dialog">
+            <div className="section-title">
+              <div>
+                <h2>Pago de comisiones</h2>
+                <span>{formatDate(range.from)} - {formatDate(range.to)}</span>
+              </div>
+            </div>
+            <div className="summary-grid compact">
+              <article className="metric"><span>Comisiones</span><strong>{bulkModal.rows.length}</strong></article>
+              <article className="metric"><span>Profesionales</span><strong>{groupSelectionByEmployee(bulkModal.rows).length}</strong></article>
+              <article className="metric"><span>Total</span><strong>{money(bulkModal.rows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0))}</strong></article>
+            </div>
+            <div className="field-row">
+              <label>Fecha de pago<input type="date" name="paymentDate" value={bulkForm.paymentDate} onChange={updateBulkField} /></label>
+              <label>Metodo de pago<select name="paymentMethod" value={bulkForm.paymentMethod} onChange={updateBulkField}>
+                {commissionPaymentOptions.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
+              </select></label>
+            </div>
+            <label>Observacion opcional<textarea name="notes" value={bulkForm.notes} onChange={updateBulkField} placeholder="Pago de comisiones del periodo..." /></label>
+            <div className="finance-table">
+              <div className="finance-header commission-batch-summary-row"><span>Profesional</span><span>Comisiones</span><span>Total</span></div>
+              {groupSelectionByEmployee(bulkModal.rows).map((row) => (
+                <div className="finance-row commission-batch-summary-row" key={row.employee}>
+                  <span>{row.employee}</span>
+                  <strong>{row.count}</strong>
+                  <strong>{money(row.total)}</strong>
+                </div>
+              ))}
+            </div>
+            {bulkError && <p className="auth-error">{bulkError}</p>}
+            <div className="reset-actions">
+              <button type="button" onClick={confirmBulkPayment} disabled={isBulkProcessing}>{isBulkProcessing ? "Procesando..." : "Confirmar pago"}</button>
+              <button className="secondary-button" type="button" onClick={() => { setBulkModal(null); setBulkError(""); }} disabled={isBulkProcessing}>Cancelar</button>
+            </div>
+          </article>
+        </section>
+      )}
+
+      {batchDetail && (
+        <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Detalle de lote">
+          <article className="sale-history-dialog commission-payment-dialog">
+            <div className="section-title">
+              <div>
+                <h2>Detalle del lote</h2>
+                <span>{batchDetail.id}</span>
+              </div>
+              <button className="secondary-button" type="button" onClick={() => setBatchDetail(null)}>Cerrar</button>
+            </div>
+            <div className="summary-grid compact">
+              <article className="metric"><span>Profesional</span><strong>{batchDetail.employee || batchDetail.professionalName}</strong></article>
+              <article className="metric"><span>Fecha pago</span><strong>{formatDate(batchDetail.paymentDate)}</strong></article>
+              <article className="metric"><span>Total</span><strong>{money(batchDetail.totalAmount)}</strong></article>
+            </div>
+            <div className="finance-table">
+              <div className="finance-header commission-batch-detail-row"><span>Venta</span><span>Fecha</span><span>Servicio</span><span>Comision</span></div>
+              {(batchDetail.commissionIds || []).map((commissionId) => {
+                const row = rows.find((item) => item.saleId === commissionId);
+                return (
+                  <div className="finance-row commission-batch-detail-row" key={commissionId}>
+                    <span>{commissionId}</span>
+                    <span>{formatDate(row?.date || "")}</span>
+                    <span>{row?.services || "Pago individual anterior"}</span>
+                    <strong>{money(row?.commissionAmount || 0)}</strong>
+                  </div>
+                );
+              })}
+            </div>
+            {batchDetail.notes && <p className="empty-state">Observacion: {batchDetail.notes}</p>}
+          </article>
+        </section>
+      )}
+
       <section className="panel filters-panel">
         <label>Rango de fecha<select value={period} onChange={(event) => changePeriod(event.target.value)}>
           {periodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select></label>
-        <label>Desde<input type="date" value={range.from || ""} disabled={period !== "custom"} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} /></label>
-        <label>Hasta<input type="date" value={range.to || ""} disabled={period !== "custom"} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} /></label>
-        <label>Empleado<select value={employeeFilter} onChange={(event) => setEmployeeFilter(event.target.value)}>
+        <label>Desde<input type="date" value={range.from || ""} disabled={period !== "custom"} onChange={(event) => setRangeField("from", event.target.value)} /></label>
+        <label>Hasta<input type="date" value={range.to || ""} disabled={period !== "custom"} onChange={(event) => setRangeField("to", event.target.value)} /></label>
+        <label>Empleado<select value={employeeFilter} onChange={(event) => { setEmployeeFilter(event.target.value); setSelectedIds([]); }}>
           <option value="all">Todas</option>
           {employees.map((employee) => <option key={employee} value={employee}>{employee}</option>)}
         </select></label>
-        <label>Estado<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+        <label>Estado<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setSelectedIds([]); }}>
           <option value="all">Todas</option>
           <option value="pending">Pendientes</option>
           <option value="paid">Pagadas</option>
@@ -260,6 +478,33 @@ function Commissions({ data, onStatusChange }) {
         <article className="metric"><span>Pagado total</span><strong>{money(filteredTotals.paid)}</strong></article>
         <article className="metric"><span>Registros</span><strong>{filteredTotals.count}</strong></article>
       </div>
+
+      {bulkResult && <p className="success-message">{bulkResult}</p>}
+
+      {canBulkPay && (
+        <section className="panel commission-bulk-panel">
+          <div className="section-title">
+            <div>
+              <h3>Pago en lote</h3>
+              <span>{pendingFilteredRows.length} comisiones pendientes en los filtros actuales</span>
+            </div>
+            <button type="button" onClick={() => openBulkPayment(pendingFilteredRows)} disabled={pendingFilteredRows.length === 0}>Pagar todas las pendientes del periodo</button>
+          </div>
+          {selectedRows.length > 0 && (
+            <div className="commission-selection-bar">
+              <strong>{selectedRows.length} comisiones seleccionadas</strong>
+              <span>Total: {money(selectedTotal)}</span>
+              <button type="button" onClick={() => openBulkPayment(selectedRows)}>Marcar como pagadas</button>
+              <button className="secondary-button" type="button" onClick={clearSelection}>Limpiar seleccion</button>
+            </div>
+          )}
+          {selectedRows.length > 0 && selectedRows.length < pendingFilteredRows.length && (
+            <button className="link-button" type="button" onClick={() => setSelectedIds(pendingFilteredRows.map((row) => row.saleId))}>
+              Seleccionar las {pendingFilteredRows.length} comisiones pendientes del periodo
+            </button>
+          )}
+        </section>
+      )}
 
       <section className="panel">
         <h3>Comisiones por empleado</h3>
@@ -280,11 +525,23 @@ function Commissions({ data, onStatusChange }) {
       <section className="panel commission-list-panel">
         <h3>Detalle de comisiones</h3>
         <div className="finance-table">
-          <div className="finance-header commission-detail-row">
+          <div className={canBulkPay ? "finance-header commission-detail-row bulk" : "finance-header commission-detail-row"}>
+            {canBulkPay && <span><input ref={selectAllRef} type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Seleccionar comisiones pendientes visibles" /></span>}
             <span>Fecha</span><span>Hora</span><span>Cliente</span><span>Servicio</span><span>Profesional</span><span>Importe venta</span><span>%</span><span>Comision</span><span>Estado</span><span>Origen</span><span>Accion</span>
           </div>
           {filteredRows.map((row) => (
-            <div className="finance-row commission-detail-row" key={row.saleId}>
+            <div className={`${canBulkPay ? "finance-row commission-detail-row bulk" : "finance-row commission-detail-row"}${selectedIds.includes(row.saleId) ? " selected" : ""}`} key={row.saleId}>
+              {canBulkPay && (
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(row.saleId)}
+                    disabled={row.status === "pagada"}
+                    onChange={() => toggleRowSelection(row)}
+                    aria-label={`Seleccionar comision de ${row.employee || "profesional"}`}
+                  />
+                </span>
+              )}
               <span>{row.date || "-"}</span>
               <span>{row.hour || "-"}</span>
               <span>{row.client || "Sin cliente"}</span>
@@ -305,15 +562,40 @@ function Commissions({ data, onStatusChange }) {
               ) : (
                 <span className={row.status === "pagada" ? "status-badge paid" : "status-badge pending"}>{row.status === "pagada" ? "PAGADA" : "PENDIENTE"}</span>
               )}
-              <span>{originLabel(row)}</span>
+              <span>{originLabel(row)}{row.status === "pagada" && !row.commissionPaymentBatchId ? " - Pago individual anterior" : ""}</span>
               {onStatusChange ? (
-                <button className="secondary-button" type="button" onClick={() => startEdit(row)}>Editar comisión</button>
+                <button className="secondary-button" type="button" onClick={() => startEdit(row)}>Editar comision</button>
               ) : (
                 <span className="muted-text">Solo lectura</span>
               )}
             </div>
           ))}
           {filteredRows.length === 0 && <p className="empty-state">No hay comisiones para estos filtros.</p>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-title">
+          <div>
+            <h3>Pagos realizados</h3>
+            <span>Historial de lotes de pago de comisiones</span>
+          </div>
+        </div>
+        <div className="finance-table">
+          <div className="finance-header commission-payment-batch-row"><span>Fecha pago</span><span>Profesional</span><span>Periodo</span><span>Comisiones</span><span>Total</span><span>Usuario</span><span>Estado</span><span>Accion</span></div>
+          {sortedBatches.map((batch) => (
+            <div className="finance-row commission-payment-batch-row" key={batch.id}>
+              <span>{formatDate(batch.paymentDate)}</span>
+              <span>{batch.employee || batch.professionalName || "Sin profesional"}</span>
+              <span>{formatDate(batch.periodStart)} - {formatDate(batch.periodEnd)}</span>
+              <strong>{batch.commissionCount || (batch.commissionIds || []).length}</strong>
+              <strong>{money(batch.totalAmount)}</strong>
+              <span>{batch.createdBy || "-"}</span>
+              <span className={batch.status === "anulado" ? "status-badge voided" : "status-badge paid"}>{batch.status === "anulado" ? "Anulado" : "Pagado"}</span>
+              <button className="secondary-button" type="button" onClick={() => setBatchDetail(batch)}>Ver detalle</button>
+            </div>
+          ))}
+          {sortedBatches.length === 0 && <p className="empty-state">Aun no hay lotes de pago. Las comisiones pagadas antiguas seguiran apareciendo como pago individual anterior.</p>}
         </div>
       </section>
 
@@ -326,8 +608,8 @@ function Commissions({ data, onStatusChange }) {
           <div className="field-row">
             <label>Profesional<input name="employee" value={editForm.employee} onChange={updateEditField} list="commission-employees" /></label>
             <datalist id="commission-employees">{employees.map((employee) => <option key={employee} value={employee} />)}</datalist>
-            <label>Porcentaje comisión<input type="number" step="0.01" name="commissionPercent" value={editForm.commissionPercent} onChange={updateEditField} /></label>
-            <label>Importe comisión<input type="number" step="0.01" name="commissionAmount" value={editForm.commissionAmount} onChange={updateEditField} /></label>
+            <label>Porcentaje comision<input type="number" step="0.01" name="commissionPercent" value={editForm.commissionPercent} onChange={updateEditField} /></label>
+            <label>Importe comision<input type="number" step="0.01" name="commissionAmount" value={editForm.commissionAmount} onChange={updateEditField} /></label>
           </div>
           <div className="field-row">
             <label>Estado<select name="status" value={editForm.status} onChange={updateEditField}>
@@ -335,20 +617,19 @@ function Commissions({ data, onStatusChange }) {
               <option value="pagada">pagada</option>
             </select></label>
             <label>Fecha de pago<input type="date" name="paymentDate" value={editForm.paymentDate} onChange={updateEditField} disabled={editForm.status !== "pagada"} /></label>
-            <label>Método de pago<select name="paymentMethod" value={editForm.paymentMethod} onChange={updateEditField} disabled={editForm.status !== "pagada"}>
+            <label>Metodo de pago<select name="paymentMethod" value={editForm.paymentMethod} onChange={updateEditField} disabled={editForm.status !== "pagada"}>
               <option value="">Seleccionar...</option>
               {paymentMethods.map((method) => <option key={method}>{method}</option>)}
             </select></label>
           </div>
-          <label>Motivo de corrección<textarea name="correctionReason" value={editForm.correctionReason} onChange={updateEditField} placeholder="Porcentaje incorrecto, profesional incorrecta, ajuste manual..." /></label>
+          <label>Motivo de correccion<textarea name="correctionReason" value={editForm.correctionReason} onChange={updateEditField} placeholder="Porcentaje incorrecto, profesional incorrecta, ajuste manual..." /></label>
           {editError && <p className="auth-error">{editError}</p>}
           <div className="reset-actions">
-            <button type="button" onClick={saveEdit}>Guardar corrección</button>
+            <button type="button" onClick={saveEdit}>Guardar correccion</button>
             <button className="secondary-button" type="button" onClick={() => { setEditingRow(null); setEditForm(null); setEditError(""); }}>Cancelar</button>
           </div>
         </section>
       )}
-
     </section>
   );
 }
