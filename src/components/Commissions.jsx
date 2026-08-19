@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  commissionPaymentMethods,
+  commissionPaymentOptions,
+  normalizeCommissionPaymentMethod,
+} from "../utils/commissionFinance.js";
 import { addLocalDays, getLocalStartOfWeek, getTodayLocalDateString } from "../utils/date.js";
 
 const periodOptions = [
@@ -9,14 +14,6 @@ const periodOptions = [
   { value: "previous_month", label: "Mes anterior" },
   { value: "year", label: "Ano" },
   { value: "custom", label: "Personalizado" },
-];
-
-const paymentMethods = ["Efectivo", "Transferencia", "Bizum", "Otro"];
-const commissionPaymentOptions = [
-  { value: "Efectivo", label: "Efectivo" },
-  { value: "Transferencia", label: "Transferencia bancaria" },
-  { value: "Bizum", label: "Bizum" },
-  { value: "Otro", label: "Otro" },
 ];
 
 function money(value) {
@@ -89,6 +86,7 @@ function originLabel(row) {
 function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange }) {
   const { rows = [], paymentBatches = [] } = data;
   const selectAllRef = useRef(null);
+  const bulkRequestInFlight = useRef(false);
   const [period, setPeriod] = useState("month");
   const [range, setRange] = useState(() => rangeForPeriod("month"));
   const [statusFilter, setStatusFilter] = useState("all");
@@ -203,7 +201,7 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
   };
 
   const confirmBulkPayment = () => {
-    if (!bulkModal || !onBulkPay || isBulkProcessing) return;
+    if (!bulkModal || !onBulkPay || isBulkProcessing || bulkRequestInFlight.current) return;
     if (!bulkForm.paymentDate || !/^\d{4}-\d{2}-\d{2}$/.test(bulkForm.paymentDate)) {
       setBulkError("Indica una fecha de pago valida.");
       return;
@@ -221,22 +219,29 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
       setBulkError("Las comisiones seleccionadas ya no estan pendientes.");
       return;
     }
+    bulkRequestInFlight.current = true;
     setIsBulkProcessing(true);
-    const result = onBulkPay(payableRows.map((row) => row.saleId), {
-      paymentDate: bulkForm.paymentDate,
-      paymentMethod: bulkForm.paymentMethod,
-      notes: bulkForm.notes.trim(),
-      periodStart: range.from,
-      periodEnd: range.to,
-    });
-    setIsBulkProcessing(false);
-    if (!result || result.paidCount === 0) {
-      setBulkError("No se pudo completar el pago. Revisa si las comisiones siguen pendientes.");
-      return;
+    try {
+      const result = onBulkPay(payableRows.map((row) => row.saleId), {
+        paymentDate: bulkForm.paymentDate,
+        paymentMethod: normalizeCommissionPaymentMethod(bulkForm.paymentMethod),
+        notes: bulkForm.notes.trim(),
+        periodStart: range.from,
+        periodEnd: range.to,
+      });
+      if (!result || result.paidCount === 0) {
+        setBulkError("No se pudo completar el pago. Revisa si las comisiones siguen pendientes.");
+        return;
+      }
+      setBulkResult(`Se pagaron ${result.paidCount} comisiones en ${result.batchCount} lotes por un total de ${money(result.totalAmount)}.${result.skippedCount ? ` ${result.skippedCount} comisiones fueron excluidas porque ya no estaban pendientes.` : ""}`);
+      setBulkModal(null);
+      setSelectedIds([]);
+    } catch (error) {
+      setBulkError(error?.message || "No se pudo completar el pago de comisiones.");
+    } finally {
+      bulkRequestInFlight.current = false;
+      setIsBulkProcessing(false);
     }
-    setBulkResult(`Se pagaron ${result.paidCount} comisiones en ${result.batchCount} lotes por un total de ${money(result.totalAmount)}.${result.skippedCount ? ` ${result.skippedCount} comisiones fueron excluidas porque ya no estaban pendientes.` : ""}`);
-    setBulkModal(null);
-    setSelectedIds([]);
   };
 
   const startEdit = (row) => {
@@ -247,7 +252,7 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
       commissionAmount: String(row.commissionAmount ?? 0),
       status: row.status || "pendiente",
       paymentDate: row.paymentDate || "",
-      paymentMethod: row.paymentMethod || "",
+      paymentMethod: normalizeCommissionPaymentMethod(row.paymentMethod || row.metodoPagoComision || ""),
       correctionReason: "",
     });
     setEditError("");
@@ -279,9 +284,9 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
       commissionPercent: Number(editForm.commissionPercent || 0),
       commissionAmount: Number(editForm.commissionAmount || 0),
       paymentDate: editForm.status === "pagada" ? editForm.paymentDate : "",
-      paymentMethod: editForm.status === "pagada" ? editForm.paymentMethod : "",
+      paymentMethod: editForm.status === "pagada" ? normalizeCommissionPaymentMethod(editForm.paymentMethod) : "",
       fechaPago: editForm.status === "pagada" ? editForm.paymentDate : "",
-      metodoPagoComision: editForm.status === "pagada" ? editForm.paymentMethod : "",
+      metodoPagoComision: editForm.status === "pagada" ? normalizeCommissionPaymentMethod(editForm.paymentMethod) : "",
       correctionReason: editForm.correctionReason.trim(),
     });
     setEditingRow(null);
@@ -298,7 +303,7 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
       setStatusModal(row);
       setStatusForm({
         paymentDate: row.paymentDate || getTodayLocalDateString(),
-        paymentMethod: row.paymentMethod || "",
+        paymentMethod: normalizeCommissionPaymentMethod(row.paymentMethod || row.metodoPagoComision || ""),
         paymentObservation: row.paidObservation || "",
       });
       setStatusError("");
@@ -331,9 +336,9 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
     onStatusChange?.(statusModal.saleId, "pagada", {
       statusChangeOnly: true,
       paymentDate: statusForm.paymentDate,
-      paymentMethod: statusForm.paymentMethod,
+      paymentMethod: normalizeCommissionPaymentMethod(statusForm.paymentMethod),
       fechaPago: statusForm.paymentDate,
-      metodoPagoComision: statusForm.paymentMethod,
+      metodoPagoComision: normalizeCommissionPaymentMethod(statusForm.paymentMethod),
       observacionesPago: statusForm.paymentObservation.trim(),
       paidObservation: statusForm.paymentObservation.trim(),
     });
@@ -619,7 +624,7 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
             <label>Fecha de pago<input type="date" name="paymentDate" value={editForm.paymentDate} onChange={updateEditField} disabled={editForm.status !== "pagada"} /></label>
             <label>Metodo de pago<select name="paymentMethod" value={editForm.paymentMethod} onChange={updateEditField} disabled={editForm.status !== "pagada"}>
               <option value="">Seleccionar...</option>
-              {paymentMethods.map((method) => <option key={method}>{method}</option>)}
+              {commissionPaymentMethods.map((method) => <option key={method}>{method}</option>)}
             </select></label>
           </div>
           <label>Motivo de correccion<textarea name="correctionReason" value={editForm.correctionReason} onChange={updateEditField} placeholder="Porcentaje incorrecto, profesional incorrecta, ajuste manual..." /></label>

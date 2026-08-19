@@ -2,6 +2,7 @@
   "scripts": {
     "prebuild": "node scripts/update-version.mjs",
     "dev": "vite",
+    "test": "node --test tests/*.test.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

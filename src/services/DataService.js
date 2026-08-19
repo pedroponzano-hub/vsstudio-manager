@@ -9,6 +9,12 @@ import {
   getTechnicalTimestamp,
   getTodayLocalDateString,
 } from "../utils/date.js";
+import {
+  buildCommissionPaymentFields,
+  commissionPaymentDate,
+  normalizeCommissionPaymentMethod,
+  selectPayableCommissions,
+} from "../utils/commissionFinance.js";
 
 const STORAGE_KEYS = {
   sales: "business-dashboard:sales",
@@ -482,7 +488,7 @@ function groupDashboardIncomeByMethod(sales) {
     });
 
     return groups;
-  }, { Efectivo: 0, Tarjeta: 0, Bizum: 0, Treatwell: 0, Otros: 0 });
+  }, { Efectivo: 0, Tarjeta: 0, Bizum: 0, Transferencia: 0, Treatwell: 0, Otros: 0 });
 }
 
 function groupDashboardPaidExpensesByMethod(expenses) {
@@ -500,11 +506,11 @@ function groupDashboardPaidCommissionsByMethod(commissions) {
   return commissions
     .filter((commission) => commission.status === "pagada")
     .reduce((groups, commission) => {
-      const method = normalizePaymentMethodName(commission.metodoPagoComision || commission.paymentMethod);
-      const targetMethod = ["Efectivo", "Transferencia", "Bizum"].includes(method) ? method : "Otros";
+      const method = normalizeCommissionPaymentMethod(commission.metodoPagoComision || commission.paymentMethod) || "Otros";
+      const targetMethod = ["Efectivo", "Tarjeta", "Transferencia", "Bizum"].includes(method) ? method : "Otros";
       groups[targetMethod] = (groups[targetMethod] || 0) + Number(commission.commissionAmount || 0);
       return groups;
-    }, { Efectivo: 0, Transferencia: 0, Bizum: 0, Otros: 0 });
+    }, { Efectivo: 0, Tarjeta: 0, Transferencia: 0, Bizum: 0, Otros: 0 });
 }
 
 function dashboardCashSummary(sales, expenses, commissions = []) {
@@ -705,6 +711,7 @@ function normalizeMonthlyClosing(closing) {
     paidExpensesTotal: Number(closing.paidExpensesTotal || 0),
     pendingExpensesTotal: Number(closing.pendingExpensesTotal || 0),
     expensesByMethod: closing.expensesByMethod || {},
+    generatedCommissionsTotal: Number(closing.generatedCommissionsTotal || 0),
     paidCommissionsTotal: Number(closing.paidCommissionsTotal || 0),
     pendingCommissionsTotal: Number(closing.pendingCommissionsTotal || 0),
     treatwellCommissionTotal: Number(closing.treatwellCommissionTotal || 0),
@@ -1763,6 +1770,9 @@ const DataService = {
     const currentRow = commissionRows(this.getSales(), currentStatuses).find((row) => row.saleId === saleId);
     const hasCorrection = Boolean(details.correctionReason);
     const isQuickStatusChange = Boolean(details.statusChangeOnly);
+    if (safeStatus === "pagada" && currentRow?.status === "pagada" && !hasCorrection) {
+      return { ...this.getData(), commissions: currentStatuses };
+    }
     const previousValues = currentRow ? {
       employee: currentRow.employee,
       commissionPercent: Number(currentRow.commissionPercent || 0),
@@ -1780,24 +1790,36 @@ const DataService = {
       observacionesPago: currentRow.observacionesPago || currentRow.paidObservation || "",
     } : {};
     const paymentDate = details.paymentDate || details.fechaPago || existingStatus?.paymentDate || existingStatus?.fechaPago || todayLocal();
-    const paymentMethod = details.paymentMethod || details.metodoPagoComision || existingStatus?.paymentMethod || existingStatus?.metodoPagoComision || "";
+    const paymentMethod = normalizeCommissionPaymentMethod(
+      details.paymentMethod || details.metodoPagoComision || existingStatus?.paymentMethod || existingStatus?.metodoPagoComision || "",
+    );
     const paymentObservation = details.paidObservation || details.observacionesPago || existingStatus?.paidObservation || existingStatus?.observacionesPago || "";
     const paymentUser = details.updatedBy || details.editedBy || existingStatus?.updatedBy || existingStatus?.usuarioQuePago || "";
+    const paymentFields = safeStatus === "pagada" ? buildCommissionPaymentFields({
+      paymentDate,
+      paymentMethod,
+      actor: paymentUser,
+      notes: paymentObservation,
+      paidAt: details.paidAt || getMadridTimestamp(),
+    }) : null;
+    if (safeStatus === "pagada" && !paymentFields) {
+      return { ...this.getData(), commissions: currentStatuses };
+    }
     const newValues = {
       employee: details.employee ?? existingStatus?.employee ?? previousValues.employee,
       commissionPercent: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : (existingStatus?.commissionPercent ?? previousValues.commissionPercent),
       commissionAmount: details.commissionAmount !== undefined ? Number(details.commissionAmount || 0) : (existingStatus?.commissionAmount ?? previousValues.commissionAmount),
       status: safeStatus,
       commissionStatus: safeStatus,
-      paidAt: safeStatus === "pagada" ? (details.paidAt || getMadridTimestamp()) : null,
-      paidBy: safeStatus === "pagada" ? paymentUser : "",
-      paidObservation: safeStatus === "pagada" ? paymentObservation : "",
-      paymentDate: safeStatus === "pagada" ? paymentDate : "",
-      paymentMethod: safeStatus === "pagada" ? paymentMethod : "",
-      fechaPago: safeStatus === "pagada" ? paymentDate : "",
-      metodoPagoComision: safeStatus === "pagada" ? paymentMethod : "",
-      usuarioQuePago: safeStatus === "pagada" ? paymentUser : "",
-      observacionesPago: safeStatus === "pagada" ? paymentObservation : "",
+      paidAt: paymentFields?.paidAt || null,
+      paidBy: paymentFields?.paidBy || "",
+      paidObservation: paymentFields?.paidObservation || "",
+      paymentDate: paymentFields?.paymentDate || "",
+      paymentMethod: paymentFields?.paymentMethod || "",
+      fechaPago: paymentFields?.fechaPago || "",
+      metodoPagoComision: paymentFields?.metodoPagoComision || "",
+      usuarioQuePago: paymentFields?.usuarioQuePago || "",
+      observacionesPago: paymentFields?.observacionesPago || "",
     };
     const correctionHistory = hasCorrection
       ? [
@@ -1868,18 +1890,19 @@ const DataService = {
     const uniqueIds = [...new Set((commissionIds || []).filter(Boolean))];
     const currentStatuses = this.getCommissionStatuses();
     const rows = commissionRows(this.getSales(), currentStatuses);
-    const rowsById = new Map(rows.map((row) => [row.saleId, row]));
     const currentById = new Map(currentStatuses.map((item) => [item.saleId || item.id, item]));
     const paymentDate = details.paymentDate || todayLocal();
-    const paymentMethod = details.paymentMethod || "Transferencia";
+    const paymentMethod = normalizeCommissionPaymentMethod(details.paymentMethod || "Transferencia");
     const actor = details.updatedBy || details.createdBy || "";
     const notes = details.notes || "";
     const periodStart = details.periodStart || "";
     const periodEnd = details.periodEnd || "";
     const now = getMadridTimestamp();
-    const selectedRows = uniqueIds
-      .map((id) => rowsById.get(id))
-      .filter((row) => row && row.status !== "pagada");
+    const paymentFields = buildCommissionPaymentFields({ paymentDate, paymentMethod, actor, notes, paidAt: now });
+    if (!paymentFields) {
+      return { data: this.getData(), result: { paidCount: 0, batchCount: 0, totalAmount: 0, skippedCount: uniqueIds.length, batches: [] } };
+    }
+    const selectedRows = selectPayableCommissions(rows, uniqueIds);
 
     if (selectedRows.length === 0) {
       return { data: this.getData(), result: { paidCount: 0, batchCount: 0, totalAmount: 0, skippedCount: uniqueIds.length, batches: [] } };
@@ -1942,15 +1965,7 @@ const DataService = {
         commissionAmount: existingStatus.commissionAmount ?? row.commissionAmount,
         status: "pagada",
         commissionStatus: "pagada",
-        paidAt: now,
-        paidBy: actor,
-        paidObservation: notes,
-        paymentDate,
-        paymentMethod,
-        fechaPago: paymentDate,
-        metodoPagoComision: paymentMethod,
-        usuarioQuePago: actor,
-        observacionesPago: notes,
+        ...paymentFields,
         commissionPaymentBatchId: batchIdByCommission.get(row.saleId),
         updatedBy: actor,
         updatedAt: now,
@@ -2067,17 +2082,19 @@ const DataService = {
     const pendingSales = allSales.filter((sale) => saleStatus(sale) === "pendiente_pago" && itemOperationalDate(sale) === current.day);
     const expenses = this.getExpenses();
     const clients = this.getClients();
+    const appointments = this.getAppointments();
     const config = this.getConfig();
     const commissionRowsForDashboard = commissionRows(allSales, this.getCommissionStatuses());
     const todaySales = sales.filter((sale) => itemOperationalDate(sale) === current.day);
+    const todayAppointments = appointments.filter((appointment) => itemOperationalDate(appointment) === current.day);
     const todayExpenses = expenses.filter((expense) => itemOperationalDate(expense) === current.day);
     const todayPaidCommissions = commissionRowsForDashboard.filter((commission) => (
-      commission.status === "pagada" && (commission.paymentDate || commission.fechaPago || commission.date) === current.day
+      commission.status === "pagada" && commissionPaymentDate(commission) === current.day
     ));
     const monthSales = sales.filter((sale) => itemOperationalDate(sale)?.startsWith(current.month));
     const monthExpenses = expenses.filter((expense) => itemOperationalDate(expense)?.startsWith(current.month));
     const monthPaidCommissions = commissionRowsForDashboard.filter((commission) => (
-      commission.status === "pagada" && String(commission.paymentDate || commission.fechaPago || commission.date || "").startsWith(current.month)
+      commission.status === "pagada" && commissionPaymentDate(commission).startsWith(current.month)
     ));
     const todaySalesTotal = todaySales.reduce((total, sale) => total + saleAmount(sale), 0);
     const todayExpensesTotal = sum(todayExpenses, "amount");
@@ -2102,6 +2119,9 @@ const DataService = {
         netAfterCommission: todaySummary.netAfterCommission,
         expenses: todayExpensesTotal,
         profit: todaySummary.netAfterCommission - todayExpensesTotal,
+        salesCount: todaySales.length,
+        servicesCount: todaySales.reduce((total, sale) => total + saleServicesCount(sale), 0),
+        appointmentsCount: todayAppointments.length,
         clients: new Set(todaySales.map((sale) => sale.clientId).filter(Boolean)).size,
         averageTicket: todaySales.length ? todaySalesTotal / todaySales.length : 0,
         cashSummary: todayCashSummary,

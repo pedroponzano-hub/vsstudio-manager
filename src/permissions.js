@@ -50,6 +50,16 @@ function canPerform(role, action) {
   return rolePermissions(role).actions.includes(action);
 }
 
+function canAccessDashboardSection(role, section) {
+  const normalizedRole = String(role || "").trim().toLowerCase();
+  if (!canAccessTab(normalizedRole, "dashboard")) return false;
+  return section !== "month" || normalizedRole !== "direccion";
+}
+
+function defaultPageForRole(role) {
+  return String(role || "").trim().toLowerCase() === "direccion" ? "pos.agendaV2" : "";
+}
+
 function isOwnEmployeeOnly(role) {
   return Boolean(rolePermissions(role).ownEmployeeOnly);
 }
@@ -78,8 +88,10 @@ function onlyOwnEmployeeItems(items, user) {
 
 export {
   allowedTabsForRole,
+  canAccessDashboardSection,
   canAccessTab,
   canPerform,
+  defaultPageForRole,
   effectiveRoleForUser,
   employeeNameForUser,
   isOwnEmployeeOnly,

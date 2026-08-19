@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  calculateOperatingResult,
+  calculatePaymentMethodReconciliation,
+  calculateTreasuryResult,
+  commissionFinancialSummary,
+  findPotentialCommissionExpenseDuplicates,
+  formatFinancialInput,
+  groupPaidCommissionsByMethod as groupCommissionPaymentsByMethod,
+  resolveFinancialInput,
+} from "../utils/commissionFinance.js";
 import { getDaysInMadridMonth, getLocalStartOfWeek, getMadridTimestamp, getTodayLocalDateString } from "../utils/date.js";
 
 const paymentMethods = ["Efectivo", "Tarjeta", "Transferencia", "Bizum", "Treatwell", "Bono / tarjeta regalo", "Otro"];
 const expenseMethods = ["Efectivo", "Tarjeta", "Transferencia", "Bizum", "Otro"];
 const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const emptyFinanceControls = Object.freeze({});
+
+function financeControlDrafts(values = {}) {
+  return Object.fromEntries(Object.entries(values).map(([method, value]) => [method, formatFinancialInput(value)]));
+}
 
 function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
@@ -103,23 +118,11 @@ function groupCommissions(rows) {
 }
 
 function groupPaidCommissionsByMethod(rows) {
-  return rows
-    .filter((row) => row.status === "pagada")
-    .reduce((groups, row) => {
-      const method = normalizeMethod(row.metodoPagoComision || row.paymentMethod, paymentMethods);
-      groups[method] = (groups[method] || 0) + Number(row.commissionAmount || 0);
-      return groups;
-    }, Object.fromEntries(paymentMethods.map((method) => [method, 0])));
+  return groupCommissionPaymentsByMethod(rows, paymentMethods);
 }
 
 function groupMonthlyPaidCommissionsByMethod(rows) {
-  return rows
-    .filter((row) => row.status === "pagada")
-    .reduce((groups, row) => {
-      const method = normalizeMethod(row.metodoPagoComision || row.paymentMethod, expenseMethods);
-      groups[method] = (groups[method] || 0) + Number(row.commissionAmount || 0);
-      return groups;
-    }, Object.fromEntries(expenseMethods.map((method) => [method, 0])));
+  return groupCommissionPaymentsByMethod(rows, expenseMethods);
 }
 
 function vatSummary(sales, expenses) {
@@ -206,6 +209,7 @@ function buildMonthlyReportHtml(closing) {
         <table><thead><tr><th>Método</th><th>Registrados</th><th>Pagados</th><th>Pendientes</th></tr></thead><tbody>${expenseRows}</tbody></table>
         <h2>Comisiones y Treatwell</h2>
         <table><tbody>
+          <tr><td>Comisiones generadas</td><td>${money(closing.generatedCommissionsTotal)}</td></tr>
           <tr><td>Comisiones pagadas</td><td>${money(closing.paidCommissionsTotal)}</td></tr>
           <tr><td>Comisiones pendientes</td><td>${money(closing.pendingCommissionsTotal)}</td></tr>
           <tr><td>Comisión Treatwell</td><td>${money(closing.treatwellCommissionTotal)}</td></tr>
@@ -260,10 +264,9 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
     const range = monthRange(year, month);
     const sales = (data.sales || []).filter((sale) => inRange(operationalDate(sale), range) && isCollectedSale(sale));
     const expenses = (data.expenses || []).filter((expense) => inRange(expense.date, range));
-    const commissions = (commissionsData.rows || []).filter((commission) => inRange(commission.date, range));
-    const paidCommissionsForTreasury = (commissionsData.rows || []).filter((commission) => (
-      commission.status === "pagada" && inRange(commission.paymentDate || commission.fechaPago || commission.date, range)
-    ));
+    const commissionSummary = commissionFinancialSummary(commissionsData.rows || [], range);
+    const commissions = commissionSummary.generated;
+    const paidCommissionsForTreasury = commissionSummary.paidForTreasury;
     const collectionsByMethod = groupPayments(sales);
     const expensesByMethod = groupExpenses(expenses);
     const paidCommissionsByMethod = groupMonthlyPaidCommissionsByMethod(paidCommissionsForTreasury);
@@ -271,14 +274,25 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
     const expensesTotal = expenses.reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const paidExpensesTotal = expenses.filter((expense) => expense.status !== "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const pendingExpensesTotal = expenses.filter((expense) => expense.status === "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
-    const paidCommissionsTotal = paidCommissionsForTreasury.reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
-    const pendingCommissionsTotal = commissions.filter((commission) => commission.status !== "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+    const generatedCommissionsTotal = commissionSummary.generatedTotal;
+    const paidCommissionsTotal = commissionSummary.paidTotal;
+    const pendingCommissionsTotal = commissionSummary.pendingGeneratedTotal;
     const treatwellCommissionTotal = sales.reduce((total, sale) => total + Number(sale.treatwellCommissionAmount || 0), 0);
     const taxes = vatSummary(sales, expenses);
     const collectionsTotal = Object.values(collectionsByMethod).reduce((total, amount) => total + Number(amount || 0), 0);
-    const operatingProfit = salesTotal - treatwellCommissionTotal - expensesTotal - paidCommissionsTotal - pendingCommissionsTotal;
-    const theoreticalTreasury = collectionsTotal - paidExpensesTotal - paidCommissionsTotal - treatwellCommissionTotal;
-    const bankTheoretical = Number(collectionsByMethod.Tarjeta || 0) + Number(collectionsByMethod.Bizum || 0) + Number(collectionsByMethod.Treatwell || 0)
+    const operatingProfit = calculateOperatingResult({
+      income: salesTotal,
+      expenses: expensesTotal,
+      generatedCommissions: generatedCommissionsTotal,
+      platformCommissions: treatwellCommissionTotal,
+    });
+    const theoreticalTreasury = calculateTreasuryResult({
+      collections: collectionsTotal,
+      paidExpenses: paidExpensesTotal,
+      paidCommissions: paidCommissionsTotal,
+      platformPayments: treatwellCommissionTotal,
+    });
+    const bankTheoretical = Number(collectionsByMethod.Tarjeta || 0) + Number(collectionsByMethod.Transferencia || 0) + Number(collectionsByMethod.Bizum || 0) + Number(collectionsByMethod.Treatwell || 0)
       - Number(expensesByMethod.Tarjeta?.paid || 0) - Number(expensesByMethod.Transferencia?.paid || 0) - Number(expensesByMethod.Bizum?.paid || 0)
       - Number(paidCommissionsByMethod.Tarjeta || 0) - Number(paidCommissionsByMethod.Transferencia || 0) - Number(paidCommissionsByMethod.Bizum || 0)
       - treatwellCommissionTotal;
@@ -287,6 +301,7 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
       - Number(paidCommissionsByMethod.Efectivo || 0);
     const bankRealNumber = Number(bankReal || 0);
     const cashRealNumber = Number(cashReal || 0);
+    const potentialCommissionExpenseDuplicates = findPotentialCommissionExpenseDuplicates(expenses, paidCommissionsForTreasury);
 
     return {
       month,
@@ -299,6 +314,7 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
       paidExpensesTotal,
       pendingExpensesTotal,
       expensesByMethod,
+      generatedCommissionsTotal,
       paidCommissionsTotal,
       pendingCommissionsTotal,
       treatwellCommissionTotal,
@@ -313,6 +329,7 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
       cashTheoretical,
       cashReal: cashRealNumber,
       cashDifference: cashRealNumber - cashTheoretical,
+      potentialCommissionExpenseDuplicates,
       observations,
     };
   }, [data, commissionsData, month, year, bankReal, cashReal, observations, user]);
@@ -349,6 +366,7 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
       <div className="summary-grid compact">
         <article className="metric"><span>Ventas totales</span><strong>{money(closing.salesTotal)}</strong></article>
         <article className="metric"><span>Gastos totales</span><strong>{money(closing.expensesTotal)}</strong></article>
+        <article className="metric"><span>Comisiones generadas</span><strong>{money(closing.generatedCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisiones pagadas</span><strong>{money(closing.paidCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisiones pendientes</span><strong>{money(closing.pendingCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisión Treatwell</span><strong>{money(closing.treatwellCommissionTotal)}</strong></article>
@@ -358,6 +376,11 @@ function MonthlyClosing({ data, commissionsData, user, canManage = false, onSave
         <article className="metric"><span>Beneficio operativo</span><strong>{money(closing.operatingProfit)}</strong></article>
         <article className="metric"><span>Tesorería teórica</span><strong>{money(closing.theoreticalTreasury)}</strong></article>
       </div>
+      {closing.potentialCommissionExpenseDuplicates.length > 0 && (
+        <p className="warning-message" role="alert">
+          Revisa {closing.potentialCommissionExpenseDuplicates.length} posible(s) duplicidad(es): hay gastos manuales de comisiones con la misma fecha e importe que pagos de comisión.
+        </p>
+      )}
       <div className="cards-grid">
         <article className="panel nested-panel">
           <h3>Cobros por método</h3>
@@ -408,20 +431,21 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
   const [showDetail, setShowDetail] = useState(false);
   const range = getRange(filter, customRange);
   const key = controlKey(range);
-  const savedControls = data.config?.financeControls || {};
-  const [realControls, setRealControls] = useState(savedControls[key] || {});
+  const savedControls = data.config?.financeControls || emptyFinanceControls;
+  const savedControlsForRange = savedControls[key] || emptyFinanceControls;
+  const savedControlsSignature = JSON.stringify(savedControlsForRange);
+  const [realControls, setRealControls] = useState(() => financeControlDrafts(savedControlsForRange));
 
   useEffect(() => {
-    setRealControls(savedControls[key] || {});
-  }, [key, savedControls]);
+    setRealControls(financeControlDrafts(savedControlsForRange));
+  }, [key, savedControlsSignature]);
 
   const finance = useMemo(() => {
     const sales = (data.sales || []).filter((sale) => inRange(operationalDate(sale), range) && isCollectedSale(sale));
     const expenses = (data.expenses || []).filter((expense) => inRange(expense.date, range));
-    const commissions = (commissionsData.rows || []).filter((commission) => inRange(commission.date, range));
-    const paidCommissionsForTreasury = (commissionsData.rows || []).filter((commission) => (
-      commission.status === "pagada" && inRange(commission.paymentDate || commission.fechaPago || commission.date, range)
-    ));
+    const commissionSummary = commissionFinancialSummary(commissionsData.rows || [], range);
+    const commissions = commissionSummary.generated;
+    const paidCommissionsForTreasury = commissionSummary.paidForTreasury;
     const registeredPayments = groupPayments(sales);
     const expensesByMethod = groupExpenses(expenses);
     const paidExpensesForBalance = groupPaidExpensesForPaymentMethods(expenses);
@@ -429,47 +453,73 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
     const commissionByEmployee = Object.values(groupCommissions(commissions)).sort((a, b) => b.total - a.total);
     const salesTotal = sales.reduce((total, sale) => total + Number(sale.total || 0), 0);
     const collectionsTotal = Object.values(registeredPayments).reduce((total, amount) => total + Number(amount || 0), 0);
-    const realCollectionsTotal = paymentMethods.reduce((total, method) => total + Number(realControls[method] ?? registeredPayments[method] ?? 0), 0);
     const expensesTotal = expenses.reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const paidExpensesTotal = expenses.filter((expense) => expense.status !== "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
     const pendingExpensesTotal = expenses.filter((expense) => expense.status === "pendiente").reduce((total, expense) => total + Number(expense.amount || 0), 0);
-    const paidCommissionsTotal = paidCommissionsForTreasury.reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
-    const pendingCommissionsTotal = commissions.filter((commission) => commission.status !== "pagada").reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
+    const generatedCommissionsTotal = commissionSummary.generatedTotal;
+    const paidCommissionsTotal = commissionSummary.paidTotal;
+    const pendingCommissionsTotal = commissionSummary.pendingGeneratedTotal;
     const internalCommissionsTotal = commissions
       .filter((commission) => commission.operationType === "servicio_interno")
       .reduce((total, commission) => total + Number(commission.commissionAmount || 0), 0);
     const treatwellTotal = sales.reduce((total, sale) => total + Number(sale.treatwellCommissionAmount || 0), 0);
     const taxes = vatSummary(sales, expenses);
-    const operatingProfit = salesTotal - treatwellTotal - expensesTotal - pendingCommissionsTotal - paidCommissionsTotal;
-    const realTreasury = realCollectionsTotal - paidExpensesTotal - paidCommissionsTotal - treatwellTotal;
-    const realBalanceByMethod = paymentMethods.map((method) => {
-      const realCollections = Number(realControls[method] ?? registeredPayments[method] ?? 0);
+    const operatingProfit = calculateOperatingResult({
+      income: salesTotal,
+      expenses: expensesTotal,
+      generatedCommissions: generatedCommissionsTotal,
+      platformCommissions: treatwellTotal,
+    });
+    const reconciliationByMethod = paymentMethods.map((method) => {
+      const registered = Number(registeredPayments[method] || 0);
       const paidExpenses = Number(paidExpensesForBalance[method] || 0);
       const paidCommissions = Number(paidCommissionsByMethod[method] || 0);
       const treatwellCommission = method === "Treatwell" ? treatwellTotal : 0;
+      const provisional = calculatePaymentMethodReconciliation({
+        method,
+        registered,
+        paidExpenses,
+        paidCommissions,
+        otherOutflows: treatwellCommission,
+      });
+      const reconciliation = calculatePaymentMethodReconciliation({
+        method,
+        registered,
+        paidExpenses,
+        paidCommissions,
+        otherOutflows: treatwellCommission,
+        real: resolveFinancialInput(realControls[method], provisional.reconciliationTarget),
+      });
 
       return {
-        method,
-        realCollections,
+        ...reconciliation,
         paidExpenses,
         paidCommissions,
         treatwellCommission,
-        balance: realCollections - paidExpenses - paidCommissions - treatwellCommission,
       };
     });
+    const cashReconciliation = reconciliationByMethod.find((row) => row.method === "Efectivo");
+    const cashCounted = Number(cashReconciliation?.confirmedAmount || 0);
+    const bankTreasury = reconciliationByMethod
+      .filter((row) => row.method !== "Efectivo")
+      .reduce((total, row) => total + Number(row.treasuryBalance || 0), 0);
+    const realTreasury = reconciliationByMethod.reduce((total, row) => total + Number(row.treasuryBalance || 0), 0);
     const detailRows = [
       ...sales.map((sale) => ({ date: operationalDate(sale), type: "Venta", concept: sale.service || "Venta", amount: Number(sale.total || 0) })),
       ...expenses.map((expense) => ({ date: expense.date, type: "Gasto", concept: expense.concept, amount: -Number(expense.amount || 0) })),
       ...commissions.map((commission) => ({ date: commission.date, type: commission.operationType === "servicio_interno" ? "Comision interna" : "Comision", concept: commission.employee, amount: -Number(commission.commissionAmount || 0) })),
     ].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    const potentialCommissionExpenseDuplicates = findPotentialCommissionExpenseDuplicates(expenses, paidCommissionsForTreasury);
 
     return {
       salesTotal,
       collectionsTotal,
-      realCollectionsTotal,
+      cashCounted,
+      bankTreasury,
       expensesTotal,
       paidExpensesTotal,
       pendingExpensesTotal,
+      generatedCommissionsTotal,
       paidCommissionsTotal,
       pendingCommissionsTotal,
       internalCommissionsTotal,
@@ -480,9 +530,10 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
       registeredPayments,
       expensesByMethod,
       paidCommissionsByMethod,
-      realBalanceByMethod,
+      reconciliationByMethod,
       commissionByEmployee,
       detailRows,
+      potentialCommissionExpenseDuplicates,
     };
   }, [data, commissionsData, range.from, range.to, realControls]);
 
@@ -504,10 +555,22 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
     setRealControls((current) => ({ ...current, [method]: value }));
   };
 
+  const normalizeRealControl = (method, fallback) => {
+    setRealControls((current) => ({
+      ...current,
+      [method]: formatFinancialInput(resolveFinancialInput(current[method], fallback)),
+    }));
+  };
+
   const saveControls = () => {
+    const normalizedValues = Object.fromEntries(finance.reconciliationByMethod.map((row) => [
+      row.method,
+      resolveFinancialInput(realControls[row.method], row.reconciliationTarget),
+    ]));
+    setRealControls(financeControlDrafts(normalizedValues));
     onSaveControls?.({
       ...savedControls,
-      [key]: Object.fromEntries(paymentMethods.map((method) => [method, Number(realControls[method] ?? finance.registeredPayments[method] ?? 0)])),
+      [key]: normalizedValues,
     });
   };
 
@@ -534,17 +597,26 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
 
       <section className="summary-grid compact">
         <article className="metric"><span>Ventas registradas</span><strong>{money(finance.salesTotal)}</strong></article>
-        <article className="metric"><span>Cobros reales confirmados</span><strong>{money(finance.realCollectionsTotal)}</strong></article>
+        <article className="metric"><span>Efectivo contado</span><strong>{money(finance.cashCounted)}</strong></article>
+        <article className="metric"><span>Tesoreria bancaria neta</span><strong>{money(finance.bankTreasury)}</strong></article>
         <article className="metric"><span>Gastos registrados</span><strong>{money(finance.expensesTotal)}</strong></article>
         <article className="metric"><span>Gastos pagados</span><strong>{money(finance.paidExpensesTotal)}</strong></article>
+        <article className="metric"><span>Comisiones generadas</span><strong>{money(finance.generatedCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisiones pendientes</span><strong>{money(finance.pendingCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisiones pagadas</span><strong>{money(finance.paidCommissionsTotal)}</strong></article>
         <article className="metric"><span>Comisiones pagadas efectivo</span><strong>{money(finance.paidCommissionsByMethod.Efectivo)}</strong></article>
+        <article className="metric"><span>Comisiones pagadas tarjeta</span><strong>{money(finance.paidCommissionsByMethod.Tarjeta)}</strong></article>
         <article className="metric"><span>Comisiones pagadas transferencia</span><strong>{money(finance.paidCommissionsByMethod.Transferencia)}</strong></article>
         <article className="metric"><span>Comisiones internas</span><strong>{money(finance.internalCommissionsTotal)}</strong></article>
         <article className="metric"><span>Beneficio operativo</span><strong>{money(finance.operatingProfit)}</strong></article>
         <article className="metric"><span>Tesoreria real</span><strong>{money(finance.realTreasury)}</strong></article>
       </section>
+
+      {finance.potentialCommissionExpenseDuplicates.length > 0 && (
+        <p className="warning-message" role="alert">
+          Posible doble contabilizacion: {finance.potentialCommissionExpenseDuplicates.length} gasto(s) manual(es) de comisiones coinciden en fecha e importe con pagos registrados.
+        </p>
+      )}
 
       <section className="panel">
         <h3>Resumen IVA</h3>
@@ -572,34 +644,38 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
           <button type="button" onClick={saveControls}>Guardar importes reales</button>
         </div>
         <div className="finance-table">
-          <div className="finance-header compact"><span>Metodo</span><span>Registrado ERP</span><span>Real confirmado</span><span>Diferencia</span></div>
-          {paymentMethods.map((method) => {
-            const registered = Number(finance.registeredPayments[method] || 0);
-            const real = Number(realControls[method] ?? registered);
-            return (
-              <div className="finance-row compact" key={method}>
-                <span>{method}</span>
-                <strong>{money(registered)}</strong>
-                <input type="number" step="0.01" value={realControls[method] ?? registered} onChange={(event) => updateRealControl(method, event.target.value)} />
-                <strong>{money(real - registered)}</strong>
-              </div>
-            );
-          })}
+          <div className="finance-header balance"><span>Metodo</span><span>Cobros registrados</span><span>Salidas</span><span>Saldo neto esperado</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span></div>
+          {finance.reconciliationByMethod.map((row) => (
+            <div className="finance-row balance" key={row.method}>
+              <span>{row.method}</span>
+              <strong>{money(row.registered)}</strong>
+              <strong>{money(row.outflows)}</strong>
+              <strong>{money(row.expectedBalance)}</strong>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={realControls[row.method] ?? formatFinancialInput(row.reconciliationTarget)}
+                onChange={(event) => updateRealControl(row.method, event.target.value)}
+                onBlur={() => normalizeRealControl(row.method, row.reconciliationTarget)}
+                aria-label={`Importe real confirmado para ${row.method}`}
+              />
+              <strong>{money(row.difference)}</strong>
+            </div>
+          ))}
         </div>
       </section>
 
       <section className="panel">
-        <h3>Saldo real por metodo</h3>
+        <h3>Tesoreria neta por metodo</h3>
         <div className="finance-table">
-          <div className="finance-header balance"><span>Metodo</span><span>Cobros reales confirmados</span><span>Gastos pagados</span><span>Comisiones pagadas</span><span>Comision Treatwell</span><span>Saldo real</span></div>
-          {finance.realBalanceByMethod.map((row) => (
-            <div className="finance-row balance" key={row.method}>
+          <div className="finance-header treasury"><span>Metodo</span><span>Saldo neto teorico</span><span>Real conciliado</span><span>Tesoreria neta real</span><span>Diferencia conciliacion</span></div>
+          {finance.reconciliationByMethod.map((row) => (
+            <div className="finance-row treasury" key={row.method}>
               <span>{row.method}</span>
-              <strong>{money(row.realCollections)}</strong>
-              <strong>{money(row.paidExpenses)}</strong>
-              <strong>{money(row.paidCommissions)}</strong>
-              <strong>{money(row.treatwellCommission)}</strong>
-              <strong>{money(row.balance)}</strong>
+              <strong>{money(row.expectedBalance)}</strong>
+              <strong>{money(row.confirmedAmount)}</strong>
+              <strong>{money(row.treasuryBalance)}</strong>
+              <strong>{money(row.difference)}</strong>
             </div>
           ))}
         </div>
@@ -643,18 +719,15 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
             <div className="stat-row"><span>Ventas registradas</span><strong>{money(finance.salesTotal)}</strong></div>
             <div className="stat-row"><span>- Comision Treatwell</span><strong>{money(finance.treatwellTotal)}</strong></div>
             <div className="stat-row"><span>- Gastos registrados</span><strong>{money(finance.expensesTotal)}</strong></div>
-            <div className="stat-row"><span>- Comisiones pendientes</span><strong>{money(finance.pendingCommissionsTotal)}</strong></div>
-            <div className="stat-row"><span>- Comisiones pagadas</span><strong>{money(finance.paidCommissionsTotal)}</strong></div>
+            <div className="stat-row"><span>- Comisiones generadas</span><strong>{money(finance.generatedCommissionsTotal)}</strong></div>
             <div className="stat-row"><span>Beneficio operativo</span><strong>{money(finance.operatingProfit)}</strong></div>
           </div>
         </article>
         <article className="panel">
           <h3>Tesoreria real</h3>
           <div className="list">
-            <div className="stat-row"><span>Cobros reales confirmados</span><strong>{money(finance.realCollectionsTotal)}</strong></div>
-            <div className="stat-row"><span>- Gastos pagados</span><strong>{money(finance.paidExpensesTotal)}</strong></div>
-            <div className="stat-row"><span>- Comisiones pagadas</span><strong>{money(finance.paidCommissionsTotal)}</strong></div>
-            <div className="stat-row"><span>- Comision Treatwell</span><strong>{money(finance.treatwellTotal)}</strong></div>
+            <div className="stat-row"><span>Efectivo contado neto</span><strong>{money(finance.cashCounted)}</strong></div>
+            <div className="stat-row"><span>Tesoreria bancaria neta</span><strong>{money(finance.bankTreasury)}</strong></div>
             <div className="stat-row"><span>Tesoreria real</span><strong>{money(finance.realTreasury)}</strong></div>
           </div>
         </article>

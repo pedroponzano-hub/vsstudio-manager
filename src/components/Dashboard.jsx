@@ -8,7 +8,7 @@ function percent(value) {
 
 const dashboardViews = {
   empleado: ["today"],
-  encargado: ["today", "month"],
+  encargado: ["today"],
   administrador: ["today", "month"],
 };
 
@@ -16,6 +16,7 @@ const incomeRows = [
   ["Ingresos en efectivo", "Efectivo"],
   ["Ingresos en tarjeta", "Tarjeta"],
   ["Ingresos en Bizum", "Bizum"],
+  ["Ingresos por transferencia", "Transferencia"],
   ["Ingresos Treatwell", "Treatwell"],
   ["Otros ingresos", "Otros"],
 ];
@@ -26,6 +27,14 @@ const expenseRows = [
   ["Gastos por transferencia", "Transferencia"],
   ["Gastos por Bizum", "Bizum"],
   ["Otros gastos", "Otros"],
+];
+
+const commissionRows = [
+  ["Comisiones pagadas en efectivo", "Efectivo"],
+  ["Comisiones pagadas con tarjeta", "Tarjeta"],
+  ["Comisiones pagadas por transferencia", "Transferencia"],
+  ["Comisiones pagadas por Bizum", "Bizum"],
+  ["Otras comisiones pagadas", "Otros"],
 ];
 
 function CashSummaryBlock({ title, summary = {} }) {
@@ -61,8 +70,9 @@ function CashSummaryBlock({ title, summary = {} }) {
         <article>
           <h4>Comisiones pagadas</h4>
           <div className="list">
-            <div className="stat-row"><span>Comisiones pagadas en efectivo</span><strong>{money(commissionsByMethod.Efectivo)}</strong></div>
-            <div className="stat-row"><span>Comisiones pagadas por transferencia</span><strong>{money(commissionsByMethod.Transferencia)}</strong></div>
+            {commissionRows.map(([label, method]) => (
+              <div className="stat-row" key={method}><span>{label}</span><strong>{money(commissionsByMethod[method])}</strong></div>
+            ))}
             <div className="stat-row total"><span>Total comisiones pagadas</span><strong>{money(summary.totalCommissions)}</strong></div>
           </div>
         </article>
@@ -70,6 +80,25 @@ function CashSummaryBlock({ title, summary = {} }) {
           <span>Resultado neto</span>
           <strong>{money(summary.netResult)}</strong>
         </article>
+      </div>
+    </section>
+  );
+}
+
+function DailyCollectionsBlock({ summary = {} }) {
+  const incomeByMethod = summary.incomeByMethod || {};
+
+  return (
+    <section className="panel dashboard-cash-panel">
+      <div className="section-title compact-title">
+        <h3>Cobros por método de pago del día</h3>
+        <span>Solo cobros registrados hoy</span>
+      </div>
+      <div className="list">
+        {incomeRows.map(([label, method]) => (
+          <div className="stat-row" key={method}><span>{label}</span><strong>{money(incomeByMethod[method])}</strong></div>
+        ))}
+        <div className="stat-row total"><span>Total cobrado hoy</span><strong>{money(summary.totalIncome)}</strong></div>
       </div>
     </section>
   );
@@ -90,18 +119,34 @@ function Dashboard({ data, viewMode = "administrador", section = "all" }) {
       {showToday && visibleSections.includes("today") && (
         <>
           <h3>Hoy</h3>
-          <div className="summary-grid">
-            <article className="metric"><span>Ventas brutas</span><strong>{money(data.today.grossSales)}</strong></article>
-            <article className="metric"><span>IVA estimado</span><strong>{money(data.today.ivaAmount)}</strong></article>
-            <article className="metric"><span>Ventas netas sin IVA</span><strong>{money(data.today.netWithoutVat)}</strong></article>
-            <article className="metric"><span>Comisiones totales</span><strong>{money(data.today.commissionAmount)}</strong></article>
-            <article className="metric"><span>Resultado despues IVA y comisiones</span><strong>{money(data.today.netAfterCommission)}</strong></article>
-            <article className="metric"><span>Gastos</span><strong>{money(data.today.expenses)}</strong></article>
-            <article className="metric"><span>Beneficio</span><strong>{money(data.today.profit)}</strong></article>
-            <article className="metric"><span>Clientes</span><strong>{data.today.clients}</strong></article>
-            <article className="metric"><span>Ticket medio</span><strong>{money(data.today.averageTicket)}</strong></article>
-          </div>
-          <CashSummaryBlock title="Resumen de caja del dia" summary={data.today.cashSummary} />
+          {viewMode === "encargado" ? (
+            <>
+              <div className="summary-grid">
+                <article className="metric"><span>Ventas del día</span><strong>{money(data.today.grossSales)}</strong></article>
+                <article className="metric"><span>Número de ventas</span><strong>{data.today.salesCount || 0}</strong></article>
+                <article className="metric"><span>Servicios realizados</span><strong>{data.today.servicesCount || 0}</strong></article>
+                <article className="metric"><span>Ticket medio del día</span><strong>{money(data.today.averageTicket)}</strong></article>
+                <article className="metric"><span>Clientes atendidos</span><strong>{data.today.clients}</strong></article>
+                <article className="metric"><span>Citas del día</span><strong>{data.today.appointmentsCount || 0}</strong></article>
+              </div>
+              <DailyCollectionsBlock summary={data.today.cashSummary} />
+            </>
+          ) : (
+            <>
+              <div className="summary-grid">
+                <article className="metric"><span>Ventas brutas</span><strong>{money(data.today.grossSales)}</strong></article>
+                <article className="metric"><span>IVA estimado</span><strong>{money(data.today.ivaAmount)}</strong></article>
+                <article className="metric"><span>Ventas netas sin IVA</span><strong>{money(data.today.netWithoutVat)}</strong></article>
+                <article className="metric"><span>Comisiones totales</span><strong>{money(data.today.commissionAmount)}</strong></article>
+                <article className="metric"><span>Resultado despues IVA y comisiones</span><strong>{money(data.today.netAfterCommission)}</strong></article>
+                <article className="metric"><span>Gastos</span><strong>{money(data.today.expenses)}</strong></article>
+                <article className="metric"><span>Beneficio</span><strong>{money(data.today.profit)}</strong></article>
+                <article className="metric"><span>Clientes</span><strong>{data.today.clients}</strong></article>
+                <article className="metric"><span>Ticket medio</span><strong>{money(data.today.averageTicket)}</strong></article>
+              </div>
+              <CashSummaryBlock title="Resumen de caja del dia" summary={data.today.cashSummary} />
+            </>
+          )}
         </>
       )}
 

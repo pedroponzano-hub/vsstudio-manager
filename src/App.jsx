@@ -17,7 +17,7 @@ import OperationalAgenda from "./components/OperationalAgenda.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsDemo from "./components/ProfessionalsSettingsDemo.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { allowedTabsForRole, canAccessTab, canPerform, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
+import { allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, defaultPageForRole, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
 
@@ -125,6 +125,8 @@ const platformSectionIds = {
   manager: ["dashboard", "clients", "finance", "statistics", "commissions", "settings"],
 };
 
+const directionSectionIds = ["agenda", "dashboard", "sales", "clients", "expenses", "cash-closing", "commissions", "statistics"];
+
 function getPlatformModeFromPath(pathname = "") {
   const normalizedPath = String(pathname || "").toLowerCase();
   return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "pos" : "manager";
@@ -133,6 +135,8 @@ function getPlatformModeFromPath(pathname = "") {
 function getInitialPageFromPath(pathname = "") {
   const normalizedPath = String(pathname || "").toLowerCase();
   if (normalizedPath === "/pos/agenda-v2" || normalizedPath.startsWith("/pos/agenda-v2/")) return "pos.agendaV2";
+  if (normalizedPath === "/manager/dashboard/monthly" || normalizedPath.startsWith("/manager/dashboard/monthly/")) return "dashboard.monthly";
+  if (normalizedPath === "/manager/dashboard/daily" || normalizedPath.startsWith("/manager/dashboard/daily/")) return "dashboard.daily";
   return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "agenda.appointments" : "dashboard.daily";
 }
 
@@ -325,7 +329,9 @@ function TodayClosedSales({ sales, clients, onView, onEdit, onVoid }) {
 
 function buildVisibleNavigation(allowedTabIds, role, platformMode) {
   const normalizedRole = String(role || "").trim().toLowerCase();
-  const sectionIds = platformSectionIds[platformMode] || platformSectionIds.manager;
+  const sectionIds = normalizedRole === "direccion"
+    ? directionSectionIds
+    : platformSectionIds[platformMode] || platformSectionIds.manager;
   const sectionsForPlatform = sectionIds
     .map((sectionId) => navigationSections.find((section) => section.id === sectionId))
     .filter(Boolean);
@@ -338,7 +344,8 @@ function buildVisibleNavigation(allowedTabIds, role, platformMode) {
       ...section,
       items: section.items.filter((item) => (
         allowedTabIds.includes(item.tabId)
-        && !(platformMode === "pos" && item.pageId === "agenda.appointments")
+        && !(item.pageId === "dashboard.monthly" && !canAccessDashboardSection(normalizedRole, "month"))
+        && !((platformMode === "pos" || normalizedRole === "direccion") && item.pageId === "agenda.appointments")
       )),
     }))
     .filter((section) => section.items.length > 0);
@@ -416,6 +423,7 @@ function App() {
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
   const salesFormRef = useRef(null);
+  const landingUserRef = useRef("");
 
   const effectiveRole = useMemo(() => effectiveRoleForUser(user), [user]);
   const allowedTabIds = useMemo(() => allowedTabsForRole(effectiveRole), [effectiveRole]);
@@ -486,6 +494,26 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      landingUserRef.current = "";
+      return;
+    }
+
+    const userKey = String(user.uid || user.email || user.nombre || effectiveRole);
+    if (landingUserRef.current === userKey) return;
+    landingUserRef.current = userKey;
+
+    if (defaultPageForRole(effectiveRole) !== "pos.agendaV2") return;
+
+    window.history.replaceState(null, "", "/pos/agenda-v2");
+    setPlatformMode("pos");
+    setActivePage("pos.agendaV2");
+    setActiveTab("agenda");
+    setActiveNavKey("agenda-operational-v2");
+    setAccessDeniedMessage("");
+  }, [effectiveRole, user]);
+
+  useEffect(() => {
     if (!user) return undefined;
 
     let isMounted = true;
@@ -529,12 +557,17 @@ function App() {
       return;
     }
 
-    const firstItem = firstNavigationItem(visibleNavigation);
+    const roleDefaultPage = defaultPageForRole(effectiveRole);
+    const firstItem = navigationItemForPage(visibleNavigation, roleDefaultPage) || firstNavigationItem(visibleNavigation);
+    if (roleDefaultPage === "pos.agendaV2") {
+      window.history.replaceState(null, "", "/pos/agenda-v2");
+      setPlatformMode("pos");
+    }
     setAccessDeniedMessage("No tienes permisos para acceder a esta sección.");
     setActivePage(firstItem?.pageId || "agenda.appointments");
     setActiveTab(firstItem?.tabId || allowedTabIds[0] || "agenda");
     setActiveNavKey(firstItem?.key || "");
-  }, [accessDeniedMessage, activePage, activeTab, allowedTabIds, visibleNavigation, user]);
+  }, [accessDeniedMessage, activePage, activeTab, allowedTabIds, effectiveRole, visibleNavigation, user]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -988,7 +1021,7 @@ function App() {
       case "professional.commissions":
         return canAccessTab(effectiveRole, "professionalCommissions") ? <ProfessionalCommissions sales={scopedData.sales} commissions={ownCommissionsData.rows} /> : accessDeniedPage;
       case "dashboard.monthly":
-        return canAccessTab(effectiveRole, "dashboard") ? <Dashboard data={dashboardData} viewMode={effectiveRole === "direccion" ? "encargado" : "administrador"} section="month" /> : accessDeniedPage;
+        return canAccessDashboardSection(effectiveRole, "month") ? <Dashboard data={dashboardData} viewMode="administrador" section="month" /> : accessDeniedPage;
       case "sales.new":
         return canAccessTab(effectiveRole, "sales") ? renderSalesFormPage() : accessDeniedPage;
       case "sales.pending":
@@ -1145,7 +1178,7 @@ function App() {
         return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsDemo servicesCatalog={scopedData.config?.services || []} /> : accessDeniedPage;
       case "dashboard.daily":
       default:
-        return canAccessTab(effectiveRole, "dashboard")
+        return canAccessDashboardSection(effectiveRole, "today")
           ? <Dashboard data={dashboardData} viewMode={effectiveRole === "direccion" ? "encargado" : "administrador"} section="today" />
           : accessDeniedPage;
     }
