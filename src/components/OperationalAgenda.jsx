@@ -164,8 +164,8 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
     <section className="module operational-agenda">
       <div className="section-title">
         <div>
-          <h2>Agenda operativa v2</h2>
-          <span>Vista experimental de solo lectura</span>
+          <h2>Agenda</h2>
+          <span>Planificación diaria de citas y profesionales</span>
         </div>
         <label className="compact-date-filter">
           Fecha
@@ -190,7 +190,7 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
           <section className="panel agenda-demo-toolbar">
             <div>
               <h2>Agenda del dia</h2>
-              <p>Vista principal del POS demo. Las citas se crean desde la agenda.</p>
+              <p>Consulta huecos, profesionales y citas de la jornada.</p>
             </div>
             <div className="agenda-view-switch">
               <button className={agendaDemoView === "calendar" ? "active" : ""} type="button" onClick={() => setAgendaDemoView("calendar")}>Calendario del dia</button>

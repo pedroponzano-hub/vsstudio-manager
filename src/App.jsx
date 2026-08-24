@@ -1198,18 +1198,31 @@ function App() {
   if (!user) return <Login />;
 
   return (
-    <main className="app-shell">
-      <section className="topbar">
-        <div>
-          <p className="eyebrow">ERP / POS</p>
-          <h1>VS Studio Manager</h1>
-        </div>
+    <main className={platformMode === "pos" ? "app-shell pos-shell" : "app-shell"}>
+      <section className={platformMode === "pos" ? "topbar pos-topbar" : "topbar"}>
+        {platformMode === "pos" ? (
+          <div className="pos-page-context">
+            <p className="eyebrow">Operaciones</p>
+            <h1>{activePage === "pos.agendaV2" ? "Agenda" : navigationItemForPage(visibleNavigation, activePage)?.label || "Operaciones"}</h1>
+          </div>
+        ) : (
+          <div>
+            <p className="eyebrow">ERP / POS</p>
+            <h1>VS Studio Manager</h1>
+          </div>
+        )}
         <div className="topbar-actions">
           <button className="nav-toggle-button" type="button" onClick={() => setMobileMenuOpen((current) => !current)}>
             {mobileMenuOpen ? "Cerrar menu" : "Menu"}
           </button>
+          {platformMode === "pos" && (
+            <div className="pos-business-context">
+              <strong>VS Studio Beauty &amp; Academy</strong>
+              <span>{user.nombre} · {effectiveRole === "admin" ? "Admin" : effectiveRole}</span>
+            </div>
+          )}
           <span className={isOnline ? "status-pill online" : "status-pill offline"}>{isOnline ? "Conectado a Firebase" : "Modo local / sin conexión"}</span>
-          <span className="user-pill">{user.nombre} - {effectiveRole}</span>
+          {platformMode !== "pos" && <span className="user-pill">{user.nombre} - {effectiveRole}</span>}
           {effectiveRole === "admin" && (
             <button className="ghost-button" type="button" onClick={() => switchPlatform(platformMode === "pos" ? "manager" : "pos")}>
               {platformMode === "pos" ? "Ir a Manager" : "Ir al POS"}
@@ -1248,10 +1261,19 @@ function App() {
         </section>
       )}
 
-      <nav className={mobileMenuOpen ? "tabs nav-menu open" : "tabs nav-menu"} aria-label="Menu principal">
+      <nav className={`${mobileMenuOpen ? "tabs nav-menu open" : "tabs nav-menu"}${platformMode === "pos" ? " pos-nav" : ""}`} aria-label="Menu principal">
         <div className="nav-brand">
-          <span>VS Studio</span>
-          <strong>Manager</strong>
+          {platformMode === "pos" ? (
+            <>
+              <strong>DOMIA</strong>
+              <span>Gestión &amp; Operaciones</span>
+            </>
+          ) : (
+            <>
+              <span>VS Studio</span>
+              <strong>Manager</strong>
+            </>
+          )}
         </div>
         {visibleNavigation.map((section) => {
           const sectionActive = section.items.some((item) => item.key === selectedNavKey);
@@ -1272,7 +1294,7 @@ function App() {
                       type="button"
                       onClick={() => openNavigationItem(item)}
                     >
-                      {item.label}
+                      {platformMode === "pos" && item.pageId === "pos.agendaV2" ? "Agenda del día" : item.label}
                     </button>
                   ))}
                 </div>
@@ -1283,7 +1305,7 @@ function App() {
       </nav>
 
       <ViewErrorBoundary key={activePage}>
-        {renderActivePage()}
+        {platformMode === "pos" ? <div className="pos-main-content">{renderActivePage()}</div> : renderActivePage()}
       </ViewErrorBoundary>
     </main>
   );

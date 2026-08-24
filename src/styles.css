@@ -3334,6 +3334,708 @@ h3 {
   color: #776f64;
 }
 
+/* DOMIA POS visual system. Everything in this section is intentionally scoped
+   to .pos-shell so the Manager interface keeps its existing presentation. */
+.pos-shell {
+  --domia-bg: #f3f5f7;
+  --domia-surface: #ffffff;
+  --domia-surface-soft: #f8fafb;
+  --domia-text: #17212b;
+  --domia-text-soft: #66727f;
+  --domia-border: #dfe5ea;
+  --domia-border-strong: #cbd5dc;
+  --domia-primary: #126b63;
+  --domia-primary-hover: #0d5a53;
+  --domia-primary-soft: #e8f4f2;
+  --domia-success: #267a4a;
+  --domia-success-soft: #eaf6ef;
+  --domia-warning: #9a6410;
+  --domia-warning-soft: #fff5df;
+  --domia-danger: #a63f3f;
+  --domia-danger-soft: #fceeee;
+  --domia-info: #315f9c;
+  --domia-info-soft: #edf3fb;
+  --domia-radius-sm: 8px;
+  --domia-radius: 12px;
+  --domia-shadow: 0 1px 2px rgba(20, 35, 48, 0.05), 0 8px 24px rgba(20, 35, 48, 0.04);
+  --domia-space-1: 4px;
+  --domia-space-2: 8px;
+  --domia-space-3: 12px;
+  --domia-space-4: 16px;
+  --domia-space-5: 20px;
+  --domia-space-6: 24px;
+  background: var(--domia-bg);
+  color: var(--domia-text);
+  padding: 0 28px 40px 252px;
+}
+
+.pos-shell .pos-main-content,
+.pos-shell .topbar,
+.pos-shell .module,
+.pos-shell .workspace,
+.pos-shell .two-column {
+  margin-inline: auto;
+  max-width: 1440px;
+}
+
+.pos-shell .pos-main-content {
+  min-width: 0;
+  width: 100%;
+}
+
+.pos-shell .pos-topbar {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--domia-border);
+  gap: var(--domia-space-4);
+  margin: 0 -28px 22px;
+  max-width: none;
+  padding: 12px 28px;
+  position: sticky;
+  top: 0;
+  z-index: 24;
+}
+
+.pos-page-context {
+  display: grid;
+  gap: 2px;
+}
+
+.pos-shell .pos-page-context .eyebrow {
+  color: var(--domia-primary);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.pos-shell .pos-page-context h1 {
+  color: var(--domia-text);
+  font-size: 1.32rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pos-shell .topbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pos-business-context {
+  border-right: 1px solid var(--domia-border);
+  display: grid;
+  gap: 2px;
+  margin-right: 2px;
+  padding-right: 12px;
+  text-align: right;
+}
+
+.pos-business-context strong {
+  color: var(--domia-text);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.pos-business-context span {
+  color: var(--domia-text-soft);
+  font-size: 0.76rem;
+  text-transform: capitalize;
+}
+
+.pos-shell .status-pill,
+.pos-shell .user-pill {
+  background: var(--domia-surface-soft);
+  border-color: var(--domia-border);
+  color: var(--domia-text-soft);
+  font-size: 0.75rem;
+  padding: 0.34rem 0.58rem;
+}
+
+.pos-shell .status-pill.online {
+  background: var(--domia-success-soft);
+  border-color: #b9dec8;
+  color: var(--domia-success);
+}
+
+.pos-shell .ghost-button,
+.pos-shell .secondary-button {
+  background: var(--domia-surface);
+  border-color: var(--domia-border-strong);
+  color: #3e4c58;
+}
+
+.pos-shell .ghost-button:hover,
+.pos-shell .secondary-button:hover {
+  background: var(--domia-surface-soft);
+  border-color: #aebbc4;
+  color: var(--domia-text);
+}
+
+.pos-shell .topbar-actions button {
+  font-size: 0.78rem;
+  min-height: 34px;
+  padding: 0.4rem 0.68rem;
+}
+
+.pos-shell .pos-nav {
+  background: var(--domia-surface);
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid var(--domia-border);
+  bottom: 0;
+  box-shadow: none;
+  gap: 10px;
+  left: 0;
+  overflow-y: auto;
+  padding: 20px 14px;
+  top: 0;
+  width: 224px;
+}
+
+.pos-shell .pos-nav .nav-brand {
+  border-color: var(--domia-border);
+  gap: 3px;
+  margin-bottom: 4px;
+  padding: 2px 8px 18px;
+}
+
+.pos-shell .pos-nav .nav-brand strong {
+  color: var(--domia-primary);
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.pos-shell .pos-nav .nav-brand span {
+  color: var(--domia-text-soft);
+  font-size: 0.67rem;
+  letter-spacing: 0.08em;
+}
+
+.pos-shell .pos-nav .nav-section {
+  gap: 4px;
+}
+
+.pos-shell .pos-nav .nav-section-toggle {
+  border-radius: var(--domia-radius-sm);
+  color: #53616d;
+  font-size: 0.78rem;
+  min-height: 34px;
+  padding: 0.42rem 0.58rem;
+  text-transform: none;
+}
+
+.pos-shell .pos-nav .nav-section-toggle:hover,
+.pos-shell .pos-nav .nav-section.active .nav-section-toggle {
+  background: var(--domia-surface-soft);
+  color: var(--domia-text);
+}
+
+.pos-shell .pos-nav .nav-section.active .nav-section-toggle {
+  font-weight: 800;
+}
+
+.pos-shell .pos-nav .nav-section-toggle b {
+  color: #8a969f;
+  font-size: 0.88rem;
+}
+
+.pos-shell .pos-nav .nav-section-items {
+  gap: 3px;
+  padding-left: 4px;
+}
+
+.pos-shell .pos-nav .tab {
+  background: transparent;
+  border: 0;
+  border-radius: var(--domia-radius-sm);
+  color: var(--domia-text-soft);
+  font-size: 0.8rem;
+  min-height: 34px;
+  padding: 0.48rem 0.65rem 0.48rem 0.85rem;
+}
+
+.pos-shell .pos-nav .tab:hover {
+  background: var(--domia-surface-soft);
+  color: var(--domia-text);
+}
+
+.pos-shell .pos-nav .tab.active {
+  background: var(--domia-primary-soft);
+  box-shadow: inset 3px 0 0 var(--domia-primary);
+  color: var(--domia-primary);
+  font-weight: 750;
+}
+
+.pos-shell h1,
+.pos-shell h2,
+.pos-shell h3 {
+  color: var(--domia-text);
+}
+
+.pos-shell h2 {
+  font-size: 1.22rem;
+  font-weight: 700;
+}
+
+.pos-shell h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.pos-shell label {
+  color: #53616d;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.pos-shell input,
+.pos-shell select,
+.pos-shell textarea {
+  background: var(--domia-surface);
+  border-color: var(--domia-border-strong);
+  border-radius: var(--domia-radius-sm);
+  color: var(--domia-text);
+  min-height: 42px;
+  padding: 0.64rem 0.72rem;
+}
+
+.pos-shell input:focus,
+.pos-shell select:focus,
+.pos-shell textarea:focus {
+  border-color: var(--domia-primary);
+  box-shadow: 0 0 0 3px rgba(18, 107, 99, 0.13);
+}
+
+.pos-shell button {
+  border-color: var(--domia-border-strong);
+  border-radius: var(--domia-radius-sm);
+  min-height: 40px;
+}
+
+.pos-shell button[type="submit"],
+.pos-shell .form-actions > button:not(.secondary-button):not(.danger-button),
+.pos-shell .calendar-filter-bar > button,
+.pos-shell .expense-filter-main > button,
+.pos-shell .row-actions > button:not(.secondary-button):not(.danger-button) {
+  background: var(--domia-primary);
+  border-color: var(--domia-primary);
+  color: #fff;
+}
+
+.pos-shell button[type="submit"]:hover,
+.pos-shell .form-actions > button:not(.secondary-button):not(.danger-button):hover,
+.pos-shell .calendar-filter-bar > button:hover,
+.pos-shell .expense-filter-main > button:hover,
+.pos-shell .row-actions > button:not(.secondary-button):not(.danger-button):hover {
+  background: var(--domia-primary-hover);
+  border-color: var(--domia-primary-hover);
+}
+
+.pos-shell .danger-button {
+  background: var(--domia-surface);
+  border-color: #e3bcbc;
+  color: var(--domia-danger);
+}
+
+.pos-shell .danger-button:hover {
+  background: var(--domia-danger-soft);
+}
+
+.pos-shell .panel,
+.pos-shell .metric,
+.pos-shell .reset-panel {
+  background: var(--domia-surface);
+  border-color: var(--domia-border);
+  border-radius: var(--domia-radius);
+  box-shadow: var(--domia-shadow);
+}
+
+.pos-shell .panel {
+  padding: 18px;
+}
+
+.pos-shell .panel .panel,
+.pos-shell .nested-panel {
+  background: var(--domia-surface-soft);
+  box-shadow: none;
+}
+
+.pos-shell .module,
+.pos-shell .workspace,
+.pos-shell .two-column,
+.pos-shell .column,
+.pos-shell .list {
+  gap: 14px;
+}
+
+.pos-shell .section-title {
+  align-items: center;
+  border-bottom: 1px solid var(--domia-border);
+  padding-bottom: 12px;
+}
+
+.pos-shell .section-title span,
+.pos-shell .muted-text,
+.pos-shell .empty-state,
+.pos-shell .metric span,
+.pos-shell .list-item span,
+.pos-shell .client-button small {
+  color: var(--domia-text-soft);
+}
+
+.pos-shell .metric {
+  gap: 5px;
+  padding: 14px 16px;
+}
+
+.pos-shell .metric strong {
+  color: var(--domia-text);
+  font-size: 1.28rem;
+  font-weight: 750;
+}
+
+.pos-shell .list-item,
+.pos-shell .stat-row,
+.pos-shell .client-row,
+.pos-shell .summary-line,
+.pos-shell .finance-row {
+  border-color: var(--domia-border);
+  border-radius: var(--domia-radius-sm);
+  box-shadow: none;
+}
+
+.pos-shell .list-item:hover,
+.pos-shell .client-row:hover,
+.pos-shell .finance-row:hover {
+  background: var(--domia-surface-soft);
+}
+
+.pos-shell .list-panel {
+  max-height: none;
+  overflow: visible;
+}
+
+.pos-shell .finance-table {
+  border: 1px solid var(--domia-border);
+  border-radius: var(--domia-radius-sm);
+  gap: 0;
+  overflow-x: auto;
+}
+
+.pos-shell .finance-header {
+  background: var(--domia-surface-soft);
+  color: var(--domia-text-soft);
+  padding: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.pos-shell .finance-row {
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid var(--domia-border);
+  padding: 10px;
+}
+
+.pos-shell .finance-row strong,
+.pos-shell .calculated-row b,
+.pos-shell .stat-row strong,
+.pos-shell .list-item b {
+  color: var(--domia-text);
+}
+
+.pos-shell .closing-difference {
+  border-radius: 999px;
+  display: inline-flex;
+  justify-self: end;
+  padding: 0.28rem 0.52rem;
+}
+
+.pos-shell .closing-difference.is-ok {
+  background: var(--domia-success-soft);
+  color: var(--domia-success);
+}
+
+.pos-shell .closing-difference.has-issue {
+  background: var(--domia-danger-soft);
+  color: var(--domia-danger);
+}
+
+.pos-shell .sale-form-anchor,
+.pos-shell .sales-workspace {
+  max-width: 1440px;
+}
+
+.pos-shell .sale-form-anchor > .panel {
+  padding: 20px;
+}
+
+.pos-shell .sale-form-heading {
+  align-items: center;
+}
+
+.pos-shell .tpv-heading-total {
+  background: var(--domia-primary);
+  border-radius: var(--domia-radius-sm);
+  color: #fff;
+  font-size: 1.45rem;
+  padding: 10px 14px;
+}
+
+.pos-shell .sale-date-header,
+.pos-shell .compact-date-field,
+.pos-shell .backdated-sale-box,
+.pos-shell .quick-client-box,
+.pos-shell .calculated-row {
+  background: var(--domia-surface-soft);
+  border-color: var(--domia-border);
+}
+
+.pos-shell .sale-services-workflow {
+  align-items: start;
+  background: transparent;
+  border: 0;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+  padding: 0;
+}
+
+.pos-shell .tpv-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
+
+.pos-shell .tpv-category {
+  background: var(--domia-surface);
+  border-color: var(--domia-border);
+  color: #53616d;
+  flex: 0 1 auto;
+  font-size: 0.82rem;
+  min-height: 36px;
+  padding: 0.42rem 0.68rem;
+}
+
+.pos-shell .tpv-category.active,
+.pos-shell .tpv-category:hover {
+  background: var(--domia-primary-soft);
+  border-color: #9bc9c3;
+  color: var(--domia-primary);
+}
+
+.pos-shell .tpv-service-grid {
+  align-content: start;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+}
+
+.pos-shell .tpv-service-button {
+  background: var(--domia-surface);
+  border-color: var(--domia-border);
+  border-radius: var(--domia-radius-sm);
+  min-height: 72px;
+  padding: 10px 11px;
+}
+
+.pos-shell .tpv-service-button:hover {
+  background: var(--domia-primary-soft);
+  border-color: #9bc9c3;
+}
+
+.pos-shell .tpv-service-button strong,
+.pos-shell .tpv-ticket > .section-title strong {
+  color: var(--domia-primary);
+}
+
+.pos-shell .tpv-ticket {
+  align-self: start;
+  border: 1px solid var(--domia-border);
+  border-radius: var(--domia-radius);
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  padding: 14px;
+  position: sticky;
+  top: 88px;
+}
+
+.pos-shell .sale-service-card {
+  background: var(--domia-surface-soft);
+  border-color: var(--domia-border);
+  padding: 10px;
+}
+
+.pos-shell .sale-admin-section {
+  border-color: var(--domia-border);
+  gap: 14px;
+  padding-top: 18px;
+}
+
+.pos-shell .form-actions {
+  background: var(--domia-surface);
+  border-top: 1px solid var(--domia-border);
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin: 4px -20px -20px;
+  padding: 14px 20px;
+  position: sticky;
+  z-index: 8;
+}
+
+.pos-shell .form-actions button[type="submit"] {
+  font-size: 1rem;
+  min-height: 48px;
+  min-width: 180px;
+}
+
+.pos-shell .two-column {
+  grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.28fr);
+}
+
+.pos-shell .client-button {
+  color: var(--domia-text);
+}
+
+.pos-shell .client-button:hover {
+  color: var(--domia-primary);
+}
+
+.pos-shell .expense-filter-box {
+  background: var(--domia-surface-soft);
+  border-color: var(--domia-border);
+  border-radius: var(--domia-radius-sm);
+}
+
+.pos-shell .expense-summary-grid .metric:nth-child(3) strong {
+  color: var(--domia-success);
+}
+
+.pos-shell .expense-summary-grid .metric:nth-child(4) strong {
+  color: var(--domia-warning);
+}
+
+.pos-shell .success-message {
+  background: var(--domia-success-soft);
+  border-color: #b9dec8;
+  color: var(--domia-success);
+}
+
+.pos-shell .auth-error,
+.pos-shell .error-message {
+  background: var(--domia-danger-soft);
+  border-color: #e7bcbc;
+  color: var(--domia-danger);
+}
+
+.pos-shell .auth-warning,
+.pos-shell .warning-message {
+  background: var(--domia-warning-soft);
+  border-color: #ead19e;
+  color: var(--domia-warning);
+}
+
+.pos-shell .agenda-demo-toolbar,
+.pos-shell .calendar-day-header,
+.pos-shell .calendar-filter-bar {
+  box-shadow: none;
+}
+
+.pos-shell .agenda-view-switch button,
+.pos-shell .calendar-rubro-filter button {
+  background: var(--domia-surface);
+  border-color: var(--domia-border);
+  color: #53616d;
+  min-height: 36px;
+}
+
+.pos-shell .agenda-view-switch button.active,
+.pos-shell .calendar-rubro-filter button.active {
+  background: var(--domia-primary-soft);
+  border-color: #9bc9c3;
+  color: var(--domia-primary);
+}
+
+.pos-shell .calendar-grid-shell {
+  border: 1px solid var(--domia-border);
+  border-radius: var(--domia-radius);
+  box-shadow: none;
+}
+
+.pos-shell .calendar-corner,
+.pos-shell .calendar-professional-head,
+.pos-shell .calendar-time-column {
+  background: var(--domia-surface-soft);
+  border-color: var(--domia-border);
+}
+
+.pos-shell .calendar-professional-head strong {
+  color: var(--domia-text);
+}
+
+.pos-shell .calendar-time-cell,
+.pos-shell .calendar-professional-column,
+.pos-shell .calendar-free-slot {
+  border-color: #e9edf0;
+}
+
+.pos-shell .calendar-free-slot:not(:disabled):hover,
+.pos-shell .calendar-free-slot:not(:disabled):focus-visible {
+  background: var(--domia-primary-soft);
+  color: var(--domia-primary);
+}
+
+.pos-shell .operational-appointment-card {
+  border-color: var(--domia-border);
+  border-radius: var(--domia-radius-sm);
+  box-shadow: none;
+}
+
+.pos-shell .appointment-time-block {
+  background: var(--domia-surface-soft);
+  border-color: var(--domia-border);
+}
+
+.pos-shell .sale-history-modal,
+.pos-shell [role="dialog"] {
+  backdrop-filter: blur(3px);
+}
+
+.pos-shell .sale-history-dialog,
+.pos-shell .statistics-edit-dialog,
+.pos-shell .appointment-modal-card,
+.pos-shell .professional-modal-card {
+  border-color: var(--domia-border);
+  border-radius: var(--domia-radius);
+  box-shadow: 0 24px 70px rgba(20, 35, 48, 0.2);
+}
+
+.pos-shell .status-pill.pending,
+.pos-shell .sale-tag.edited {
+  background: var(--domia-warning-soft);
+  border-color: #ead19e;
+  color: var(--domia-warning);
+}
+
+.pos-shell .sale-tag.voided,
+.pos-shell .sale-tag.cancelled {
+  background: var(--domia-danger-soft);
+  color: var(--domia-danger);
+}
+
+.pos-shell .sale-tag.backdated {
+  background: var(--domia-info-soft);
+  color: var(--domia-info);
+}
+
 @media (max-width: 1280px) {
   .app-shell {
     padding: 20px 20px 28px 220px;
@@ -3656,5 +4358,236 @@ h3 {
 
   .list-panel {
     max-height: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .pos-shell {
+    padding: 0 20px 32px 220px;
+  }
+
+  .pos-shell .pos-nav {
+    width: 204px;
+  }
+
+  .pos-shell .pos-topbar {
+    margin-inline: -20px;
+    padding-inline: 20px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .pos-shell .sale-services-workflow {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .tpv-ticket {
+    max-height: none;
+    position: static;
+  }
+
+  .pos-shell .expense-filter-main,
+  .pos-shell .expense-secondary-grid,
+  .pos-shell .filters-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .pos-shell {
+    padding: 0 20px 30px;
+  }
+
+  .pos-shell .pos-topbar {
+    margin-inline: -20px;
+    padding-inline: 20px;
+  }
+
+  .pos-shell .pos-nav {
+    border: 1px solid var(--domia-border);
+    border-radius: var(--domia-radius);
+    bottom: auto;
+    box-shadow: 0 20px 50px rgba(20, 35, 48, 0.2);
+    left: 20px;
+    max-height: calc(100vh - 100px);
+    padding: 16px;
+    right: 20px;
+    top: 76px;
+    width: auto;
+  }
+
+  .pos-shell .workspace,
+  .pos-shell .two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .summary-grid,
+  .pos-shell .summary-grid.compact,
+  .pos-shell .expense-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .pos-shell {
+    padding: 0 12px 24px;
+  }
+
+  .pos-shell .pos-topbar {
+    align-items: center;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin: 0 -12px 16px;
+    padding: 10px 12px;
+  }
+
+  .pos-shell .pos-page-context h1 {
+    font-size: 1.08rem;
+  }
+
+  .pos-shell .topbar-actions {
+    display: flex;
+    gap: 6px;
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .pos-shell .topbar-actions .status-pill {
+    display: none;
+  }
+
+  .pos-business-context {
+    border: 0;
+    margin: 0 auto 0 0;
+    padding: 0;
+    text-align: left;
+  }
+
+  .pos-business-context strong {
+    font-size: 0.78rem;
+  }
+
+  .pos-business-context span {
+    font-size: 0.7rem;
+  }
+
+  .pos-shell .topbar-actions button,
+  .pos-shell .ghost-button,
+  .pos-shell .nav-toggle-button {
+    min-height: 34px;
+    width: auto;
+  }
+
+  .pos-shell .pos-nav {
+    left: 12px;
+    max-height: calc(100vh - 128px);
+    right: 12px;
+    top: 112px;
+  }
+
+  .pos-shell .panel,
+  .pos-shell .metric {
+    padding: 14px;
+  }
+
+  .pos-shell .sale-form-anchor > .panel {
+    padding: 14px;
+  }
+
+  .pos-shell .sale-form-heading {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .tpv-heading-total {
+    justify-self: stretch;
+    text-align: center;
+  }
+
+  .pos-shell .sale-services-workflow {
+    padding: 0;
+  }
+
+  .pos-shell .tpv-categories {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pos-shell .tpv-category {
+    width: 100%;
+  }
+
+  .pos-shell .tpv-service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pos-shell .tpv-service-button {
+    min-height: 78px;
+  }
+
+  .pos-shell .form-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    margin: 4px -14px -14px;
+    padding: 12px 14px;
+  }
+
+  .pos-shell .form-actions button,
+  .pos-shell .form-actions button[type="submit"] {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .pos-shell .expense-filter-main,
+  .pos-shell .expense-secondary-grid,
+  .pos-shell .expense-summary-grid,
+  .pos-shell .filters-panel,
+  .pos-shell .summary-grid,
+  .pos-shell .summary-grid.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .calendar-day-header,
+  .pos-shell .calendar-filter-bar,
+  .pos-shell .calendar-date-actions {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .calendar-filter-bar label {
+    min-width: 0;
+  }
+
+  .pos-shell .calendar-rubro-filter,
+  .pos-shell .agenda-view-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pos-shell .calendar-rubro-filter button,
+  .pos-shell .agenda-view-switch button {
+    width: 100%;
+  }
+
+  .pos-shell .finance-table,
+  .pos-shell .calendar-grid-shell {
+    margin-inline: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 430px) {
+  .pos-shell .tpv-service-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .pos-page-context .eyebrow {
+    display: none;
+  }
+
+  .pos-shell .pos-page-context h1 {
+    font-size: 1rem;
   }
 }

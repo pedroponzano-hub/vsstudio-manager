@@ -498,7 +498,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
         </div>
         <div className="stat-row">
           <span>Diferencia total de cierre</span>
-          <strong>{money(dayData.summary.totalDifference)}</strong>
+          <strong className={Math.abs(Number(dayData.summary.totalDifference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(dayData.summary.totalDifference)}</strong>
         </div>
         <div className="finance-table">
           <div className="finance-header cash"><span>Metodo</span><span>Cobros registrados</span><span>Base de conciliacion</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span><span>Gastos pagados</span><span>Comisiones pagadas</span><span>Tesoreria neta</span></div>
@@ -516,7 +516,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
               <strong>{money(row.registered)}</strong>
               <strong>{money(row.reconciliationTarget)}</strong>
               <input type="number" step="0.01" value={realAmounts[row.method] ?? ""} onChange={(event) => updateRealAmount(row.method, event.target.value)} placeholder="0.00" />
-              <strong>{money(row.difference)}</strong>
+              <strong className={Math.abs(Number(row.difference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(row.difference)}</strong>
               <strong>{money(row.expenses)}</strong>
               <strong>{money(row.paidCommissions)}</strong>
               <strong>{money(row.finalBalance)}</strong>
