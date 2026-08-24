@@ -501,7 +501,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
           <strong>{money(dayData.summary.totalDifference)}</strong>
         </div>
         <div className="finance-table">
-          <div className="finance-header cash"><span>Metodo</span><span>Cobros registrados</span><span>Saldo neto esperado</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span><span>Gastos pagados</span><span>Comisiones pagadas</span><span>Tesoreria neta</span></div>
+          <div className="finance-header cash"><span>Metodo</span><span>Cobros registrados</span><span>Base de conciliacion</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span><span>Gastos pagados</span><span>Comisiones pagadas</span><span>Tesoreria neta</span></div>
           {dayData.rows.map((row) => (
             <div className="finance-row cash" key={row.method}>
               <span>
@@ -514,7 +514,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
                 )}
               </span>
               <strong>{money(row.registered)}</strong>
-              <strong>{money(row.expectedBalance)}</strong>
+              <strong>{money(row.reconciliationTarget)}</strong>
               <input type="number" step="0.01" value={realAmounts[row.method] ?? ""} onChange={(event) => updateRealAmount(row.method, event.target.value)} placeholder="0.00" />
               <strong>{money(row.difference)}</strong>
               <strong>{money(row.expenses)}</strong>

@@ -109,6 +109,36 @@ test("efectivo se concilia contra caja esperada y tarjeta contra cobros brutos",
   assert.equal(Number(card.treasuryBalance.toFixed(2)), 755.46);
 });
 
+test("tarjeta conserva 10 euros de cobros aunque haya 10 euros de gastos", () => {
+  const card = calculatePaymentMethodReconciliation({
+    method: "Tarjeta",
+    registered: 10,
+    paidExpenses: 10,
+    real: 10,
+  });
+
+  assert.equal(card.registered, 10);
+  assert.equal(card.reconciliationTarget, 10);
+  assert.equal(card.difference, 0);
+  assert.equal(card.outflows, 10);
+  assert.equal(card.treasuryBalance, 0);
+});
+
+test("tarjeta conserva 100 euros de cobros aunque haya 30 euros de gastos", () => {
+  const card = calculatePaymentMethodReconciliation({
+    method: "Tarjeta",
+    registered: 100,
+    paidExpenses: 30,
+    real: 100,
+  });
+
+  assert.equal(card.registered, 100);
+  assert.equal(card.reconciliationTarget, 100);
+  assert.equal(card.difference, 0);
+  assert.equal(card.outflows, 30);
+  assert.equal(card.treasuryBalance, 70);
+});
+
 test("bizum y transferencia concilian cobros antes de aplicar sus salidas", () => {
   for (const method of ["Bizum", "Transferencia"]) {
     const row = calculatePaymentMethodReconciliation({
