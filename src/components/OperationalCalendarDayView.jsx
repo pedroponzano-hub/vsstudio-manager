@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 
 import AppointmentDetailModalDemo from "./AppointmentDetailModalDemo.jsx";
-import { getTodayLocalDateString } from "../utils/date.js";
 import {
   DEMO_BUSINESS_AREAS,
   DEMO_CALENDAR_INTERVAL,
@@ -9,14 +8,12 @@ import {
   createCalendarSlots,
   filterDemoProfessionals,
   getAppointmentLayout,
-  shiftLocalDate,
 } from "../utils/agendaCalendarDemo.js";
 import { getStatusClassName, minutesToTime } from "../utils/availabilityDemo.js";
 
 function OperationalCalendarDayView({
   appointmentHistory = {},
   clients = [],
-  onDateChange,
   onNewAppointment,
   onUpdateAppointment,
   rows = [],
@@ -59,23 +56,7 @@ function OperationalCalendarDayView({
 
   return (
     <section className="operational-calendar-view">
-      <section className="panel calendar-day-header">
-        <div className="calendar-date-actions">
-          <button className="secondary-button" type="button" onClick={() => onDateChange(shiftLocalDate(selectedDate, -1))}>Dia anterior</button>
-          <button className="secondary-button" type="button" onClick={() => onDateChange(getTodayLocalDateString())}>Hoy</button>
-          <button className="secondary-button" type="button" onClick={() => onDateChange(shiftLocalDate(selectedDate, 1))}>Dia siguiente</button>
-          <input
-            aria-label="Seleccionar fecha del calendario"
-            className="calendar-date-input"
-            type="date"
-            value={selectedDate}
-            onChange={(event) => onDateChange(event.target.value)}
-          />
-          <strong>{selectedDate}</strong>
-        </div>
-      </section>
-
-      <section className="panel calendar-filter-bar">
+      <section className="calendar-filter-bar">
         <div className="calendar-rubro-filter" role="group" aria-label="Filtros por rubro">
           {DEMO_BUSINESS_AREAS.map((area) => (
             <button
@@ -104,7 +85,6 @@ function OperationalCalendarDayView({
             ))}
           </select>
         </label>
-        <button type="button" onClick={() => openNewAppointment()}>Nueva cita</button>
       </section>
 
       <section className="panel calendar-grid-shell">

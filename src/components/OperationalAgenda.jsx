@@ -4,6 +4,7 @@ import OperationalCalendarDayView from "./OperationalCalendarDayView.jsx";
 import NewAppointmentModalDemo from "./NewAppointmentModalDemo.jsx";
 import OperationalDayAgenda from "./OperationalDayAgenda.jsx";
 import { getTodayLocalDateString } from "../utils/date.js";
+import { shiftLocalDate } from "../utils/agendaCalendarDemo.js";
 import {
   demoAppointmentsForDate,
   formatDuration,
@@ -160,70 +161,88 @@ function OperationalAgenda({ appointments = [], clients = [], config = {} }) {
       .sort((first, second) => String(first.time || "99:99").localeCompare(String(second.time || "99:99")))
   ), [clientMap, selectedDate, services, visibleAppointments]);
 
+  const formattedSelectedDate = useMemo(() => {
+    const parsedDate = new Date(`${selectedDate}T12:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) return selectedDate;
+    return new Intl.DateTimeFormat("es-ES", {
+      day: "2-digit",
+      month: "short",
+      weekday: "short",
+    }).format(parsedDate);
+  }, [selectedDate]);
+
   return (
     <section className="module operational-agenda">
-      <div className="section-title">
-        <div>
-          <h2>Agenda</h2>
-          <span>Planificación diaria de citas y profesionales</span>
+      <section className="agenda-command-bar">
+        <div className="agenda-date-navigation">
+          <button
+            aria-label="Día anterior"
+            className="secondary-button agenda-arrow-button"
+            type="button"
+            onClick={() => setSelectedDate(shiftLocalDate(selectedDate, -1))}
+          >
+            ←
+          </button>
+          <button className="secondary-button" type="button" onClick={() => setSelectedDate(getTodayLocalDateString())}>Hoy</button>
+          <button
+            aria-label="Día siguiente"
+            className="secondary-button agenda-arrow-button"
+            type="button"
+            onClick={() => setSelectedDate(shiftLocalDate(selectedDate, 1))}
+          >
+            →
+          </button>
+          <label className="agenda-date-field">
+            <span>Fecha</span>
+            <input
+              aria-label="Fecha de agenda"
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
+          </label>
         </div>
-        <label className="compact-date-filter">
-          Fecha
-          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
-        </label>
-      </div>
+        <div className="agenda-command-actions">
+          {demoMode && (
+            <div className="agenda-view-switch" role="group" aria-label="Vista de agenda">
+              <button className={agendaDemoView === "calendar" ? "active" : ""} type="button" onClick={() => setAgendaDemoView("calendar")}>Calendario</button>
+              <button className={agendaDemoView === "list" ? "active" : ""} type="button" onClick={() => setAgendaDemoView("list")}>Lista</button>
+            </div>
+          )}
+          {demoMode && <button className="agenda-primary-action" type="button" onClick={() => openNewAppointmentModal()}>+ Nueva cita</button>}
+        </div>
+      </section>
 
-      {demoMode && (
-        <section className="version-notice operational-demo-notice" aria-live="polite">
-          <span>Modo demo local — la cita no se guarda en Firebase y desaparecerá al recargar</span>
-        </section>
-      )}
-
-      <section className="summary-grid compact">
-        <article className="metric"><span>Citas del dia</span><strong>{rows.length}</strong></article>
-        <article className="metric"><span>Primera cita</span><strong>{rows[0]?.time || "No disponible"}</strong></article>
-        <article className="metric"><span>Ultima cita</span><strong>{rows[rows.length - 1]?.time || "No disponible"}</strong></article>
+      <section className="agenda-summary-bar" aria-live="polite">
+        <strong>{formattedSelectedDate} · {rows.length} {rows.length === 1 ? "cita" : "citas"}</strong>
+        <span>Primera: {rows[0]?.time || "—"}</span>
+        <span>Última: {rows[rows.length - 1]?.time || "—"}</span>
+        {demoMode && (
+          <span className="agenda-demo-context" title="Las citas de demostración no se guardan en Firebase">
+            <b>DEMO</b>
+            Solo local
+          </span>
+        )}
       </section>
 
       {demoMode ? (
         <>
-          <section className="panel agenda-demo-toolbar">
-            <div>
-              <h2>Agenda del dia</h2>
-              <p>Consulta huecos, profesionales y citas de la jornada.</p>
-            </div>
-            <div className="agenda-view-switch">
-              <button className={agendaDemoView === "calendar" ? "active" : ""} type="button" onClick={() => setAgendaDemoView("calendar")}>Calendario del dia</button>
-              <button className={agendaDemoView === "list" ? "active" : ""} type="button" onClick={() => setAgendaDemoView("list")}>Lista del dia</button>
-            </div>
-          </section>
-
           {agendaDemoView === "calendar" ? (
             <OperationalCalendarDayView
               rows={rows}
               clients={clients}
               appointmentHistory={demoAppointmentHistory}
               selectedDate={selectedDate}
-              onDateChange={setSelectedDate}
               onNewAppointment={openNewAppointmentModal}
               onUpdateAppointment={updateDemoAppointment}
             />
           ) : (
-            <>
-              <section className="panel agenda-demo-toolbar">
-                <div>
-                  <h2>Lista del dia</h2>
-                  <p>Vista compacta secundaria para revisar las citas del dia.</p>
-                </div>
-                <button type="button" onClick={() => openNewAppointmentModal()}>Nueva cita</button>
-              </section>
-              <OperationalDayAgenda
-                rows={rows}
-                clients={clients}
-                appointmentHistory={demoAppointmentHistory}
-                onUpdateAppointment={updateDemoAppointment}
-              />
-            </>
+            <OperationalDayAgenda
+              rows={rows}
+              clients={clients}
+              appointmentHistory={demoAppointmentHistory}
+              onUpdateAppointment={updateDemoAppointment}
+            />
           )}
 
           {showNewAppointmentModal && (

@@ -4591,3 +4591,443 @@ h3 {
     font-size: 1rem;
   }
 }
+
+/* POS density pass: operational information starts sooner without changing business flows. */
+.pos-shell .pos-topbar {
+  margin-bottom: 14px;
+  min-height: 58px;
+  padding-block: 9px;
+}
+
+.pos-shell .module,
+.pos-shell .workspace,
+.pos-shell .two-column,
+.pos-shell .column,
+.pos-shell .list {
+  gap: 10px;
+}
+
+.pos-shell .panel {
+  padding: 14px;
+}
+
+.pos-shell .metric {
+  min-height: 0;
+  padding: 10px 12px;
+}
+
+.pos-shell .metric strong {
+  font-size: 1.12rem;
+}
+
+.pos-shell .section-title {
+  padding-bottom: 8px;
+}
+
+.pos-shell .operational-agenda {
+  gap: 8px;
+}
+
+.pos-shell .agenda-command-bar {
+  align-items: center;
+  background: var(--domia-surface);
+  border: 1px solid var(--domia-border);
+  border-radius: var(--domia-radius);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.pos-shell .agenda-date-navigation,
+.pos-shell .agenda-command-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.pos-shell .agenda-date-navigation button,
+.pos-shell .agenda-command-actions button {
+  font-size: 0.78rem;
+  min-height: 34px;
+  padding: 0.38rem 0.62rem;
+}
+
+.pos-shell .agenda-date-navigation .agenda-arrow-button {
+  font-size: 1rem;
+  min-width: 34px;
+  padding-inline: 0.45rem;
+}
+
+.pos-shell .agenda-date-field {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 7px;
+  margin-left: 2px;
+}
+
+.pos-shell .agenda-date-field input {
+  min-height: 34px;
+  padding-block: 0.35rem;
+  width: 145px;
+}
+
+.pos-shell .agenda-view-switch {
+  background: var(--domia-surface-soft);
+  border: 1px solid var(--domia-border);
+  border-radius: var(--domia-radius-sm);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+}
+
+.pos-shell .agenda-view-switch button {
+  border: 0;
+  min-height: 30px;
+}
+
+.pos-shell .agenda-primary-action {
+  background: var(--domia-primary);
+  border-color: var(--domia-primary);
+  color: #fff;
+  font-weight: 750;
+}
+
+.pos-shell .agenda-primary-action:hover {
+  background: var(--domia-primary-hover);
+}
+
+.pos-shell .agenda-summary-bar {
+  align-items: center;
+  color: var(--domia-text-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  gap: 8px 16px;
+  min-height: 28px;
+  padding: 2px 4px;
+}
+
+.pos-shell .agenda-summary-bar strong {
+  color: var(--domia-text);
+}
+
+.pos-shell .agenda-demo-context {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.pos-shell .agenda-demo-context b {
+  background: var(--domia-warning-soft);
+  border: 1px solid #ead19e;
+  border-radius: 999px;
+  color: var(--domia-warning);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.42rem;
+}
+
+.pos-shell .operational-calendar-view {
+  gap: 8px;
+}
+
+.pos-shell .calendar-filter-bar {
+  align-items: end;
+  background: var(--domia-surface);
+  border: 1px solid var(--domia-border);
+  border-radius: var(--domia-radius);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(310px, 1fr) minmax(170px, 0.55fr) minmax(160px, 0.45fr);
+  padding: 8px 10px;
+}
+
+.pos-shell .calendar-filter-bar label {
+  gap: 3px;
+}
+
+.pos-shell .calendar-filter-bar input,
+.pos-shell .calendar-filter-bar select {
+  min-height: 34px;
+  padding-block: 0.35rem;
+}
+
+.pos-shell .calendar-rubro-filter {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pos-shell .calendar-rubro-filter button {
+  font-size: 0.75rem;
+  min-height: 32px;
+  padding: 0.32rem 0.55rem;
+}
+
+.pos-shell .calendar-grid-shell {
+  padding: 0;
+}
+
+.pos-shell .calendar-grid {
+  border-radius: inherit;
+}
+
+.pos-shell .sale-form-anchor > .panel {
+  padding: 14px;
+}
+
+.pos-shell .sale-form-heading,
+.pos-shell .sale-date-header,
+.pos-shell .sale-admin-section {
+  gap: 10px;
+}
+
+.pos-shell .sale-date-header,
+.pos-shell .quick-client-box,
+.pos-shell .backdated-sale-box {
+  padding: 10px;
+}
+
+.pos-shell .tpv-heading-total {
+  font-size: 1.25rem;
+  padding: 7px 11px;
+}
+
+.pos-shell .sale-services-workflow {
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.7fr);
+}
+
+.pos-shell .tpv-service-grid {
+  gap: 7px;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+}
+
+.pos-shell .tpv-service-button {
+  min-height: 64px;
+  padding: 8px 9px;
+}
+
+.pos-shell .tpv-ticket {
+  gap: 8px;
+  padding: 11px;
+  top: 76px;
+}
+
+.pos-shell .form-actions {
+  margin: 4px -14px -14px;
+  padding: 10px 14px;
+}
+
+.pos-shell .form-actions button[type="submit"] {
+  min-height: 42px;
+}
+
+.pos-shell .clients-directory-panel {
+  align-self: start;
+  position: relative;
+}
+
+.pos-shell .clients-directory-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.pos-shell .clients-directory-header h2 {
+  margin-bottom: 1px;
+}
+
+.pos-shell .clients-directory-header span {
+  color: var(--domia-text-soft);
+  font-size: 0.74rem;
+}
+
+.pos-shell .client-create-popover {
+  position: relative;
+}
+
+.pos-shell .client-create-popover > summary {
+  background: var(--domia-primary);
+  border: 1px solid var(--domia-primary);
+  border-radius: var(--domia-radius-sm);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  list-style: none;
+  padding: 0.55rem 0.7rem;
+}
+
+.pos-shell .client-create-popover > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pos-shell .client-quick-create {
+  background: var(--domia-surface);
+  border: 1px solid var(--domia-border);
+  border-radius: var(--domia-radius);
+  box-shadow: 0 18px 48px rgba(20, 35, 48, 0.18);
+  gap: 8px;
+  padding: 14px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(340px, calc(100vw - 48px));
+  z-index: 12;
+}
+
+.pos-shell .client-quick-create label {
+  gap: 3px;
+}
+
+.pos-shell .client-quick-create input,
+.pos-shell .client-quick-create textarea {
+  min-height: 36px;
+}
+
+.pos-shell .client-quick-create textarea {
+  resize: vertical;
+}
+
+.pos-shell .clients-search-field {
+  gap: 4px;
+}
+
+.pos-shell .clients-search-field input {
+  min-height: 38px;
+}
+
+.pos-shell .expense-filter-box {
+  padding: 10px;
+}
+
+.pos-shell .expense-filter-main,
+.pos-shell .expense-secondary-grid {
+  gap: 8px;
+}
+
+.pos-shell .expense-summary-grid {
+  gap: 8px;
+}
+
+.pos-shell .filters-panel {
+  padding-block: 10px;
+}
+
+.pos-shell .module > .summary-grid.compact {
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+}
+
+.pos-shell .module > .summary-grid.compact .metric {
+  min-height: 62px;
+}
+
+.pos-shell .finance-table + .row-actions,
+.pos-shell .panel > .row-actions:last-child {
+  margin-top: 8px;
+}
+
+@media (max-width: 1120px) {
+  .pos-shell .agenda-command-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pos-shell .agenda-command-actions {
+    justify-content: space-between;
+  }
+
+  .pos-shell .calendar-filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pos-shell .calendar-rubro-filter {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .pos-shell .agenda-command-bar,
+  .pos-shell .agenda-date-navigation,
+  .pos-shell .agenda-command-actions {
+    align-items: stretch;
+  }
+
+  .pos-shell .agenda-date-navigation {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr);
+  }
+
+  .pos-shell .agenda-date-field {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pos-shell .agenda-date-field span {
+    display: none;
+  }
+
+  .pos-shell .agenda-date-field input {
+    width: 100%;
+  }
+
+  .pos-shell .agenda-command-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .pos-shell .agenda-summary-bar {
+    gap: 5px 10px;
+  }
+
+  .pos-shell .agenda-demo-context {
+    margin-left: 0;
+  }
+
+  .pos-shell .calendar-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .calendar-rubro-filter {
+    grid-column: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pos-shell .client-quick-create {
+    box-shadow: none;
+    margin-top: 8px;
+    position: static;
+    width: 100%;
+  }
+
+  .pos-shell .clients-directory-header {
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .pos-shell .client-create-popover {
+    text-align: right;
+  }
+}
+
+@media (max-width: 430px) {
+  .pos-shell .agenda-command-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-shell .agenda-primary-action {
+    width: 100%;
+  }
+
+  .pos-shell .agenda-summary-bar > span:not(.agenda-demo-context) {
+    display: none;
+  }
+}

@@ -3,7 +3,7 @@ import ClientProfile from "./ClientProfile.jsx";
 
 const emptyForm = { name: "", phone: "", email: "", observations: "", interests: "" };
 
-function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDeleteClient, readOnly = false, canManageLoyalty = false, currentUser }) {
+function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDeleteClient, readOnly = false, canManageLoyalty = false, currentUser, compactMode = false }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(clients[0]?.id || "");
   const [form, setForm] = useState(emptyForm);
@@ -31,9 +31,39 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
 
   return (
     <section className="two-column">
-      <div className="panel">
-        <h2>Clientes</h2>
-        <label>Buscar<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre, telefono o email" /></label>
+      <div className={`panel ${compactMode ? "clients-directory-panel" : ""}`}>
+        {compactMode ? (
+          <>
+            <div className="clients-directory-header">
+              <div>
+                <h2>Clientes</h2>
+                <span>{filteredClients.length} resultados</span>
+              </div>
+              {!readOnly && (
+                <details className="client-create-popover">
+                  <summary>+ Nuevo cliente</summary>
+                  <form className="inline-form client-quick-create" onSubmit={submit}>
+                    <h3>Crear cliente</h3>
+                    <label>Nombre<input name="name" value={form.name} onChange={updateField} placeholder="Nombre y apellidos" /></label>
+                    <label>Teléfono<input name="phone" value={form.phone} onChange={updateField} placeholder="Teléfono" /></label>
+                    <label>Email<input name="email" value={form.email} onChange={updateField} placeholder="Email" /></label>
+                    <label>Observaciones<textarea name="observations" value={form.observations} onChange={updateField} placeholder="Observaciones" /></label>
+                    <label>Intereses<textarea name="interests" value={form.interests} onChange={updateField} placeholder="Intereses" /></label>
+                    <div className="row-actions">
+                      <button type="submit">Crear cliente</button>
+                    </div>
+                  </form>
+                </details>
+              )}
+            </div>
+            <label className="clients-search-field">Buscar<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre, teléfono o email" /></label>
+          </>
+        ) : (
+          <>
+            <h2>Clientes</h2>
+            <label>Buscar<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre, telefono o email" /></label>
+          </>
+        )}
         <div className="list">
           {filteredClients.map((client) => (
             <article className="client-row" key={client.id}>
@@ -48,7 +78,7 @@ function Clients({ clients, sales, config, onCreateClient, onUpdateClient, onDel
             </article>
           ))}
         </div>
-        {!readOnly && (
+        {!readOnly && !compactMode && (
           <form className="inline-form" onSubmit={submit}>
             <h3>Crear cliente</h3>
             <input name="name" value={form.name} onChange={updateField} placeholder="Nombre" />

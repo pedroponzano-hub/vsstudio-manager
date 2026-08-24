@@ -1057,6 +1057,7 @@ function App() {
             readOnly={!roleCanManageClients}
             canManageLoyalty={effectiveRole === "admin"}
             currentUser={user}
+            compactMode={platformMode === "pos"}
           />
         ) : accessDeniedPage;
       case "clients.loyalty":
