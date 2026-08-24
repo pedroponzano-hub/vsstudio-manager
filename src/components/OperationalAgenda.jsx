@@ -17,8 +17,9 @@ import {
 } from "../utils/availabilityDemo.js";
 
 function shouldUseDemoAgenda() {
-  if (!import.meta.env.DEV || typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).get("demoAgenda") === "1";
+  if (typeof window === "undefined") return false;
+  const path = String(window.location.pathname || "").toLowerCase();
+  return path === "/pos/agenda-v2" || path.startsWith("/pos/agenda-v2/");
 }
 
 function ReadonlyAgendaList({ rows = [] }) {
