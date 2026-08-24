@@ -12,7 +12,7 @@ import SalesForm from "./components/SalesForm.jsx";
 import SafeSalesHistory from "./components/SafeSalesHistory.jsx";
 import Settings from "./components/Settings.jsx";
 import Statistics from "./components/Statistics.jsx";
-import Login from "./components/Login.jsx";
+import Login, { LoginLoading } from "./components/Login.jsx";
 import OperationalAgenda from "./components/OperationalAgenda.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsDemo from "./components/ProfessionalsSettingsDemo.jsx";
@@ -1186,14 +1186,7 @@ function App() {
   };
 
   if (loading) {
-    return (
-      <main className="login-page">
-        <section className="login-card">
-          <p className="eyebrow">VS Studio Manager</p>
-          <h1>Cargando acceso</h1>
-        </section>
-      </main>
-    );
+    return <LoginLoading />;
   }
 
   if (!user) return <Login />;
