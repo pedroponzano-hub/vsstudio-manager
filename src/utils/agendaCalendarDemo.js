@@ -37,20 +37,20 @@ export function getServiceBusinessArea(service = {}) {
   return "Todas";
 }
 
-export function getProfessionalBusinessAreas(professional) {
+export function getProfessionalBusinessAreas(professional, services = DEMO_SERVICES) {
   const areas = new Set();
   professional.serviceIds.forEach((serviceId) => {
-    const service = DEMO_SERVICES.find((item) => item.id === serviceId);
+    const service = services.find((item) => item.id === serviceId);
     const area = getServiceBusinessArea(service);
     if (area !== "Todas") areas.add(area);
   });
   return Array.from(areas);
 }
 
-export function filterDemoProfessionals({ area = "Todas", professionalId = "all", query = "" } = {}) {
+export function filterDemoProfessionals({ area = "Todas", professionalId = "all", query = "", professionals = DEMO_PROFESSIONALS, services = DEMO_SERVICES } = {}) {
   const search = normalizeText(query);
-  return DEMO_PROFESSIONALS.filter((professional) => {
-    const areas = getProfessionalBusinessAreas(professional);
+  return professionals.filter((professional) => {
+    const areas = getProfessionalBusinessAreas(professional, services);
     const areaMatches = area === "Todas" || areas.includes(area);
     const professionalMatches = professionalId === "all" || professional.id === professionalId;
     const queryMatches = !search || normalizeText(professional.name).includes(search);
@@ -68,18 +68,18 @@ export function createCalendarSlots(startTime = DEMO_CALENDAR_START, endTime = D
   return slots;
 }
 
-export function getAppointmentLayout(row) {
+export function getAppointmentLayout(row, services = DEMO_SERVICES) {
   const dayStart = timeToMinutes(DEMO_CALENDAR_START);
   const start = timeToMinutes(row.time);
-  const duration = getAppointmentDurationMinutes(row);
+  const duration = getAppointmentDurationMinutes(row, services);
   const startOffset = Math.max(0, start - dayStart);
   const rowStart = Math.floor(startOffset / DEMO_CALENDAR_INTERVAL) + 1;
   const rowSpan = Math.max(1, Math.ceil(duration / DEMO_CALENDAR_INTERVAL));
   return { rowStart, rowSpan, endTime: minutesToTime(start + duration) };
 }
 
-export function getAppointmentDurationMinutes(row = {}) {
-  const service = DEMO_SERVICES.find((item) => item.id === row.serviceId || item.name === row.serviceName);
+export function getAppointmentDurationMinutes(row = {}, services = DEMO_SERVICES) {
+  const service = services.find((item) => item.id === row.serviceId || item.name === row.serviceName);
   return durationToMinutes(row.appointmentDuration || row.duration || service?.duration);
 }
 

@@ -10,14 +10,18 @@ import {
   getAppointmentLayout,
 } from "../utils/agendaCalendarDemo.js";
 import { getStatusClassName, minutesToTime } from "../utils/availabilityDemo.js";
+import { professionalMatchesAppointment } from "../utils/agendaRealConfig.js";
 
 function OperationalCalendarDayView({
   appointmentHistory = {},
   clients = [],
   onNewAppointment,
   onUpdateAppointment,
+  professionals = [],
+  readOnly = false,
   rows = [],
   selectedDate,
+  services = [],
 }) {
   const [businessArea, setBusinessArea] = useState("Todas");
   const [professionalQuery, setProfessionalQuery] = useState("");
@@ -29,8 +33,10 @@ function OperationalCalendarDayView({
       area: businessArea,
       professionalId: selectedProfessionalId,
       query: professionalQuery,
+      professionals,
+      services,
     })
-  ), [businessArea, professionalQuery, selectedProfessionalId]);
+  ), [businessArea, professionalQuery, professionals, selectedProfessionalId, services]);
 
   const slots = useMemo(() => createCalendarSlots(), []);
   const selectedAppointment = useMemo(() => (
@@ -38,10 +44,7 @@ function OperationalCalendarDayView({
   ), [rows, selectedAppointmentId]);
 
   const rowsByProfessional = useMemo(() => {
-    const grouped = Object.fromEntries(visibleProfessionals.map((professional) => [professional.name, []]));
-    rows.forEach((row) => {
-      if (grouped[row.employee]) grouped[row.employee].push(row);
-    });
+    const grouped = Object.fromEntries(visibleProfessionals.map((professional) => [professional.id, rows.filter((row) => professionalMatchesAppointment(professional, row))]));
     return grouped;
   }, [rows, visibleProfessionals]);
 
@@ -80,7 +83,7 @@ function OperationalCalendarDayView({
           Profesional
           <select value={selectedProfessionalId} onChange={(event) => setSelectedProfessionalId(event.target.value)}>
             <option value="all">Todas</option>
-            {filterDemoProfessionals({ area: businessArea }).map((professional) => (
+            {filterDemoProfessionals({ area: businessArea, professionals, services }).map((professional) => (
               <option key={professional.id} value={professional.id}>{professional.name}</option>
             ))}
           </select>
@@ -109,7 +112,7 @@ function OperationalCalendarDayView({
           </div>
 
           {visibleProfessionals.map((professional, professionalIndex) => {
-            const columnRows = rowsByProfessional[professional.name] || [];
+            const columnRows = rowsByProfessional[professional.id] || [];
             return (
               <div
                 className="calendar-professional-column"
@@ -128,7 +131,9 @@ function OperationalCalendarDayView({
                       selectedDate,
                       startMinute: slot.minute,
                     });
-                    const slotTitle = slotIsBlocked
+                    const slotTitle = readOnly
+                      ? "Creación de citas pendiente de persistencia"
+                      : slotIsBlocked
                       ? `${professional.name} ocupado de ${slotStartTime} a ${slotEndTime}`
                       : `Crear cita con ${professional.name} a las ${slotStartTime}`;
                     return (
@@ -140,7 +145,7 @@ function OperationalCalendarDayView({
                         data-professional-id={professional.id}
                         data-slot-end-time={slotEndTime}
                         data-slot-start-time={slotStartTime}
-                        disabled={slotIsBlocked}
+                        disabled={readOnly || slotIsBlocked}
                         key={`${professional.id}-${slot.minute}`}
                         title={slotTitle}
                         type="button"
@@ -157,7 +162,7 @@ function OperationalCalendarDayView({
                 </div>
                 <div className="calendar-appointments-layer">
                   {columnRows.map((row) => {
-                    const layout = getAppointmentLayout(row);
+                    const layout = getAppointmentLayout(row, services);
                     const endTime = row.endTime || layout.endTime;
                     const appointmentTitle = [
                       `${row.time} - ${endTime}`,
@@ -206,6 +211,8 @@ function OperationalCalendarDayView({
           appointmentHistory={appointmentHistory[selectedAppointment.id] || []}
           onClose={() => setSelectedAppointmentId(null)}
           onUpdateAppointment={onUpdateAppointment}
+          readOnly={readOnly}
+          services={services}
         />
       )}
     </section>

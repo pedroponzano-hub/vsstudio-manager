@@ -13,7 +13,7 @@ import SafeSalesHistory from "./components/SafeSalesHistory.jsx";
 import Settings from "./components/Settings.jsx";
 import Statistics from "./components/Statistics.jsx";
 import Login, { LoginLoading } from "./components/Login.jsx";
-import OperationalAgenda from "./components/OperationalAgenda.jsx";
+import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
@@ -865,7 +865,7 @@ function App() {
     if (effectiveRole !== "admin") return;
     const nextPage = targetPlatform === "pos" ? "pos.agendaV2" : "dashboard.daily";
     const nextTab = targetPlatform === "pos" ? "agenda" : "dashboard";
-    const nextPath = targetPlatform === "pos" ? "/pos/agenda-v2?demoAgenda=1" : "/manager";
+    const nextPath = targetPlatform === "pos" ? "/pos/agenda-v2" : "/manager";
     window.history.pushState(null, "", nextPath);
     setPlatformMode(targetPlatform);
     setActivePage(nextPage);

@@ -44,6 +44,8 @@ function AppointmentDetailModalDemo({
   clients = [],
   onClose,
   onUpdateAppointment,
+  readOnly = false,
+  services = DEMO_SERVICES,
 }) {
   const [mode, setMode] = useState("detail");
   const [discount, setDiscount] = useState(0);
@@ -56,8 +58,8 @@ function AppointmentDetailModalDemo({
   const [checkoutTreatwellCommissionPercent, setCheckoutTreatwellCommissionPercent] = useState(appointment?.treatwellCommissionPercent || 0);
 
   const service = useMemo(() => (
-    DEMO_SERVICES.find((item) => item.id === appointment?.serviceId || item.name === appointment?.serviceName)
-  ), [appointment]);
+    services.find((item) => item.id === appointment?.serviceId || item.name === appointment?.serviceName)
+  ), [appointment, services]);
 
   if (!appointment) return null;
 
@@ -236,12 +238,12 @@ function AppointmentDetailModalDemo({
   ) : null;
 
   return (
-    <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Detalle de cita demo">
+    <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Detalle de cita">
       <article className="sale-history-dialog appointment-demo-dialog">
         <div className="section-title compact-section-title">
           <div>
-            <h2>{mode === "checkout" ? "Cobro demo" : "Detalle de cita"}</h2>
-            <span>Modo demo local - no se guarda en Firebase</span>
+            <h2>{mode === "checkout" ? "Cobro" : "Detalle de cita"}</h2>
+            <span>{readOnly ? "Consulta de cita real · edición pendiente de persistencia" : "Modo demo local - no se guarda en Firebase"}</span>
           </div>
           <button className="secondary-button" type="button" onClick={onClose}>Cerrar</button>
         </div>
@@ -277,12 +279,14 @@ function AppointmentDetailModalDemo({
             {treatwellInfo}
             {appointment.demoPaymentSummary && (
               <div className="checkout-demo-total appointment-payment-summary">
-                <span><b>Cobro demo:</b> {appointment.paymentStatus}</span>
+                <span><b>{readOnly ? "Estado de cobro" : "Cobro demo"}:</b> {appointment.paymentStatus}</span>
                 <span><b>Importe:</b> {formatMoney(appointment.demoPaymentSummary.total || appointment.demoPaymentSummary.paidAmount || 0)}</span>
                 <span><b>Completado:</b> {appointment.demoPaymentSummary.completedAt || "No disponible"}</span>
               </div>
             )}
             <AppointmentEditHistoryDemo history={appointmentHistory} />
+            {readOnly && <p className="empty-state">La creación, edición y cambio de estado están deshabilitados hasta disponer de persistencia confirmada.</p>}
+            {!readOnly && (
             <div className="reset-actions">
               {canEditAppointment && (
                 <button className="secondary-button" type="button" onClick={() => setMode("edit")}>Editar cita</button>
@@ -302,6 +306,7 @@ function AppointmentDetailModalDemo({
               )}
               {isTerminal && <p className="empty-state">Cita en solo lectura. No hay acciones disponibles.</p>}
             </div>
+            )}
           </>
         )}
 
