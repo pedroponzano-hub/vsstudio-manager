@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { historicalReferenceExists, isProductCatalogItem } from "../utils/managerConfiguration.js";
 
 const emptyService = { category: "", name: "", duration: "", price: "", active: true };
 const durationOptions = [
@@ -22,10 +23,6 @@ function textToList(text) {
 
 function createServiceId() {
   return `service-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function createEmployeeId(name = "") {
-  return `employee-${String(name || Date.now()).toLowerCase().replace(/\s+/g, "-")}-${Math.random().toString(16).slice(2, 7)}`;
 }
 
 function normalizeCategory(value = "") {
@@ -109,23 +106,7 @@ async function readClientImportFile(file) {
   throw new Error("Formato no soportado. Usa .xlsx o .csv");
 }
 
-function normalizeEmployeeSettings(config) {
-  const settings = Array.isArray(config.employeeSettings) ? config.employeeSettings : [];
-  const names = [...(config.employees || []), ...settings.map((employee) => employee.name)].filter(Boolean);
-  const uniqueNames = Array.from(new Set(names.map((name) => String(name).trim()).filter(Boolean)));
-  return uniqueNames.map((name) => {
-    const existing = settings.find((employee) => String(employee.name || "").trim().toLowerCase() === name.toLowerCase());
-    return {
-      id: existing?.id || createEmployeeId(name),
-      name,
-      active: existing?.active !== false,
-      commissionPercent: Number(existing?.commissionPercent || 0),
-      commissionHistory: Array.isArray(existing?.commissionHistory) ? existing.commissionHistory : [],
-    };
-  });
-}
-
-function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, currentUser, canManageEmployeeCommissions = false }) {
+function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, sales = [], view = "general" }) {
   const [form, setForm] = useState({
     paymentMethods: listToText(config.paymentMethods),
     entryChannels: listToText(config.entryChannels),
@@ -133,8 +114,6 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
     monthlyGoal: config.monthlyGoal,
     loyaltyVisits: config.loyaltyVisits,
   });
-  const [employeeSettings, setEmployeeSettings] = useState(() => normalizeEmployeeSettings(config));
-  const [employeeDraft, setEmployeeDraft] = useState({ name: "", active: true, commissionPercent: "0" });
   const [services, setServices] = useState(config.services || []);
   const [serviceCategories, setServiceCategories] = useState(() => {
     const categories = [...(config.serviceCategories || []), ...(config.services || []).map((service) => service.category)];
@@ -175,13 +154,14 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
 
   const filteredServices = useMemo(() => {
     const query = serviceQuery.trim().toLowerCase();
-    if (!query) return services;
-    return services.filter((service) => (
+    const sectionServices = services.filter((service) => view === "products" ? isProductCatalogItem(service) : !isProductCatalogItem(service));
+    if (!query) return sectionServices;
+    return sectionServices.filter((service) => (
       `${service.name} ${service.category} ${service.duration} ${formatDuration(service.durationMinutes)} ${service.price}`
         .toLowerCase()
         .includes(query)
     ));
-  }, [serviceQuery, services]);
+  }, [serviceQuery, services, view]);
 
   const filteredCategories = useMemo(() => {
     const query = serviceForm.category.trim().toLowerCase();
@@ -205,9 +185,7 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
     setServiceError("");
   };
 
-  const buildConfigPayload = (nextServices = services, nextCategories = serviceCategories, nextEmployees = employeeSettings) => ({
-    employees: nextEmployees.filter((employee) => employee.active !== false).map((employee) => employee.name),
-    employeeSettings: nextEmployees,
+  const buildConfigPayload = (nextServices = services, nextCategories = serviceCategories) => ({
     services: nextServices,
     serviceCategories: nextCategories,
     paymentMethods: textToList(form.paymentMethods),
@@ -221,66 +199,6 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
     setServices(nextServices);
     setServiceCategories(nextCategories);
     onSave(buildConfigPayload(nextServices, nextCategories));
-  };
-
-  const persistEmployees = (nextEmployees) => {
-    setEmployeeSettings(nextEmployees);
-    onSave(buildConfigPayload(services, serviceCategories, nextEmployees));
-  };
-
-  const withCommissionAudit = (employeesToSave, targetEmployeeId = "") => {
-    const originalEmployees = normalizeEmployeeSettings(config);
-    return employeesToSave.map((employee) => {
-      if (targetEmployeeId && employee.id !== targetEmployeeId) return employee;
-      const original = originalEmployees.find((item) => item.id === employee.id || item.name.toLowerCase() === employee.name.toLowerCase());
-      const previousPercent = Number(original?.commissionPercent || 0);
-      const nextPercent = Number(employee.commissionPercent || 0);
-      if (nextPercent === previousPercent) return { ...employee, commissionPercent: nextPercent };
-
-      return {
-        ...employee,
-        commissionPercent: nextPercent,
-        commissionHistory: [
-          {
-            id: `employee-commission-${Date.now()}`,
-            date: new Date().toISOString(),
-            user: currentUser?.email || currentUser?.nombre || "Usuario no identificado",
-            previousValue: previousPercent,
-            newValue: nextPercent,
-          },
-          ...(employee.commissionHistory || []),
-        ],
-      };
-    });
-  };
-
-  const updateEmployeeDraft = (employeeId, updates) => {
-    if (!canManageEmployeeCommissions) return;
-    setEmployeeSettings((current) => current.map((employee) => (
-      employee.id === employeeId ? { ...employee, ...updates } : employee
-    )));
-  };
-
-  const saveEmployee = (employeeId) => {
-    if (!canManageEmployeeCommissions) return;
-    persistEmployees(withCommissionAudit(employeeSettings, employeeId));
-  };
-
-  const createEmployee = () => {
-    if (!canManageEmployeeCommissions || !employeeDraft.name.trim()) return;
-    const exists = employeeSettings.some((employee) => employee.name.trim().toLowerCase() === employeeDraft.name.trim().toLowerCase());
-    if (exists) return;
-    persistEmployees([
-      ...employeeSettings,
-      {
-        id: createEmployeeId(employeeDraft.name),
-        name: employeeDraft.name.trim(),
-        active: employeeDraft.active !== false,
-        commissionPercent: Number(employeeDraft.commissionPercent || 0),
-        commissionHistory: [],
-      },
-    ]);
-    setEmployeeDraft({ name: "", active: true, commissionPercent: "0" });
   };
 
   const selectCategory = (category) => {
@@ -365,8 +283,8 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
     const durationMinutes = Number(serviceForm.duration || 0);
     const price = Number(serviceForm.price);
 
-    if (!category || !name || !durationMinutes || Number.isNaN(price) || price <= 0) {
-      setServiceError("Completa categoria, nombre, duracion y precio para guardar el servicio.");
+    if (!category || !name || (view !== "products" && !durationMinutes) || Number.isNaN(price) || price <= 0) {
+      setServiceError(view === "products" ? "Completa categoría, nombre y precio para guardar el producto." : "Completa categoria, nombre, duracion y precio para guardar el servicio.");
       return;
     }
 
@@ -378,6 +296,7 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
       durationMinutes,
       price,
       active: serviceForm.active !== false,
+      ...(view === "products" ? { type: "product", isProduct: true } : {}),
     };
 
     const nextCategories = serviceCategories.some((item) => normalizeCategory(item) === normalizeCategory(category))
@@ -419,6 +338,13 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
   };
 
   const deleteService = (serviceId) => {
+    const service = services.find((item) => item.id === serviceId);
+    const hasHistoricalReferences = historicalReferenceExists(sales, service);
+    if (hasHistoricalReferences) {
+      setServiceError("Este elemento tiene referencias históricas y no puede eliminarse. Se ha desactivado para conservarlas.");
+      persistServices(services.map((item) => item.id === serviceId ? { ...item, active: false } : item));
+      return;
+    }
     const confirmed = window.confirm("Seguro que deseas eliminar este servicio? Esta accion no se puede deshacer.");
     if (!confirmed) return;
     const nextServices = services.filter((service) => service.id !== serviceId);
@@ -430,18 +356,11 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
 
   const submit = (event) => {
     event.preventDefault();
-    const auditedEmployees = withCommissionAudit(employeeSettings);
-    onSave({
-      employees: auditedEmployees.filter((employee) => employee.active !== false).map((employee) => employee.name),
-      employeeSettings: auditedEmployees,
-      services,
-      serviceCategories,
-      paymentMethods: textToList(form.paymentMethods),
-      entryChannels: textToList(form.entryChannels),
-      expenseCategories: textToList(form.expenseCategories),
-      monthlyGoal: Number(form.monthlyGoal || 0),
-      loyaltyVisits: Number(form.loyaltyVisits || 5),
-    });
+    if (view === "catalogs") {
+      onSave({ paymentMethods: textToList(form.paymentMethods), entryChannels: textToList(form.entryChannels), expenseCategories: textToList(form.expenseCategories) });
+      return;
+    }
+    onSave({ monthlyGoal: Number(form.monthlyGoal || 0), loyaltyVisits: Number(form.loyaltyVisits || 5) });
   };
 
   const restoreBaseConfig = () => {
@@ -456,10 +375,6 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
       monthlyGoal: 4500,
       loyaltyVisits: 5,
     });
-    setEmployeeSettings(normalizeEmployeeSettings({
-      employees: ["Marianne", "Ambar", "Grace", "Leidys"],
-      employeeSettings: ["Marianne", "Ambar", "Grace", "Leidys"].map((name) => ({ name, active: true, commissionPercent: 0, commissionHistory: [] })),
-    }));
   };
 
   const importClients = async () => {
@@ -490,38 +405,10 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
 
   return (
     <section className="settings-layout">
+      {(view === "general" || view === "catalogs") && (
       <form className="panel settings-form" onSubmit={submit}>
-        <h2>Configuracion</h2>
-        <section className="panel employee-settings-panel">
-          <h3>Empleadas</h3>
-          <div className="list">
-            {employeeSettings.map((employee) => (
-              <article className="list-item" key={employee.id}>
-                <div>
-                  <strong>{employee.name}</strong>
-                  <span>{employee.active === false ? "Inactiva" : "Activa"} - Comision por defecto {Number(employee.commissionPercent || 0).toFixed(2)}%</span>
-                  {(employee.commissionHistory || []).slice(0, 3).map((item) => (
-                    <small key={item.id || item.date}>{item.date} - {item.user}: {item.previousValue}% -&gt; {item.newValue}%</small>
-                  ))}
-                </div>
-                <div className="row-actions">
-                  <input value={employee.name} disabled={!canManageEmployeeCommissions} onChange={(event) => updateEmployeeDraft(employee.id, { name: event.target.value })} placeholder="Nombre" />
-                  <label className="check-field"><input type="checkbox" checked={employee.active !== false} disabled={!canManageEmployeeCommissions} onChange={(event) => updateEmployeeDraft(employee.id, { active: event.target.checked })} /> Activa</label>
-                  <input type="number" min="0" step="0.01" value={employee.commissionPercent} disabled={!canManageEmployeeCommissions} onChange={(event) => updateEmployeeDraft(employee.id, { commissionPercent: event.target.value })} aria-label="Comision por defecto" />
-                  {canManageEmployeeCommissions && <button type="button" onClick={() => saveEmployee(employee.id)}>Guardar</button>}
-                </div>
-              </article>
-            ))}
-          </div>
-          {canManageEmployeeCommissions && (
-            <div className="field-row">
-              <input value={employeeDraft.name} onChange={(event) => setEmployeeDraft({ ...employeeDraft, name: event.target.value })} placeholder="Nueva empleada" />
-              <label className="check-field"><input type="checkbox" checked={employeeDraft.active} onChange={(event) => setEmployeeDraft({ ...employeeDraft, active: event.target.checked })} /> Activa</label>
-              <input type="number" min="0" step="0.01" value={employeeDraft.commissionPercent} onChange={(event) => setEmployeeDraft({ ...employeeDraft, commissionPercent: event.target.value })} placeholder="Comision %" />
-              <button type="button" onClick={createEmployee}>Crear empleada</button>
-            </div>
-          )}
-        </section>
+        <h2>{view === "general" ? "Configuración general" : "Catálogos"}</h2>
+        {view === "catalogs" && <>
         <div className="field-row">
           <label>Metodos pago<textarea name="paymentMethods" value={form.paymentMethods} onChange={updateField} /></label>
           <label>Canales de entrada<textarea name="entryChannels" value={form.entryChannels} onChange={updateField} /></label>
@@ -529,19 +416,23 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
         <div className="field-row">
           <label>Categorias gasto<textarea name="expenseCategories" value={form.expenseCategories} onChange={updateField} /></label>
         </div>
+        </>}
+        {view === "general" && <>
         <div className="field-row">
           <div className="inline-form">
             <label>Objetivo mensual<input type="number" name="monthlyGoal" value={form.monthlyGoal} onChange={updateField} /></label>
             <label>Visitas fidelizacion<input type="number" min="1" name="loyaltyVisits" value={form.loyaltyVisits} onChange={updateField} /></label>
           </div>
         </div>
+        </>}
         <div className="row-actions">
-          <button type="submit">Guardar configuracion</button>
-          <button className="secondary-button" type="button" onClick={restoreBaseConfig}>Restaurar configuracion VS Studio</button>
+          <button type="submit">{view === "general" ? "Guardar configuración" : "Guardar catálogos"}</button>
+          {view === "general" && <button className="secondary-button" type="button" onClick={restoreBaseConfig}>Restaurar configuracion VS Studio</button>}
         </div>
       </form>
+      )}
 
-      <section className="panel import-panel">
+      {view === "imports" && <section className="panel import-panel">
         <div className="section-title">
           <h2>Importar clientes</h2>
           <span>Treatwell Excel / CSV</span>
@@ -579,12 +470,12 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
             )}
           </div>
         )}
-      </section>
+      </section>}
 
-      <section className="panel services-panel">
+      {(view === "services" || view === "products") && <section className="panel services-panel">
         <div className="section-title">
-          <h2>Servicios</h2>
-          <span>{services.length} servicios</span>
+          <h2>{view === "products" ? "Productos" : "Servicios"}</h2>
+          <span>{filteredServices.length} {view === "products" ? "productos" : "servicios"}</span>
         </div>
         <form className="service-form advanced" onSubmit={saveService}>
           <label className="service-search-field" ref={categoryDropdownRef}>
@@ -619,20 +510,20 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
             )}
           </label>
           <label>Nombre<input name="name" value={serviceForm.name} onChange={updateServiceField} placeholder="Nombre exacto del servicio" /></label>
-          <label>
+          {view === "services" && <label>
             Duracion
             <select name="duration" value={serviceForm.duration} onChange={updateServiceField}>
               <option value="">Seleccionar...</option>
               {durationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-          </label>
+          </label>}
           <label>Precio<input type="number" min="0" step="0.01" name="price" value={serviceForm.price} onChange={updateServiceField} placeholder="0.00" /></label>
           <label className="check-field"><input type="checkbox" name="active" checked={serviceForm.active} onChange={updateServiceField} /> Activo</label>
-          <button type="submit">{editingServiceId ? "Guardar cambios" : "Crear servicio"}</button>
+          <button type="submit">{editingServiceId ? "Guardar cambios" : view === "products" ? "Crear producto" : "Crear servicio"}</button>
           {editingServiceId && <button className="secondary-button" type="button" onClick={cancelServiceEdit}>Cancelar edicion</button>}
         </form>
         {serviceError && <p className="auth-error">{serviceError}</p>}
-        <section className="service-category">
+        {view === "services" && <section className="service-category">
           <h3>Categorias de servicios</h3>
           <div className="list">
             {serviceCategories.length === 0 && <p className="empty-state">Aun no hay categorias creadas.</p>}
@@ -661,8 +552,8 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
               </article>
             ))}
           </div>
-        </section>
-        <label>Buscar servicio<input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="categoria, nombre, precio o duracion..." /></label>
+        </section>}
+        <label>Buscar {view === "products" ? "producto" : "servicio"}<input value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="categoria, nombre, precio o duracion..." /></label>
         <div className="service-category-list">
           {Object.entries(groupedServices).map(([category, categoryServices]) => (
             <section className="service-category" key={category}>
@@ -686,7 +577,7 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, curren
           ))}
           {filteredServices.length === 0 && <p className="empty-state">No hay servicios con esa busqueda.</p>}
         </div>
-      </section>
+      </section>}
     </section>
   );
 }

@@ -927,6 +927,8 @@ function normalizeServices(services) {
       durationMinutes,
       price: Number(service.price ?? service.basePrice ?? service.precioBase ?? 0),
       active: service.active !== false,
+      ...(service.type ? { type: service.type } : {}),
+      ...(service.isProduct === true ? { isProduct: true } : {}),
     };
   }).filter((service) => service.name);
 }
@@ -942,6 +944,7 @@ function normalizeEmployeeSettings(config) {
   return uniqueNames.map((name) => {
     const existing = rawSettings.find((employee) => String(employee.name || "").trim().toLowerCase() === name.toLowerCase());
     return {
+      ...(existing || {}),
       id: existing?.id || `employee-${name.toLowerCase().replace(/\s+/g, "-")}`,
       name,
       active: existing?.active !== false,

@@ -6,6 +6,7 @@ function ProfessionalsListDemo({
   professionals = [],
   query,
   servicesCatalog = [],
+  allowDuplicate = true,
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   const rows = professionals.filter((professional) => {
@@ -36,7 +37,7 @@ function ProfessionalsListDemo({
             <button className="secondary-button" type="button" onClick={() => onAction(professional.active ? "deactivate" : "activate", professional)}>
               {professional.active ? "Desactivar" : "Activar"}
             </button>
-            <button className="secondary-button" type="button" onClick={() => onAction("duplicate", professional)}>Duplicar configuración</button>
+            {allowDuplicate && <button className="secondary-button" type="button" onClick={() => onAction("duplicate", professional)}>Duplicar configuración</button>}
             <button className="ghost-button" type="button" onClick={() => onAction("agenda", professional)}>Ver agenda</button>
           </div>
         </article>

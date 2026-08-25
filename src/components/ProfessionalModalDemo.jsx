@@ -69,7 +69,7 @@ function validateSchedule(weeklySchedule) {
   return "";
 }
 
-function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional, servicesCatalog = [] }) {
+function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional, servicesCatalog = [], persistent = false }) {
   const [draft, setDraft] = useState(() => clone(professional));
   const [activeTab, setActiveTab] = useState("professional-basic-info");
   const [serviceQuery, setServiceQuery] = useState("");
@@ -186,12 +186,12 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
   };
 
   return (
-    <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Profesional demo">
+    <section className="sale-history-modal" role="dialog" aria-modal="true" aria-label="Profesional">
       <article className="sale-history-dialog professional-modal-demo" onClick={(event) => event.stopPropagation()}>
         <div className="section-title compact-section-title">
           <div>
             <h2>{mode === "create" ? "Añadir profesional" : `Editar ${draft.displayName}`}</h2>
-            <span>Modo demo local — los cambios desaparecerán al recargar</span>
+            <span>{persistent ? "Los cambios se guardarán en la configuración real del centro" : "Modo demo local — los cambios desaparecerán al recargar"}</span>
           </div>
           <button className="secondary-button" type="button" onClick={onClose}>Cerrar</button>
         </div>
@@ -318,8 +318,9 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
           )}
           {activeTab === "professional-permissions" && (
             <section className="professional-permissions-tab">
-              <label className="inline-check"><input checked={draft.access.enabled} type="checkbox" onChange={(event) => updateNested("access", { enabled: event.target.checked })} /> Tiene acceso al sistema</label>
-              <label>Rol demo<select value={draft.access.role} onChange={(event) => changeRole(event.target.value)}>{Object.keys(professionalDemoRoles).map((role) => <option key={role}>{role}</option>)}</select></label>
+              {persistent && <p className="empty-state">Estos campos preparan la configuración operativa futura y no cambian los roles de acceso actuales.</p>}
+              <label className="inline-check"><input checked={draft.access.enabled} type="checkbox" onChange={(event) => updateNested("access", { enabled: event.target.checked })} /> {persistent ? "Acceso operativo previsto" : "Tiene acceso al sistema"}</label>
+              <label>{persistent ? "Perfil de permisos" : "Rol demo"}<select value={draft.access.role} onChange={(event) => changeRole(event.target.value)}>{Object.keys(professionalDemoRoles).map((role) => <option key={role}>{role}</option>)}</select></label>
               {Object.entries(professionalPermissionGroups).map(([group, permissions]) => (
                 <article className="professional-permission-group" key={group}>
                   <h3>{group}</h3>
@@ -343,7 +344,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
             <section className="professional-tab-grid">
               <label>Nombre público<input value={draft.publicProfile.publicName} onChange={(event) => updateNested("publicProfile", { publicName: event.target.value })} /></label>
               <label>Título profesional<input value={draft.publicProfile.professionalTitle} onChange={(event) => updateNested("publicProfile", { professionalTitle: event.target.value })} /></label>
-              <label>Foto o avatar demo<input value={draft.publicProfile.photoDemo} onChange={(event) => updateNested("publicProfile", { photoDemo: event.target.value })} /></label>
+              <label>{persistent ? "Foto o avatar" : "Foto o avatar demo"}<input value={draft.publicProfile.photoDemo} onChange={(event) => updateNested("publicProfile", { photoDemo: event.target.value })} /></label>
               <label>Orden de aparición<input type="number" value={draft.publicProfile.displayOrder} onChange={(event) => updateNested("publicProfile", { displayOrder: event.target.value })} /></label>
               <label className="inline-check"><input checked={draft.publicProfile.visibleOnline} type="checkbox" onChange={(event) => updateNested("publicProfile", { visibleOnline: event.target.checked })} /> Visible en reservas online</label>
               <label className="wide-field">Biografía corta<textarea value={draft.publicProfile.shortBio} onChange={(event) => updateNested("publicProfile", { shortBio: event.target.value })} /></label>
@@ -362,4 +363,3 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
 }
 
 export default ProfessionalModalDemo;
-

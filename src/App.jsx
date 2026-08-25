@@ -15,7 +15,7 @@ import Statistics from "./components/Statistics.jsx";
 import Login, { LoginLoading } from "./components/Login.jsx";
 import OperationalAgenda from "./components/OperationalAgenda.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
-import ProfessionalsSettingsDemo from "./components/ProfessionalsSettingsDemo.jsx";
+import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import { allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, defaultPageForRole, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
 import DataService from "./services/DataService.js";
@@ -114,8 +114,12 @@ const navigationSections = [
     id: "settings",
     label: "Configuracion",
     items: [
-      { key: "settings-general", pageId: "settings.general", tabId: "settings", label: "Configuracion general" },
+      { key: "settings-general", pageId: "settings.general", tabId: "settings", label: "General" },
       { key: "settings-professionals", pageId: "settings.professionals", tabId: "settings", label: "Profesionales" },
+      { key: "settings-services", pageId: "settings.services", tabId: "settings", label: "Servicios" },
+      { key: "settings-products", pageId: "settings.products", tabId: "settings", label: "Productos" },
+      { key: "settings-catalogs", pageId: "settings.catalogs", tabId: "settings", label: "Catalogos" },
+      { key: "settings-imports", pageId: "settings.imports", tabId: "settings", label: "Importaciones" },
     ],
   },
 ];
@@ -1170,13 +1174,26 @@ function App() {
             config={scopedData.config}
             onSave={updateConfig}
             onRestoreBaseConfig={restoreVSStudioConfig}
-            onImportClients={importTreatwellClients}
-            currentUser={user}
-            canManageEmployeeCommissions={effectiveRole === "admin"}
+            sales={scopedData.sales}
+            view="general"
           />
         ) : accessDeniedPage;
       case "settings.professionals":
-        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsDemo servicesCatalog={scopedData.config?.services || []} /> : accessDeniedPage;
+        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsReal config={scopedData.config} currentUser={user} onSave={updateConfig} /> : accessDeniedPage;
+      case "settings.services":
+      case "settings.products":
+      case "settings.catalogs":
+      case "settings.imports":
+        return canAccessTab(effectiveRole, "settings") ? (
+          <Settings
+            config={scopedData.config}
+            onSave={updateConfig}
+            onRestoreBaseConfig={restoreVSStudioConfig}
+            onImportClients={importTreatwellClients}
+            sales={scopedData.sales}
+            view={activePage.split(".")[1]}
+          />
+        ) : accessDeniedPage;
       case "dashboard.daily":
       default:
         return canAccessDashboardSection(effectiveRole, "today")
