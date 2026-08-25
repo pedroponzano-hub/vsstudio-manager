@@ -547,16 +547,17 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
                   />
                 </span>
               )}
-              <span>{row.date || "-"}</span>
-              <span>{row.hour || "-"}</span>
-              <span>{row.client || "Sin cliente"}</span>
-              <span>{row.services || "Sin servicio"}</span>
-              <span>{row.employee || "Sin empleada"}</span>
-              <strong>{money(row.saleTotal)}</strong>
-              <strong>{Number(row.commissionPercent || 0).toFixed(2)}%</strong>
-              <strong>{money(row.commissionAmount)}</strong>
+              <span data-label="Fecha">{row.date || "-"}</span>
+              <span data-label="Hora">{row.hour || "-"}</span>
+              <span data-label="Cliente">{row.client || "Sin cliente"}</span>
+              <span data-label="Servicio">{row.services || "Sin servicio"}</span>
+              <span data-label="Profesional">{row.employee || "Sin empleada"}</span>
+              <strong data-label="Importe venta">{money(row.saleTotal)}</strong>
+              <strong data-label="Porcentaje">{Number(row.commissionPercent || 0).toFixed(2)}%</strong>
+              <strong data-label="Comision">{money(row.commissionAmount)}</strong>
               {onStatusChange ? (
                 <select
+                  aria-label={`Estado de la comision de ${row.employee || "profesional"}`}
                   className={row.status === "pagada" ? "status-select paid" : "status-select pending"}
                   value={row.status === "pagada" ? "pagada" : "pendiente"}
                   onChange={(event) => startStatusChange(row, event.target.value)}
@@ -565,9 +566,9 @@ function Commissions({ data, user, canBulkPay = false, onBulkPay, onStatusChange
                   <option value="pagada">PAGADA</option>
                 </select>
               ) : (
-                <span className={row.status === "pagada" ? "status-badge paid" : "status-badge pending"}>{row.status === "pagada" ? "PAGADA" : "PENDIENTE"}</span>
+                <span data-label="Estado" className={row.status === "pagada" ? "status-badge paid" : "status-badge pending"}>{row.status === "pagada" ? "PAGADA" : "PENDIENTE"}</span>
               )}
-              <span>{originLabel(row)}{row.status === "pagada" && !row.commissionPaymentBatchId ? " - Pago individual anterior" : ""}</span>
+              <span data-label="Origen">{originLabel(row)}{row.status === "pagada" && !row.commissionPaymentBatchId ? " - Pago individual anterior" : ""}</span>
               {onStatusChange ? (
                 <button className="secondary-button" type="button" onClick={() => startEdit(row)}>Editar comision</button>
               ) : (

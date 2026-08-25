@@ -150,20 +150,20 @@ function SafeSalesHistory({
           {historyState.rows.length === 0 && <p className="empty-state">{emptyMessage}</p>}
           {historyState.rows.map((sale) => (
             <div className="finance-row safe-sales-history-row" key={sale.id || `${operationalDate(sale)}-${saleHour(sale)}-${servicesText(sale)}`}>
-              <span>{operationalDate(sale) || "-"}</span>
-              <span>{saleHour(sale) || "-"}</span>
-              <span>{clients[sale.clientId] || sale.clientName || "Cliente mostrador"}</span>
-              <span>{sale.employee || "Sin profesional"}</span>
-              <span>{servicesText(sale)}</span>
-              <strong>{money(sale.total || sale.amount)}</strong>
-              <span>{paymentText(sale)}</span>
-              <span className={saleStatus(sale) === "anulada" ? "status-pill pending" : saleIsEdited(sale) ? "status-pill edited" : "status-pill online"}>
+              <span data-label="Fecha">{operationalDate(sale) || "-"}</span>
+              <span data-label="Hora">{saleHour(sale) || "-"}</span>
+              <span data-label="Cliente">{clients[sale.clientId] || sale.clientName || "Cliente mostrador"}</span>
+              <span data-label="Profesional">{sale.employee || "Sin profesional"}</span>
+              <span data-label="Servicios">{servicesText(sale)}</span>
+              <strong data-label="Importe">{money(sale.total || sale.amount)}</strong>
+              <span data-label="Metodo de pago">{paymentText(sale)}</span>
+              <span data-label="Estado" className={saleStatus(sale) === "anulada" ? "status-pill pending" : saleIsEdited(sale) ? "status-pill edited" : "status-pill online"}>
                 {statusLabel(sale)}
                 {saleIsEdited(sale) && <b className="sale-tag edited"> Editada</b>}
                 {saleStatus(sale) === "anulada" && <b className="sale-tag voided"> Anulada</b>}
                 {sale.isBackdated && <b className="sale-tag backdated"> Registrada posteriormente</b>}
               </span>
-              <div className="compact-actions">
+              <div className="compact-actions" data-label="Acciones">
                 <button className="secondary-button" type="button" onClick={() => setSelectedSale(sale)}>Ver historial</button>
                 {onEditSale && <button className="secondary-button" type="button" onClick={() => onEditSale(sale)}>Editar</button>}
                 {onVoidSale && saleStatus(sale) === "cobrado" && <button className="danger-button" type="button" onClick={() => onVoidSale(sale)}>Anular</button>}

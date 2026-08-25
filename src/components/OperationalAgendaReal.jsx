@@ -18,7 +18,7 @@ function ReadonlyAgendaList({ rows = [] }) {
 
 function OperationalAgendaReal({ appointments = [], clients = [], config = {} }) {
   const [selectedDate, setSelectedDate] = useState(getTodayLocalDateString());
-  const [view, setView] = useState("calendar");
+  const [view, setView] = useState(() => (typeof window !== "undefined" && window.matchMedia("(max-width: 720px)").matches ? "list" : "calendar"));
   const clientMap = useMemo(() => Object.fromEntries(clients.map((client) => [client.id, client])), [clients]);
   const services = useMemo(() => realAgendaServices(config), [config]);
   const professionals = useMemo(() => realAgendaProfessionals(config, services), [config, services]);

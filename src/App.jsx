@@ -1244,26 +1244,38 @@ function App() {
           <button className="nav-toggle-button" type="button" onClick={() => setMobileMenuOpen((current) => !current)}>
             {mobileMenuOpen ? "Cerrar menu" : "Menu"}
           </button>
-          {platformMode === "pos" && (
-            <div className="pos-business-context">
-              <strong>VS Studio Beauty &amp; Academy</strong>
-              <span>{user.nombre} · {effectiveRole === "admin" ? "Admin" : effectiveRole}</span>
+          <div className="topbar-desktop-actions">
+            {platformMode === "pos" && (
+              <div className="pos-business-context">
+                <strong>VS Studio Beauty &amp; Academy</strong>
+                <span>{user.nombre} · {effectiveRole === "admin" ? "Admin" : effectiveRole}</span>
+              </div>
+            )}
+            <span className={isOnline ? "status-pill online" : "status-pill offline"}>{isOnline ? "Conectado a Firebase" : "Modo local / sin conexión"}</span>
+            {platformMode !== "pos" && (
+              <div className="manager-business-context">
+                <strong>VS Studio Beauty &amp; Academy</strong>
+                <span>{user.nombre} · {effectiveRole === "admin" ? "Admin" : effectiveRole}</span>
+              </div>
+            )}
+            {effectiveRole === "admin" && (
+              <button className="ghost-button" type="button" onClick={() => switchPlatform(platformMode === "pos" ? "manager" : "pos")}>
+                {platformMode === "pos" ? "Ir a Manager" : "Ir al POS"}
+              </button>
+            )}
+            <button className="ghost-button" type="button" onClick={logout}>Cerrar sesion</button>
+            {canShowRestoreData && <button className="ghost-button" onClick={() => setShowResetOptions(true)}>Restaurar datos (limpiar todo)</button>}
+          </div>
+          <details className="mobile-user-menu">
+            <summary aria-label="Abrir menú de usuario">Cuenta</summary>
+            <div className="mobile-user-menu-panel">
+              <div><strong>{user.nombre}</strong><span>{effectiveRole === "admin" ? "Admin" : effectiveRole}</span></div>
+              <span className={isOnline ? "mobile-connection online" : "mobile-connection offline"}>{isOnline ? "Firebase conectado" : "Sin conexión"}</span>
+              {effectiveRole === "admin" && <button type="button" onClick={() => switchPlatform(platformMode === "pos" ? "manager" : "pos")}>{platformMode === "pos" ? "Ir a Manager" : "Ir al POS"}</button>}
+              <button type="button" onClick={logout}>Cerrar sesión</button>
+              {canShowRestoreData && <button className="danger-button" type="button" onClick={() => setShowResetOptions(true)}>Restaurar datos</button>}
             </div>
-          )}
-          <span className={isOnline ? "status-pill online" : "status-pill offline"}>{isOnline ? "Conectado a Firebase" : "Modo local / sin conexión"}</span>
-          {platformMode !== "pos" && (
-            <div className="manager-business-context">
-              <strong>VS Studio Beauty &amp; Academy</strong>
-              <span>{user.nombre} · {effectiveRole === "admin" ? "Admin" : effectiveRole}</span>
-            </div>
-          )}
-          {effectiveRole === "admin" && (
-            <button className="ghost-button" type="button" onClick={() => switchPlatform(platformMode === "pos" ? "manager" : "pos")}>
-              {platformMode === "pos" ? "Ir a Manager" : "Ir al POS"}
-            </button>
-          )}
-          <button className="ghost-button" type="button" onClick={logout}>Cerrar sesion</button>
-          {canShowRestoreData && <button className="ghost-button" onClick={() => setShowResetOptions(true)}>Restaurar datos (limpiar todo)</button>}
+          </details>
         </div>
       </section>
 

@@ -513,13 +513,23 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
                   </small>
                 )}
               </span>
-              <strong>{money(row.registered)}</strong>
-              <strong>{money(row.reconciliationTarget)}</strong>
-              <input type="number" step="0.01" value={realAmounts[row.method] ?? ""} onChange={(event) => updateRealAmount(row.method, event.target.value)} placeholder="0.00" />
-              <strong className={Math.abs(Number(row.difference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(row.difference)}</strong>
-              <strong>{money(row.expenses)}</strong>
-              <strong>{money(row.paidCommissions)}</strong>
-              <strong>{money(row.finalBalance)}</strong>
+              <strong data-label="Cobros registrados">{money(row.registered)}</strong>
+              <strong data-label="Base de conciliacion">{money(row.reconciliationTarget)}</strong>
+              <label className="cash-real-field">
+                <span>Real contado / recibido</span>
+                <input
+                  aria-label={`Real contado o recibido para ${row.method}`}
+                  type="number"
+                  step="0.01"
+                  value={realAmounts[row.method] ?? ""}
+                  onChange={(event) => updateRealAmount(row.method, event.target.value)}
+                  placeholder="0.00"
+                />
+              </label>
+              <strong data-label="Diferencia conciliacion" className={Math.abs(Number(row.difference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(row.difference)}</strong>
+              <strong data-label="Gastos pagados">{money(row.expenses)}</strong>
+              <strong data-label="Comisiones pagadas">{money(row.paidCommissions)}</strong>
+              <strong data-label="Tesoreria neta">{money(row.finalBalance)}</strong>
             </div>
           ))}
         </div>
