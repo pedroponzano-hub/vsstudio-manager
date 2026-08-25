@@ -13,6 +13,7 @@ import SafeSalesHistory from "./components/SafeSalesHistory.jsx";
 import Settings from "./components/Settings.jsx";
 import Statistics from "./components/Statistics.jsx";
 import Login, { LoginLoading } from "./components/Login.jsx";
+import ManagerDashboard from "./components/ManagerDashboard.jsx";
 import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
@@ -861,6 +862,21 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const openManagerDashboardTarget = (target) => {
+    const targetPages = {
+      sales: "statistics.salesHistory",
+      expenses: "finance.expenses",
+      clients: "clients.list",
+      commissions: "finance.commissions",
+      closing: "finance.cashClosing",
+      categories: "statistics.category",
+      professionals: "statistics.employee",
+    };
+    const pageId = targetPages[target];
+    const item = pageId ? navigationItemForPage(visibleNavigation, pageId) : null;
+    if (item) openNavigationItem(item);
+  };
+
   const switchPlatform = (targetPlatform) => {
     if (effectiveRole !== "admin") return;
     const nextPage = targetPlatform === "pos" ? "pos.agendaV2" : "dashboard.daily";
@@ -1025,7 +1041,7 @@ function App() {
       case "professional.commissions":
         return canAccessTab(effectiveRole, "professionalCommissions") ? <ProfessionalCommissions sales={scopedData.sales} commissions={ownCommissionsData.rows} /> : accessDeniedPage;
       case "dashboard.monthly":
-        return canAccessDashboardSection(effectiveRole, "month") ? <Dashboard data={dashboardData} viewMode="administrador" section="month" /> : accessDeniedPage;
+        return canAccessDashboardSection(effectiveRole, "month") ? <ManagerDashboard sourceData={scopedData} commissionsData={commissionsData} initialPeriod="month" onNavigate={openManagerDashboardTarget} /> : accessDeniedPage;
       case "sales.new":
         return canAccessTab(effectiveRole, "sales") ? renderSalesFormPage() : accessDeniedPage;
       case "sales.pending":
@@ -1197,7 +1213,9 @@ function App() {
       case "dashboard.daily":
       default:
         return canAccessDashboardSection(effectiveRole, "today")
-          ? <Dashboard data={dashboardData} viewMode={effectiveRole === "direccion" ? "encargado" : "administrador"} section="today" />
+          ? effectiveRole === "admin"
+            ? <ManagerDashboard sourceData={scopedData} commissionsData={commissionsData} initialPeriod="today" onNavigate={openManagerDashboardTarget} />
+            : <Dashboard data={dashboardData} viewMode="encargado" section="today" />
           : accessDeniedPage;
     }
   };
@@ -1209,17 +1227,17 @@ function App() {
   if (!user) return <Login />;
 
   return (
-    <main className={platformMode === "pos" ? "app-shell pos-shell" : "app-shell"}>
-      <section className={platformMode === "pos" ? "topbar pos-topbar" : "topbar"}>
+    <main className={platformMode === "pos" ? "app-shell pos-shell" : "app-shell manager-shell"}>
+      <section className={platformMode === "pos" ? "topbar pos-topbar" : "topbar manager-topbar"}>
         {platformMode === "pos" ? (
           <div className="pos-page-context">
             <p className="eyebrow">Operaciones</p>
             <h1>{activePage === "pos.agendaV2" ? "Agenda" : navigationItemForPage(visibleNavigation, activePage)?.label || "Operaciones"}</h1>
           </div>
         ) : (
-          <div>
-            <p className="eyebrow">ERP / POS</p>
-            <h1>VS Studio Manager</h1>
+          <div className="manager-page-context">
+            <p className="eyebrow">DOMIA / {navigationItemForPage(visibleNavigation, activePage)?.label || "Dashboard"}</p>
+            <h1>{navigationItemForPage(visibleNavigation, activePage)?.label || "Dashboard"}</h1>
           </div>
         )}
         <div className="topbar-actions">
@@ -1233,7 +1251,12 @@ function App() {
             </div>
           )}
           <span className={isOnline ? "status-pill online" : "status-pill offline"}>{isOnline ? "Conectado a Firebase" : "Modo local / sin conexión"}</span>
-          {platformMode !== "pos" && <span className="user-pill">{user.nombre} - {effectiveRole}</span>}
+          {platformMode !== "pos" && (
+            <div className="manager-business-context">
+              <strong>VS Studio Beauty &amp; Academy</strong>
+              <span>{user.nombre} · {effectiveRole === "admin" ? "Admin" : effectiveRole}</span>
+            </div>
+          )}
           {effectiveRole === "admin" && (
             <button className="ghost-button" type="button" onClick={() => switchPlatform(platformMode === "pos" ? "manager" : "pos")}>
               {platformMode === "pos" ? "Ir a Manager" : "Ir al POS"}
@@ -1272,7 +1295,7 @@ function App() {
         </section>
       )}
 
-      <nav className={`${mobileMenuOpen ? "tabs nav-menu open" : "tabs nav-menu"}${platformMode === "pos" ? " pos-nav" : ""}`} aria-label="Menu principal">
+      <nav className={`${mobileMenuOpen ? "tabs nav-menu open" : "tabs nav-menu"}${platformMode === "pos" ? " pos-nav" : " manager-nav"}`} aria-label="Menu principal">
         <div className="nav-brand">
           {platformMode === "pos" ? (
             <>
@@ -1281,8 +1304,9 @@ function App() {
             </>
           ) : (
             <>
-              <span>VS Studio</span>
-              <strong>Manager</strong>
+              <strong>DOMIA</strong>
+              <span>Gestión &amp; Operaciones</span>
+              <small>VS Studio Beauty &amp; Academy</small>
             </>
           )}
         </div>
@@ -1316,7 +1340,7 @@ function App() {
       </nav>
 
       <ViewErrorBoundary key={activePage}>
-        {platformMode === "pos" ? <div className="pos-main-content">{renderActivePage()}</div> : renderActivePage()}
+        {platformMode === "pos" ? <div className="pos-main-content">{renderActivePage()}</div> : <div className="manager-main-content">{renderActivePage()}</div>}
       </ViewErrorBoundary>
     </main>
   );

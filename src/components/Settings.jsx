@@ -406,14 +406,12 @@ function Settings({ config, onSave, onRestoreBaseConfig, onImportClients, sales 
   return (
     <section className="settings-layout">
       {(view === "general" || view === "catalogs") && (
-      <form className="panel settings-form" onSubmit={submit}>
+      <form className={`panel settings-form settings-form-${view}`} onSubmit={submit}>
         <h2>{view === "general" ? "Configuración general" : "Catálogos"}</h2>
         {view === "catalogs" && <>
-        <div className="field-row">
+        <div className="manager-catalog-grid">
           <label>Metodos pago<textarea name="paymentMethods" value={form.paymentMethods} onChange={updateField} /></label>
           <label>Canales de entrada<textarea name="entryChannels" value={form.entryChannels} onChange={updateField} /></label>
-        </div>
-        <div className="field-row">
           <label>Categorias gasto<textarea name="expenseCategories" value={form.expenseCategories} onChange={updateField} /></label>
         </div>
         </>}
