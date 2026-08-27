@@ -14,6 +14,7 @@ const {
   normalizeCommissionPaymentMethod,
   parseFinancialInput,
   resolveFinancialInput,
+  requiresPaymentMethodConfirmation,
   selectPayableCommissions,
 } = await import(`data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`);
 
@@ -139,6 +140,52 @@ test("tarjeta conserva 100 euros de cobros aunque haya 30 euros de gastos", () =
   assert.equal(card.treasuryBalance, 70);
 });
 
+test("un gasto con tarjeta reduce tesoreria pero no los cobros ni la conciliacion TPV", () => {
+  const card = calculatePaymentMethodReconciliation({
+    method: "Tarjeta",
+    registered: 1500,
+    paidExpenses: 300,
+    real: 1500,
+  });
+
+  assert.equal(card.registered, 1500);
+  assert.equal(card.reconciliationTarget, 1500);
+  assert.equal(card.difference, 0);
+  assert.equal(card.treasuryExpectedBalance, 1200);
+  assert.equal(card.treasuryBalance, 1200);
+});
+
+test("efectivo descuenta gastos y comisiones antes de comparar el contado", () => {
+  const cash = calculatePaymentMethodReconciliation({
+    method: "Efectivo",
+    registered: 1000,
+    paidExpenses: 200,
+    paidCommissions: 100,
+    real: 700,
+  });
+
+  assert.equal(cash.reconciliationTarget, 700);
+  assert.equal(cash.treasuryExpectedBalance, 700);
+  assert.equal(cash.difference, 0);
+  assert.equal(cash.treasuryBalance, 700);
+});
+
+test("una salida bancaria aislada no obliga a conciliar cobros de otro periodo", () => {
+  const card = calculatePaymentMethodReconciliation({
+    method: "Tarjeta",
+    registered: 0,
+    paidExpenses: 300,
+  });
+
+  assert.equal(card.registered, 0);
+  assert.equal(card.reconciliationTarget, 0);
+  assert.equal(card.difference, 0);
+  assert.equal(card.treasuryExpectedBalance, -300);
+  assert.equal(requiresPaymentMethodConfirmation(card), false);
+  assert.equal(requiresPaymentMethodConfirmation({ method: "Tarjeta", registered: 1500, outflows: 300 }), true);
+  assert.equal(requiresPaymentMethodConfirmation({ method: "Efectivo", registered: 0, outflows: 300 }), true);
+});
+
 test("bizum y transferencia concilian cobros antes de aplicar sus salidas", () => {
   for (const method of ["Bizum", "Transferencia"]) {
     const row = calculatePaymentMethodReconciliation({
@@ -152,6 +199,20 @@ test("bizum y transferencia concilian cobros antes de aplicar sus salidas", () =
     assert.equal(row.difference, 0);
     assert.equal(row.treasuryBalance, 700);
   }
+});
+
+test("Treatwell mantiene la conciliacion de cobros separada de sus salidas", () => {
+  const row = calculatePaymentMethodReconciliation({
+    method: "Treatwell",
+    registered: 800,
+    otherOutflows: 200,
+    real: 800,
+  });
+
+  assert.equal(row.reconciliationTarget, 800);
+  assert.equal(row.difference, 0);
+  assert.equal(row.treasuryExpectedBalance, 600);
+  assert.equal(row.treasuryBalance, 600);
 });
 
 test("los importes manuales admiten coma o punto y se normalizan a dos decimales", () => {

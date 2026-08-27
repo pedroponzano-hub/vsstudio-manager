@@ -644,13 +644,12 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
           <button type="button" onClick={saveControls}>Guardar importes reales</button>
         </div>
         <div className="finance-table">
-          <div className="finance-header balance"><span>Metodo</span><span>Cobros registrados</span><span>Salidas</span><span>Saldo neto esperado</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span></div>
+          <div className="finance-header balance"><span>Metodo</span><span>Cobros registrados</span><span>Base de conciliacion</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span></div>
           {finance.reconciliationByMethod.map((row) => (
             <div className="finance-row balance" key={row.method}>
               <span>{row.method}</span>
               <strong>{money(row.registered)}</strong>
-              <strong>{money(row.outflows)}</strong>
-              <strong>{money(row.expectedBalance)}</strong>
+              <strong>{money(row.reconciliationTarget)}</strong>
               <input
                 type="text"
                 inputMode="decimal"
@@ -668,14 +667,15 @@ function Finance({ data, commissionsData, user, canManageMonthlyClosing = false,
       <section className="panel">
         <h3>Tesoreria neta por metodo</h3>
         <div className="finance-table">
-          <div className="finance-header treasury"><span>Metodo</span><span>Saldo neto teorico</span><span>Real conciliado</span><span>Tesoreria neta real</span><span>Diferencia conciliacion</span></div>
+          <div className="finance-header treasury"><span>Metodo</span><span>Entradas</span><span>Salidas</span><span>Saldo neto teorico</span><span>Real conciliado</span><span>Tesoreria neta real</span></div>
           {finance.reconciliationByMethod.map((row) => (
             <div className="finance-row treasury" key={row.method}>
               <span>{row.method}</span>
+              <strong>{money(row.registered)}</strong>
+              <strong>{money(row.outflows)}</strong>
               <strong>{money(row.expectedBalance)}</strong>
               <strong>{money(row.confirmedAmount)}</strong>
               <strong>{money(row.treasuryBalance)}</strong>
-              <strong>{money(row.difference)}</strong>
             </div>
           ))}
         </div>

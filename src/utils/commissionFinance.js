@@ -153,9 +153,11 @@ export function calculateTreasuryResult({ collections = 0, paidExpenses = 0, pai
 export function calculatePaymentMethodReconciliation({ method = "", registered = 0, paidExpenses = 0, paidCommissions = 0, otherOutflows = 0, real } = {}) {
   const registeredAmount = Number(registered || 0);
   const outflows = Number(paidExpenses || 0) + Number(paidCommissions || 0) + Number(otherOutflows || 0);
-  const expectedBalance = registeredAmount - outflows;
+  const treasuryExpectedBalance = registeredAmount - outflows;
   const isCash = normalizeCommissionPaymentMethod(method) === "Efectivo";
-  const reconciliationTarget = isCash ? expectedBalance : registeredAmount;
+  // Solo el efectivo se concilia contra su saldo fisico tras salidas.
+  // Los metodos bancarios siempre se concilian contra los cobros brutos registrados.
+  const reconciliationTarget = isCash ? treasuryExpectedBalance : registeredAmount;
   const hasRealAmount = real !== undefined && real !== null && real !== "";
   const confirmedAmount = hasRealAmount ? Number(real || 0) : reconciliationTarget;
   const rawDifference = confirmedAmount - reconciliationTarget;
@@ -165,14 +167,22 @@ export function calculatePaymentMethodReconciliation({ method = "", registered =
     isCash,
     registered: registeredAmount,
     outflows,
-    expectedBalance,
+    expectedBalance: treasuryExpectedBalance,
+    treasuryExpectedBalance,
     reconciliationTarget,
     confirmedAmount,
     real: hasRealAmount ? confirmedAmount : 0,
     difference: Math.abs(rawDifference) < 0.000001 ? 0 : rawDifference,
     treasuryBalance: isCash ? confirmedAmount : confirmedAmount - outflows,
-    finalBalance: hasRealAmount ? (isCash ? confirmedAmount : confirmedAmount - outflows) : expectedBalance,
+    finalBalance: hasRealAmount ? (isCash ? confirmedAmount : confirmedAmount - outflows) : treasuryExpectedBalance,
   };
+}
+
+export function requiresPaymentMethodConfirmation({ method = "", registered = 0, outflows = 0 } = {}) {
+  const hasCollections = Math.abs(Number(registered || 0)) > 0.009;
+  const hasCashOutflows = normalizeCommissionPaymentMethod(method) === "Efectivo"
+    && Math.abs(Number(outflows || 0)) > 0.009;
+  return hasCollections || hasCashOutflows;
 }
 
 export function findPotentialCommissionExpenseDuplicates(expenses = [], paidCommissions = []) {

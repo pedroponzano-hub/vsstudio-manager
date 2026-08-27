@@ -3,6 +3,7 @@ import {
   calculatePaymentMethodReconciliation,
   groupPaidCommissionsByMethod as groupCommissionPaymentsByMethod,
   paidCommissionsInRange,
+  requiresPaymentMethodConfirmation,
 } from "../utils/commissionFinance.js";
 import { getMadridTimestamp, getTodayLocalDateString } from "../utils/date.js";
 
@@ -111,16 +112,24 @@ function escapeHtml(value) {
 function buildReportHtml(closing, snapshot) {
   const generatedAt = getMadridTimestamp().replace("T", " ");
   const cardSummary = snapshot.summary.card || {};
-  const rowsHtml = snapshot.rows.map((row) => `
+  const reconciliationRowsHtml = snapshot.rows.map((row) => `
     <tr>
       <td>${escapeHtml(row.method)}</td>
       <td>${money(row.registered)}</td>
-      <td>${money(row.expectedBalance)}</td>
+      <td>${money(row.reconciliationTarget)}</td>
       <td>${money(row.real)}</td>
       <td>${money(row.difference)}</td>
+    </tr>
+  `).join("");
+  const treasuryRowsHtml = snapshot.rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.method)}</td>
+      <td>${money(row.registered)}</td>
       <td>${money(row.expenses)}</td>
       <td>${money(row.paidCommissions)}</td>
       <td>${money(row.treatwellCommission)}</td>
+      <td>${money(row.outflows)}</td>
+      <td>${money(row.expectedBalance)}</td>
       <td>${money(row.finalBalance)}</td>
     </tr>
   `).join("");
@@ -172,7 +181,7 @@ function buildReportHtml(closing, snapshot) {
           <div class="box"><span>Fecha del cierre</span><strong>${escapeHtml(closing.date)}</strong></div>
           <div class="box"><span>Responsable</span><strong>${escapeHtml(closing.responsible || "Sin responsable")}</strong></div>
           <div class="box"><span>Venta total registrada</span><strong>${money(snapshot.summary.totalSales)}</strong></div>
-          <div class="box"><span>Total esperado tras salidas</span><strong>${money(snapshot.summary.totalTheoreticalForClosing)}</strong></div>
+          <div class="box"><span>Tesorería neta teórica</span><strong>${money(snapshot.summary.totalTheoreticalForClosing)}</strong></div>
           <div class="box"><span>Total real confirmado</span><strong>${money(snapshot.summary.totalReal)}</strong></div>
           <div class="box"><span>Diferencia total de cierre</span><strong>${money(snapshot.summary.totalDifference)}</strong></div>
           <div class="box"><span>Propinas tarjeta</span><strong>${money(snapshot.summary.cardTips)}</strong></div>
@@ -184,12 +193,17 @@ function buildReportHtml(closing, snapshot) {
           <tr><td>Propinas tarjeta</td><td>${money(cardSummary.cardTips)}</td></tr>
           <tr><td>Total esperado datáfono</td><td>${money(cardSummary.expectedTerminalTotal)}</td></tr>
           <tr><td>Tarjeta real confirmada</td><td>${money(cardSummary.realConfirmed)}</td></tr>
-          <tr><td>Diferencia tarjeta</td><td>${money(cardSummary.difference)}</td></tr>
+          <tr><td>Diferencia tarjeta (real - cobros registrados)</td><td>${money(cardSummary.difference)}</td></tr>
         </tbody></table>
-        <h2>Ventas, importes reales, diferencias y saldo final</h2>
+        <h2>Conciliación de cobros del día</h2>
         <table>
-          <thead><tr><th>Metodo</th><th>Ventas registradas</th><th>Esperado tras salidas</th><th>Real confirmado</th><th>Diferencia</th><th>Gastos pagados</th><th>Comisiones pagadas</th><th>Comision Treatwell</th><th>Saldo final</th></tr></thead>
-          <tbody>${rowsHtml}</tbody>
+          <thead><tr><th>Método</th><th>Cobros registrados</th><th>Base de conciliación</th><th>Real confirmado</th><th>Diferencia</th></tr></thead>
+          <tbody>${reconciliationRowsHtml}</tbody>
+        </table>
+        <h2>Tesorería neta por método</h2>
+        <table>
+          <thead><tr><th>Método</th><th>Entradas</th><th>Gastos</th><th>Comisiones pagadas</th><th>Otras salidas</th><th>Total salidas</th><th>Saldo neto teórico</th><th>Saldo neto real</th></tr></thead>
+          <tbody>${treasuryRowsHtml}</tbody>
         </table>
         <h2>Gastos pagados por metodo</h2>
         <table><thead><tr><th>Metodo</th><th>Importe</th></tr></thead><tbody>${expensesHtml}</tbody></table>
@@ -321,11 +335,13 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
 
       return {
         method,
+        isCash: treasury.isCash,
         registered,
         cardTips: method === "Tarjeta" ? cardTips : 0,
         expectedTerminalTotal: method === "Tarjeta" ? expectedTerminalTotal : registered,
         outflows: treasury.outflows,
         expectedBalance: treasury.expectedBalance,
+        treasuryExpectedBalance: treasury.treasuryExpectedBalance,
         reconciliationTarget: treasury.reconciliationTarget,
         real: treasury.real,
         confirmedAmount: treasury.confirmedAmount,
@@ -333,6 +349,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
         expenses: expensesAmount,
         paidCommissions: paidCommissionsAmount,
         treatwellCommission: treatwellAmount,
+        treasuryBalance: treasury.treasuryBalance,
         finalBalance: treasury.finalBalance,
       };
     });
@@ -404,7 +421,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
 
   const saveClosing = () => {
     const missingMethods = dayData.rows
-      .filter((row) => (Math.abs(Number(row.registered || 0)) > 0.009 || Math.abs(Number(row.outflows || 0)) > 0.009)
+      .filter((row) => requiresPaymentMethodConfirmation(row)
         && (realAmounts[row.method] === undefined || realAmounts[row.method] === ""))
       .map((row) => row.method);
     if (missingMethods.length > 0) {
@@ -487,10 +504,10 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
       </section>
 
       <section className="panel">
-        <h3>Confirmacion diaria por metodo</h3>
+        <h3>Conciliacion de cobros del dia</h3>
         <div className="stat-row">
-          <span>Total esperado tras salidas</span>
-          <strong>{money(dayData.summary.totalTheoreticalForClosing)}</strong>
+          <span>Total cobros registrados</span>
+          <strong>{money(dayData.summary.totalSales)}</strong>
         </div>
         <div className="stat-row">
           <span>Total real confirmado</span>
@@ -501,12 +518,13 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
           <strong className={Math.abs(Number(dayData.summary.totalDifference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(dayData.summary.totalDifference)}</strong>
         </div>
         <div className="finance-table">
-          <div className="finance-header cash"><span>Metodo</span><span>Cobros registrados</span><span>Base de conciliacion</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span><span>Gastos pagados</span><span>Comisiones pagadas</span><span>Tesoreria neta</span></div>
+          <div className="finance-header cash"><span>Metodo</span><span>Cobros registrados</span><span>Base de conciliacion</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span></div>
           {dayData.rows.map((row) => (
             <div className="finance-row cash" key={row.method}>
               <span>
                 {row.method}
-                <small className="cash-card-breakdown">Base de conciliacion: {money(row.reconciliationTarget)}</small>
+                {row.isCash && <small className="cash-card-breakdown">Efectivo: cobros menos salidas reales de caja</small>}
+                {!row.isCash && <small className="cash-card-breakdown">Las salidas no reducen esta conciliacion</small>}
                 {row.method === "Tarjeta" && (
                   <small className="cash-card-breakdown">
                     Tarjeta ventas: {money(row.registered)} · Propinas tarjeta: {money(row.cardTips)} · Total esperado datáfono: {money(row.expectedTerminalTotal)}
@@ -527,9 +545,32 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
                 />
               </label>
               <strong data-label="Diferencia conciliacion" className={Math.abs(Number(row.difference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(row.difference)}</strong>
-              <strong data-label="Gastos pagados">{money(row.expenses)}</strong>
-              <strong data-label="Comisiones pagadas">{money(row.paidCommissions)}</strong>
-              <strong data-label="Tesoreria neta">{money(row.finalBalance)}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <h3>Tesoreria neta por metodo</h3>
+        <div className="stat-row">
+          <span>Tesoreria neta teorica tras salidas</span>
+          <strong>{money(dayData.summary.totalTheoreticalForClosing)}</strong>
+        </div>
+        <div className="stat-row">
+          <span>Tesoreria neta real tras conciliacion</span>
+          <strong>{money(dayData.summary.totalFinalBalance)}</strong>
+        </div>
+        <div className="finance-table">
+          <div className="finance-header daily-treasury"><span>Metodo</span><span>Entradas</span><span>Gastos pagados</span><span>Comisiones pagadas</span><span>Otras salidas</span><span>Total salidas</span><span>Saldo neto</span></div>
+          {dayData.rows.map((row) => (
+            <div className="finance-row daily-treasury" key={row.method}>
+              <span>{row.method}</span>
+              <strong>{money(row.registered)}</strong>
+              <strong>{money(row.expenses)}</strong>
+              <strong>{money(row.paidCommissions)}</strong>
+              <strong>{money(row.treatwellCommission)}</strong>
+              <strong>{money(row.outflows)}</strong>
+              <strong>{money(row.finalBalance)}</strong>
             </div>
           ))}
         </div>
