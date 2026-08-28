@@ -4690,6 +4690,95 @@ button.manager-metric-card:hover {
   }
 }
 
+.appointment-real-dialog {
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.appointment-real-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.appointment-real-form label {
+  min-width: 0;
+}
+
+.appointment-client-search,
+.appointment-date-time-row,
+.appointment-notes-field,
+.appointment-real-summary,
+.appointment-real-actions,
+.appointment-real-form .auth-error {
+  grid-column: 1 / -1;
+}
+
+.appointment-client-search {
+  position: relative;
+}
+
+.appointment-client-results {
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+}
+
+.appointment-date-time-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.appointment-real-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #dfe4ea);
+  border-radius: 12px;
+  background: var(--surface-muted, #f8fafc);
+}
+
+.appointment-real-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.agenda-persistence-notice {
+  margin: 0 0 14px;
+}
+
+@media (max-width: 720px) {
+  .appointment-real-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 16px;
+  }
+
+  .appointment-real-form,
+  .appointment-date-time-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .appointment-real-form > *,
+  .appointment-date-time-row > * {
+    grid-column: 1;
+  }
+
+  .appointment-real-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .appointment-real-actions button {
+    width: 100%;
+  }
+}
+
 .pos-shell {
   background: var(--domia-bg);
   color: var(--domia-text);

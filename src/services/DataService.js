@@ -1,5 +1,13 @@
-import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../firebase.js";
+import {
+  assertAppointmentStatusTransition,
+  assertNoAppointmentConflict,
+  buildAppointmentRecord,
+  createAppointmentOperation,
+  normalizeAppointmentDate,
+  normalizeAppointmentRecord,
+} from "../utils/appointmentModel.js";
 import {
   getMadridDateString,
   getMadridDayOfMonth,
@@ -273,6 +281,27 @@ function syncKeyToFirestore(key, value) {
 async function readFirestoreCollection(collectionName) {
   const snapshot = await getDocs(collection(db, collectionName));
   return snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
+}
+
+async function readFirestoreAppointmentsByDate(date) {
+  const normalizedDate = normalizeAppointmentDate(date);
+  if (!normalizedDate) throw new Error("La fecha de Agenda no es válida.");
+  const snapshot = await getDocs(query(collection(db, "appointments"), where("date", "==", normalizedDate)));
+  return snapshot.docs.map((document) => normalizeAppointmentRecord({ id: document.id, ...document.data() }));
+}
+
+async function readFirestoreAppointment(appointmentId) {
+  const snapshot = await getDoc(doc(db, "appointments", appointmentId));
+  return snapshot.exists() ? normalizeAppointmentRecord({ id: snapshot.id, ...snapshot.data() }) : null;
+}
+
+function mergeAppointmentDateIntoLocal(date, appointments) {
+  const normalizedDate = normalizeAppointmentDate(date);
+  const incomingIds = new Set((appointments || []).map((appointment) => appointment.id));
+  const otherDates = readCollection("appointments").filter((appointment) => (
+    normalizeAppointmentRecord(appointment).date !== normalizedDate && !incomingIds.has(appointment.id)
+  ));
+  writeCollection("appointments", [...appointments, ...otherDates]);
 }
 
 async function readFirestoreConfig() {
@@ -1238,7 +1267,15 @@ const DataService = {
   },
 
   getAppointments() {
-    return readCollection("appointments");
+    return readCollection("appointments").map(normalizeAppointmentRecord);
+  },
+
+  async getAppointmentsByDate(date) {
+    const normalizedDate = normalizeAppointmentDate(date);
+    if (!normalizedDate) throw new Error("Selecciona una fecha válida.");
+    const appointments = await readFirestoreAppointmentsByDate(normalizedDate);
+    mergeAppointmentDateIntoLocal(normalizedDate, appointments);
+    return appointments;
   },
 
   getCommissionStatuses() {
@@ -1299,7 +1336,7 @@ const DataService = {
         readFirestoreCollection("sales"),
         readFirestoreCollection("expenses"),
         readFirestoreCollection("clients"),
-        readFirestoreCollection("appointments"),
+        readFirestoreAppointmentsByDate(todayLocal()),
         readFirestoreCollection("commissions"),
         readFirestoreCollection("commissionPaymentBatches"),
         readFirestoreCollection("cashClosings"),
@@ -1364,9 +1401,9 @@ const DataService = {
         writeCollection("clients", clients);
         refreshFromLocal();
       }, handleError),
-      onSnapshot(collection(db, "appointments"), (snapshot) => {
-        const appointments = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
-        writeCollection("appointments", appointments);
+      onSnapshot(query(collection(db, "appointments"), where("date", "==", todayLocal())), (snapshot) => {
+        const appointments = snapshot.docs.map((document) => normalizeAppointmentRecord({ id: document.id, ...document.data() }));
+        mergeAppointmentDateIntoLocal(todayLocal(), appointments);
         refreshFromLocal();
       }, handleError),
       onSnapshot(collection(db, "commissions"), (snapshot) => {
@@ -1732,31 +1769,53 @@ const DataService = {
     return { ...this.getData(), config };
   },
 
-  addAppointment(appointment) {
-    const item = { ...appointment, id: createId("appointment") };
-    writeCollection("appointments", [item, ...this.getAppointments()]);
-    saveDocumentToFirestore("appointments", item);
-    return this.getData();
+  async createAppointment(appointment, actor = {}) {
+    const item = await createAppointmentOperation(appointment, {
+      actor,
+      id: createId("appointment"),
+      loadAppointmentsByDate: readFirestoreAppointmentsByDate,
+      now: getTechnicalTimestamp(),
+      saveAppointment: (record) => setDoc(doc(db, "appointments", record.id), cleanFirestoreData(record)),
+    });
+    const appointmentsForDate = await readFirestoreAppointmentsByDate(item.date);
+    mergeAppointmentDateIntoLocal(item.date, [item, ...appointmentsForDate]);
+    return { appointment: item, data: this.getData() };
   },
 
-  updateAppointment(appointmentId, updates) {
+  async updateAppointment(appointmentId, updates, actor = {}) {
     const currentAppointments = this.getAppointments();
-    const existingAppointment = currentAppointments.find((appointment) => appointment.id === appointmentId);
-    if (!existingAppointment) return this.getData();
+    const existingAppointment = currentAppointments.find((appointment) => appointment.id === appointmentId)
+      || await readFirestoreAppointment(appointmentId);
+    if (!existingAppointment) throw new Error("La cita ya no existe.");
 
-    const updatedAppointment = { ...existingAppointment, ...updates, id: appointmentId };
-    writeCollection(
-      "appointments",
-      currentAppointments.map((appointment) => (appointment.id === appointmentId ? updatedAppointment : appointment)),
-    );
-    saveDocumentToFirestore("appointments", updatedAppointment);
-    return this.getData();
+    const updatedAppointment = buildAppointmentRecord(updates, {
+      actor,
+      existing: existingAppointment,
+      now: getTechnicalTimestamp(),
+    });
+    assertAppointmentStatusTransition(existingAppointment.status, updatedAppointment.status);
+    const appointmentsForDate = await readFirestoreAppointmentsByDate(updatedAppointment.date);
+    assertNoAppointmentConflict(updatedAppointment, appointmentsForDate, appointmentId);
+    await setDoc(doc(db, "appointments", appointmentId), cleanFirestoreData(updatedAppointment));
+
+    const withoutUpdated = appointmentsForDate.filter((appointment) => appointment.id !== appointmentId);
+    mergeAppointmentDateIntoLocal(updatedAppointment.date, [updatedAppointment, ...withoutUpdated]);
+    if (existingAppointment.date !== updatedAppointment.date) {
+      writeCollection("appointments", this.getAppointments().filter((appointment) => (
+        appointment.id !== appointmentId || appointment.date === updatedAppointment.date
+      )));
+    }
+    return { appointment: updatedAppointment, data: this.getData() };
   },
 
-  deleteAppointment(appointmentId) {
-    writeCollection("appointments", this.getAppointments().filter((appointment) => appointment.id !== appointmentId));
-    deleteDocumentFromFirestore("appointments", appointmentId);
-    return this.getData();
+  async addAppointment(appointment, actor = {}) {
+    const result = await this.createAppointment(appointment, actor);
+    return result.data;
+  },
+
+  async deleteAppointment(appointmentId, actor = {}) {
+    const result = await this.updateAppointment(appointmentId, { status: "Cancelada" }, actor);
+    return result.data;
   },
 
   deleteSale(arg1, arg2) {

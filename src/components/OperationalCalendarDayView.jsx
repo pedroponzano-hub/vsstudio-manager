@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 
-import AppointmentDetailModalDemo from "./AppointmentDetailModalDemo.jsx";
 import {
   DEMO_BUSINESS_AREAS,
   DEMO_CALENDAR_INTERVAL,
@@ -13,12 +12,9 @@ import { getStatusClassName, minutesToTime } from "../utils/availabilityDemo.js"
 import { professionalMatchesAppointment } from "../utils/agendaRealConfig.js";
 
 function OperationalCalendarDayView({
-  appointmentHistory = {},
-  clients = [],
   onNewAppointment,
-  onUpdateAppointment,
+  onSelectAppointment,
   professionals = [],
-  readOnly = false,
   rows = [],
   selectedDate,
   services = [],
@@ -26,7 +22,6 @@ function OperationalCalendarDayView({
   const [businessArea, setBusinessArea] = useState("Todas");
   const [professionalQuery, setProfessionalQuery] = useState("");
   const [selectedProfessionalId, setSelectedProfessionalId] = useState("all");
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
 
   const visibleProfessionals = useMemo(() => (
     filterDemoProfessionals({
@@ -39,10 +34,6 @@ function OperationalCalendarDayView({
   ), [businessArea, professionalQuery, professionals, selectedProfessionalId, services]);
 
   const slots = useMemo(() => createCalendarSlots(), []);
-  const selectedAppointment = useMemo(() => (
-    rows.find((row) => row.id === selectedAppointmentId) || null
-  ), [rows, selectedAppointmentId]);
-
   const rowsByProfessional = useMemo(() => {
     const grouped = Object.fromEntries(visibleProfessionals.map((professional) => [professional.id, rows.filter((row) => professionalMatchesAppointment(professional, row))]));
     return grouped;
@@ -131,9 +122,7 @@ function OperationalCalendarDayView({
                       selectedDate,
                       startMinute: slot.minute,
                     });
-                    const slotTitle = readOnly
-                      ? "Creación de citas pendiente de persistencia"
-                      : slotIsBlocked
+                    const slotTitle = slotIsBlocked
                       ? `${professional.name} ocupado de ${slotStartTime} a ${slotEndTime}`
                       : `Crear cita con ${professional.name} a las ${slotStartTime}`;
                     return (
@@ -145,7 +134,7 @@ function OperationalCalendarDayView({
                         data-professional-id={professional.id}
                         data-slot-end-time={slotEndTime}
                         data-slot-start-time={slotStartTime}
-                        disabled={readOnly || slotIsBlocked}
+                        disabled={slotIsBlocked}
                         key={`${professional.id}-${slot.minute}`}
                         title={slotTitle}
                         type="button"
@@ -181,7 +170,7 @@ function OperationalCalendarDayView({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setSelectedAppointmentId(row.id);
+                          onSelectAppointment?.(row);
                         }}
                       >
                         <strong>{row.time} - {endTime}</strong>
@@ -203,18 +192,6 @@ function OperationalCalendarDayView({
         </div>
       </section>
 
-      {selectedAppointment && (
-        <AppointmentDetailModalDemo
-          appointment={selectedAppointment}
-          appointments={rows}
-          clients={clients}
-          appointmentHistory={appointmentHistory[selectedAppointment.id] || []}
-          onClose={() => setSelectedAppointmentId(null)}
-          onUpdateAppointment={onUpdateAppointment}
-          readOnly={readOnly}
-          services={services}
-        />
-      )}
     </section>
   );
 }

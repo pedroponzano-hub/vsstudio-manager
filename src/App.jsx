@@ -736,22 +736,35 @@ function App() {
   const canWriteAppointments = (appointment) => {
     if (canPerform(effectiveRole, "manageAppointments")) return true;
     if (!canPerform(effectiveRole, "manageOwnAppointments")) return false;
-    if (!appointment?.employee) return true;
+    if (!appointment?.professionalId && !appointment?.employee && !appointment?.professionalName) return false;
     return onlyOwnEmployeeItems([appointment], user).length === 1;
   };
-  const addAppointment = (appointment) => {
-    if (!canWriteAppointments(appointment)) return;
-    setData(DataService.addAppointment(appointment));
+  const appointmentActor = { uid: user?.uid || "", email: user?.email || "", nombre: user?.nombre || "" };
+  const loadAppointmentsByDate = async (date) => {
+    if (!canAccessTab(effectiveRole, "agenda") && !canAccessTab(effectiveRole, "professionalAgenda")) {
+      throw new Error("No tienes permisos para consultar la Agenda.");
+    }
+    return DataService.getAppointmentsByDate(date);
   };
-  const updateAppointment = (appointmentId, updates) => {
-    const existingAppointment = data.appointments.find((appointment) => appointment.id === appointmentId);
-    if (!canWriteAppointments({ ...existingAppointment, ...updates })) return;
-    setData(DataService.updateAppointment(appointmentId, updates));
+  const addAppointment = async (appointment) => {
+    if (!canWriteAppointments(appointment)) throw new Error("No tienes permisos para crear esta cita.");
+    const result = await DataService.createAppointment(appointment, appointmentActor);
+    setData(result.data);
+    return result.appointment;
   };
-  const deleteAppointment = (appointmentId) => {
+  const updateAppointment = async (appointmentId, updates) => {
     const existingAppointment = data.appointments.find((appointment) => appointment.id === appointmentId);
-    if (!canWriteAppointments(existingAppointment)) return;
-    setData(DataService.deleteAppointment(appointmentId));
+    if (!canWriteAppointments({ ...existingAppointment, ...updates })) throw new Error("No tienes permisos para editar esta cita.");
+    const result = await DataService.updateAppointment(appointmentId, updates, appointmentActor);
+    setData(result.data);
+    return result.appointment;
+  };
+  const deleteAppointment = async (appointmentId) => {
+    const existingAppointment = data.appointments.find((appointment) => appointment.id === appointmentId);
+    if (!canWriteAppointments(existingAppointment)) throw new Error("No tienes permisos para cancelar esta cita.");
+    const result = await DataService.updateAppointment(appointmentId, { status: "Cancelada" }, appointmentActor);
+    setData(result.data);
+    return result.appointment;
   };
   const updateConfig = (updates) => {
     if (!canPerform(effectiveRole, "manageSettings")) return;
@@ -1147,6 +1160,9 @@ function App() {
             appointments={scopedData.appointments}
             clients={scopedData.clients}
             config={scopedData.config}
+            onCreateAppointment={addAppointment}
+            onLoadAppointmentsByDate={loadAppointmentsByDate}
+            onUpdateAppointment={updateAppointment}
           />
         ) : accessDeniedPage;
       case "finance.expenses":
