@@ -23,7 +23,7 @@ function ProfessionalsListDemo({
             <span className="professional-color-dot" style={{ background: professional.calendarColor }} />
             <div>
               <strong>{professional.displayName}</strong>
-              <span>{professional.email || "Sin acceso por correo"}</span>
+              <span>{professional.access?.email || professional.email || "Sin acceso por correo"}</span>
             </div>
           </div>
           <span className={professional.active ? "status-pill online" : "status-pill offline"}>{professional.active ? "Activa" : "Inactiva"}</span>
@@ -31,7 +31,7 @@ function ProfessionalsListDemo({
           <span>{todayScheduleText(professional)}</span>
           <span>{professional.employmentType}</span>
           <strong>{Number(professional.economics.defaultServiceCommissionPercent || 0).toFixed(2)}%</strong>
-          <span>{professional.access.enabled ? professional.access.role : "Sin acceso"}</span>
+          <span>{professional.access?.status === "pending" ? "Invitación pendiente" : professional.access?.status === "disabled" ? "Acceso deshabilitado" : professional.access?.status === "active" || professional.access?.enabled ? professional.access.role : "Sin acceso"}</span>
           <div className="professional-demo-actions">
             <button type="button" onClick={() => onAction("edit", professional)}>Editar</button>
             <button className="secondary-button" type="button" onClick={() => onAction(professional.active ? "deactivate" : "activate", professional)}>

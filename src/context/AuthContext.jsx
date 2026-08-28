@@ -2,11 +2,12 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, limit, query, where } from "firebase/firestore";
 import { auth, db } from "../firebase.js";
+import { normalizeProfileEmail, normalizeUserProfile } from "../utils/userProfile.js";
 
 const AuthContext = createContext(null);
 
 function normalizeEmail(email = "") {
-  return String(email).trim().toLowerCase();
+  return normalizeProfileEmail(email);
 }
 
 async function findUserProfile(firebaseUser) {
@@ -36,21 +37,6 @@ async function findUserProfile(firebaseUser) {
   return null;
 }
 
-function normalizeProfile(profile, firebaseUser) {
-  return {
-    uid: firebaseUser.uid,
-    id: profile.id,
-    email: normalizeEmail(profile.email || firebaseUser.email),
-    nombre: profile.nombre || profile.name || firebaseUser.email,
-    professionalId: profile.professionalId || profile.employeeId || profile.empleadaId || "",
-    professionalName: profile.professionalName || profile.employeeName || profile.empleada || profile.nombre || profile.name || "",
-    employeeName: profile.professionalName || profile.employeeName || profile.empleada || profile.nombre || profile.name || "",
-    role: String(profile.role || "profesional").trim().toLowerCase(),
-    active: profile.active !== false,
-    companyId: profile.companyId || null,
-  };
-}
-
 function AuthProvider({ children }) {
   const [authUser, setAuthUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -75,7 +61,8 @@ function AuthProvider({ children }) {
           return;
         }
 
-        const normalizedProfile = normalizeProfile(profile, firebaseUser);
+        const tokenResult = await firebaseUser.getIdTokenResult();
+        const normalizedProfile = normalizeUserProfile(profile, firebaseUser, tokenResult.claims || {});
         if (!normalizedProfile.active) {
           setAuthUser(null);
           setAuthError("Usuario inactivo. Contacta con direccion.");

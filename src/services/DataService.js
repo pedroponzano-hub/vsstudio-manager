@@ -1677,6 +1677,13 @@ const DataService = {
     return { ...this.getData(), config };
   },
 
+  async updateProfessionalSettings(updates) {
+    const config = normalizeConfig({ ...this.getConfig(), ...updates });
+    await syncConfigToFirestore(config);
+    writeCollection("config", config);
+    return { ...this.getData(), config };
+  },
+
   createService(serviceInput) {
     const currentConfig = this.getConfig();
     const categoryName = cleanText(serviceInput.category);

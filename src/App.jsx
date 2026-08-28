@@ -18,7 +18,7 @@ import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, defaultPageForRole, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
+import { allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem, resolveRouteForUser } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
 
@@ -139,10 +139,25 @@ function getPlatformModeFromPath(pathname = "") {
 
 function getInitialPageFromPath(pathname = "") {
   const normalizedPath = String(pathname || "").toLowerCase();
+  if (normalizedPath === "/no-permissions" || normalizedPath.startsWith("/no-permissions/")) return "access.noPermissions";
+  if (normalizedPath === "/pos/my-agenda" || normalizedPath.startsWith("/pos/my-agenda/")) return "professional.agenda";
+  if (normalizedPath === "/pos/my-commissions" || normalizedPath.startsWith("/pos/my-commissions/")) return "professional.commissions";
   if (normalizedPath === "/pos/agenda-v2" || normalizedPath.startsWith("/pos/agenda-v2/")) return "pos.agendaV2";
   if (normalizedPath === "/manager/dashboard/monthly" || normalizedPath.startsWith("/manager/dashboard/monthly/")) return "dashboard.monthly";
   if (normalizedPath === "/manager/dashboard/daily" || normalizedPath.startsWith("/manager/dashboard/daily/")) return "dashboard.daily";
-  return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "agenda.appointments" : "dashboard.daily";
+  return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "pos.agendaV2" : "dashboard.daily";
+}
+
+function pathForPage(pageId = "") {
+  const paths = {
+    "access.noPermissions": "/no-permissions",
+    "professional.agenda": "/pos/my-agenda",
+    "professional.commissions": "/pos/my-commissions",
+    "pos.agendaV2": "/pos/agenda-v2",
+    "dashboard.daily": "/manager/dashboard/daily",
+    "dashboard.monthly": "/manager/dashboard/monthly",
+  };
+  return paths[pageId] || "";
 }
 
 function money(value) {
@@ -364,10 +379,6 @@ function firstNavigationKeyForTab(sections, tabId) {
   return "";
 }
 
-function firstNavigationItem(sections) {
-  return sections[0]?.items?.[0] || null;
-}
-
 function navigationItemForPage(sections, pageId) {
   for (const section of sections) {
     const item = section.items.find((entry) => entry.pageId === pageId);
@@ -481,6 +492,26 @@ function App() {
   }, [data, effectiveRole, ownCommissionsData]);
   const clientMap = useMemo(() => Object.fromEntries(scopedData.clients.map((client) => [client.id, client.name])), [scopedData.clients]);
 
+  const navigateToRoute = (route, { replace = true } = {}) => {
+    const nextRoute = route || "/no-permissions";
+    if (replace) window.history.replaceState(null, "", nextRoute);
+    else window.history.pushState(null, "", nextRoute);
+    const nextPage = getInitialPageFromPath(nextRoute);
+    const nextPlatform = getPlatformModeFromPath(nextRoute);
+    setPlatformMode(nextPlatform);
+    setActivePage(nextPage);
+    const nextSections = buildVisibleNavigation(allowedTabIds, effectiveRole, nextPlatform);
+    const nextItem = navigationItemForPage(nextSections, nextPage);
+    setActiveTab(nextItem?.tabId || "");
+    setActiveNavKey(nextItem?.key || "");
+    setMobileMenuOpen(false);
+  };
+
+  const goToDefaultArea = () => {
+    navigateToRoute(getDefaultRouteForUser(user));
+    setAccessDeniedMessage("");
+  };
+
   useEffect(() => {
     const syncPlatformMode = () => {
       if (window.location.pathname === "/") {
@@ -508,15 +539,24 @@ function App() {
     if (landingUserRef.current === userKey) return;
     landingUserRef.current = userKey;
 
-    if (defaultPageForRole(effectiveRole) !== "pos.agendaV2") return;
-
-    window.history.replaceState(null, "", "/pos/agenda-v2");
-    setPlatformMode("pos");
-    setActivePage("pos.agendaV2");
-    setActiveTab("agenda");
-    setActiveNavKey("agenda-operational-v2");
-    setAccessDeniedMessage("");
-  }, [effectiveRole, user]);
+    const requestedPage = getInitialPageFromPath(window.location.pathname);
+    const requestedPlatform = getPlatformModeFromPath(window.location.pathname);
+    const requestedSections = buildVisibleNavigation(allowedTabIds, effectiveRole, requestedPlatform);
+    const requestedItem = navigationItemForPage(requestedSections, requestedPage);
+    const shouldUseDefault = effectiveRole === "direccion"
+      || resolveRouteForUser(user, window.location.pathname) !== window.location.pathname
+      || !requestedItem
+      || !allowedTabIds.includes(requestedItem.tabId);
+    if (shouldUseDefault) {
+      const defaultRoute = getDefaultRouteForUser(user);
+      const requestedManagerWithoutAccess = window.location.pathname.toLowerCase().startsWith("/manager")
+        && !defaultRoute.startsWith("/manager");
+      navigateToRoute(defaultRoute);
+      setAccessDeniedMessage(requestedManagerWithoutAccess ? "No tienes permisos para acceder a Manager." : "");
+    } else {
+      setAccessDeniedMessage("");
+    }
+  }, [allowedTabIds, effectiveRole, user]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -555,24 +595,16 @@ function App() {
 
   useEffect(() => {
     if (!user) return;
+    if (activePage === "access.noPermissions" && getDefaultRouteForUser(user) === "/no-permissions") return;
     const pageItem = navigationItemForPage(visibleNavigation, activePage);
     if (pageItem && allowedTabIds.includes(pageItem.tabId)) {
       if (activeTab !== pageItem.tabId) setActiveTab(pageItem.tabId);
-      if (accessDeniedMessage) setAccessDeniedMessage("");
       return;
     }
 
-    const roleDefaultPage = defaultPageForRole(effectiveRole);
-    const firstItem = navigationItemForPage(visibleNavigation, roleDefaultPage) || firstNavigationItem(visibleNavigation);
-    if (roleDefaultPage === "pos.agendaV2") {
-      window.history.replaceState(null, "", "/pos/agenda-v2");
-      setPlatformMode("pos");
-    }
     setAccessDeniedMessage("No tienes permisos para acceder a esta sección.");
-    setActivePage(firstItem?.pageId || "agenda.appointments");
-    setActiveTab(firstItem?.tabId || allowedTabIds[0] || "agenda");
-    setActiveNavKey(firstItem?.key || "");
-  }, [accessDeniedMessage, activePage, activeTab, allowedTabIds, effectiveRole, visibleNavigation, user]);
+    navigateToRoute(getDefaultRouteForUser(user));
+  }, [activePage, activeTab, allowedTabIds, effectiveRole, visibleNavigation, user]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -728,6 +760,12 @@ function App() {
     if (!canPerform(effectiveRole, "manageSettings")) return;
     setData(DataService.updateConfig(updates));
   };
+  const updateProfessionalConfig = async (updates) => {
+    if (!canPerform(effectiveRole, "manageSettings")) throw new Error("No tienes permisos para guardar profesionales.");
+    const nextData = await DataService.updateProfessionalSettings(updates);
+    setData(nextData);
+    return nextData;
+  };
   const updateFinanceControls = (financeControls) => {
     if (!canPerform(effectiveRole, "viewFinance")) return;
     setData(DataService.updateConfig({ financeControls }));
@@ -854,6 +892,8 @@ function App() {
   };
 
   const openNavigationItem = (item) => {
+    const nextPath = pathForPage(item.pageId);
+    if (nextPath) window.history.pushState(null, "", nextPath);
     setActiveTab(item.tabId);
     setActivePage(item.pageId);
     setActiveNavKey(item.key);
@@ -1021,6 +1061,7 @@ function App() {
       <section className="module">
         <section className="panel">
           <p className="empty-state">No tienes permisos para acceder a esta sección.</p>
+          <button type="button" onClick={goToDefaultArea}>Ir a mi área</button>
         </section>
       </section>
     );
@@ -1034,6 +1075,15 @@ function App() {
     );
 
     switch (activePage) {
+      case "access.noPermissions":
+        return (
+          <section className="module">
+            <section className="panel">
+              <h2>Sin permisos asignados</h2>
+              <p className="empty-state">Tu cuenta no tiene permisos asignados. Contacta con el administrador.</p>
+            </section>
+          </section>
+        );
       case "professional.agenda":
         return canAccessTab(effectiveRole, "professionalAgenda") ? <ProfessionalAgenda appointments={scopedData.appointments} /> : accessDeniedPage;
       case "professional.sales":
@@ -1195,7 +1245,7 @@ function App() {
           />
         ) : accessDeniedPage;
       case "settings.professionals":
-        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsReal config={scopedData.config} currentUser={user} onSave={updateConfig} /> : accessDeniedPage;
+        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsReal config={scopedData.config} currentUser={user} onSave={updateProfessionalConfig} /> : accessDeniedPage;
       case "settings.services":
       case "settings.products":
       case "settings.catalogs":
@@ -1289,7 +1339,7 @@ function App() {
       {accessDeniedMessage && (
         <section className="version-notice" aria-live="polite">
           <span>{accessDeniedMessage}</span>
-          <button type="button" onClick={() => setAccessDeniedMessage("")}>Cerrar</button>
+          <button type="button" onClick={goToDefaultArea}>Ir a mi área</button>
         </section>
       )}
 
