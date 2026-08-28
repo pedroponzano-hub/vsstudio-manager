@@ -100,6 +100,15 @@ function resolveRouteForUser(user = {}, requestedPath = "") {
   return canAccessRouteForUser(user, requestedPath) ? requestedPath : getDefaultRouteForUser(user);
 }
 
+function accessDeniedMessageForRoute(user = {}, requestedPath = "") {
+  if (canAccessRouteForUser(user, requestedPath)) return "";
+  const path = String(requestedPath || "/").toLowerCase();
+  if (path === "/manager" || path.startsWith("/manager/")) {
+    return "No tienes permisos para acceder a Manager.";
+  }
+  return "No tienes permisos para acceder a esta sección.";
+}
+
 function isOwnEmployeeOnly(role) {
   return Boolean(rolePermissions(role).ownEmployeeOnly);
 }
@@ -127,6 +136,7 @@ function onlyOwnEmployeeItems(items, user) {
 }
 
 export {
+  accessDeniedMessageForRoute,
   allowedTabsForRole,
   canAccessRouteForUser,
   canAccessDashboardSection,

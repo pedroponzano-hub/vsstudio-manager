@@ -18,7 +18,7 @@ import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem, resolveRouteForUser } from "./permissions.js";
+import { accessDeniedMessageForRoute, allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem, resolveRouteForUser } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
 
@@ -514,9 +514,6 @@ function App() {
 
   useEffect(() => {
     const syncPlatformMode = () => {
-      if (window.location.pathname === "/") {
-        window.history.replaceState(null, "", `/manager${window.location.search}${window.location.hash}`);
-      }
       setPlatformMode(getPlatformModeFromPath(window.location.pathname));
       setActivePage((currentPage) => {
         const pageFromPath = getInitialPageFromPath(window.location.pathname);
@@ -539,23 +536,23 @@ function App() {
     if (landingUserRef.current === userKey) return;
     landingUserRef.current = userKey;
 
-    const requestedPage = getInitialPageFromPath(window.location.pathname);
-    const requestedPlatform = getPlatformModeFromPath(window.location.pathname);
+    const requestedPath = window.location.pathname;
+    const requestedPage = getInitialPageFromPath(requestedPath);
+    const requestedPlatform = getPlatformModeFromPath(requestedPath);
     const requestedSections = buildVisibleNavigation(allowedTabIds, effectiveRole, requestedPlatform);
     const requestedItem = navigationItemForPage(requestedSections, requestedPage);
-    const shouldUseDefault = effectiveRole === "direccion"
-      || resolveRouteForUser(user, window.location.pathname) !== window.location.pathname
-      || !requestedItem
-      || !allowedTabIds.includes(requestedItem.tabId);
-    if (shouldUseDefault) {
-      const defaultRoute = getDefaultRouteForUser(user);
-      const requestedManagerWithoutAccess = window.location.pathname.toLowerCase().startsWith("/manager")
-        && !defaultRoute.startsWith("/manager");
-      navigateToRoute(defaultRoute);
-      setAccessDeniedMessage(requestedManagerWithoutAccess ? "No tienes permisos para acceder a Manager." : "");
-    } else {
+    const resolvedRoute = resolveRouteForUser(user, requestedPath);
+    const requestedRouteIsAllowed = resolvedRoute === requestedPath
+      && requestedItem
+      && allowedTabIds.includes(requestedItem.tabId);
+
+    if (requestedPath === "/" || effectiveRole === "direccion") {
+      navigateToRoute(getDefaultRouteForUser(user));
       setAccessDeniedMessage("");
+      return;
     }
+
+    setAccessDeniedMessage(requestedRouteIsAllowed ? "" : accessDeniedMessageForRoute(user, requestedPath));
   }, [allowedTabIds, effectiveRole, user]);
 
   useEffect(() => {
@@ -599,11 +596,11 @@ function App() {
     const pageItem = navigationItemForPage(visibleNavigation, activePage);
     if (pageItem && allowedTabIds.includes(pageItem.tabId)) {
       if (activeTab !== pageItem.tabId) setActiveTab(pageItem.tabId);
+      setAccessDeniedMessage("");
       return;
     }
 
-    setAccessDeniedMessage("No tienes permisos para acceder a esta sección.");
-    navigateToRoute(getDefaultRouteForUser(user));
+    setAccessDeniedMessage(accessDeniedMessageForRoute(user, window.location.pathname));
   }, [activePage, activeTab, allowedTabIds, effectiveRole, visibleNavigation, user]);
 
   useEffect(() => {
