@@ -8,6 +8,10 @@ import {
   calculateAppointmentEndTime,
   canTransitionAppointmentStatus,
   createAppointmentOperation,
+  filterAppointmentServices,
+  filterOperationalAppointments,
+  isAppointmentBlocking,
+  normalizeAppointmentSearchText,
 } from "../src/utils/appointmentModel.js";
 
 const basePayload = {
@@ -78,6 +82,47 @@ test("una cita cancelada o no presentada no bloquea disponibilidad", () => {
   const noShow = buildAppointmentRecord({ ...basePayload, status: "No se presentó" }, { id: "no-show" });
   const candidate = buildAppointmentRecord(basePayload, { id: "candidate" });
   assert.equal(appointmentHasConflict(candidate, [cancelled, noShow]), false);
+  assert.equal(appointmentHasConflict(cancelled, [candidate]), false);
+});
+
+test("centraliza los estados que bloquean horario", () => {
+  assert.equal(isAppointmentBlocking("Confirmada"), true);
+  assert.equal(isAppointmentBlocking("En servicio"), true);
+  assert.equal(isAppointmentBlocking("Finalizada"), true);
+  assert.equal(isAppointmentBlocking("Cancelada"), false);
+  assert.equal(isAppointmentBlocking("No se presentó"), false);
+});
+
+test("excluye canceladas y no presentadas de la parrilla, pero conserva los registros para la lista", () => {
+  const appointments = [
+    { id: "active", status: "Confirmada" },
+    { id: "cancelled", status: "Cancelada" },
+    { id: "no-show", status: "No se presentó" },
+  ];
+  assert.deepEqual(filterOperationalAppointments(appointments).map((item) => item.id), ["active"]);
+  assert.deepEqual(appointments.map((item) => item.id), ["active", "cancelled", "no-show"]);
+});
+
+test("filtra servicios por palabras parciales, sin mayúsculas ni tildes", () => {
+  const services = [
+    { id: "volume", name: "Extensiones de pestañas volumen ruso" },
+    { id: "manicure", name: "Mujer - Manicura completa - Semipermanente" },
+    { id: "brows", name: "Mujer - Depilación de cejas con cera" },
+  ];
+  assert.deepEqual(filterAppointmentServices(services, "volumen").map((item) => item.id), ["volume"]);
+  assert.deepEqual(filterAppointmentServices(services, "manicura semi").map((item) => item.id), ["manicure"]);
+  assert.deepEqual(filterAppointmentServices(services, "depilacion cejas").map((item) => item.id), ["brows"]);
+  assert.equal(normalizeAppointmentSearchText("  DEPILACIÓN  "), "depilacion");
+  assert.equal(filterAppointmentServices(services, "depilacion")[0].id, "brows");
+});
+
+test("seleccionar un servicio filtrado conserva su serviceId real", () => {
+  const services = [
+    { id: "service-real-volume", name: "Extensiones de pestañas volumen ruso" },
+  ];
+  const selected = filterAppointmentServices(services, "volumen")[0];
+  const appointment = buildAppointmentRecord({ ...basePayload, serviceId: selected.id, serviceName: selected.name }, { id: "selected-service" });
+  assert.equal(appointment.serviceId, "service-real-volume");
 });
 
 test("mantiene transiciones operativas controladas", () => {

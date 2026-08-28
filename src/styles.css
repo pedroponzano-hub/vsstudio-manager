@@ -4707,6 +4707,8 @@ button.manager-metric-card:hover {
 }
 
 .appointment-client-search,
+.appointment-quick-client,
+.appointment-client-notice,
 .appointment-date-time-row,
 .appointment-notes-field,
 .appointment-real-summary,
@@ -4717,6 +4719,40 @@ button.manager-metric-card:hover {
 
 .appointment-client-search {
   position: relative;
+}
+
+.appointment-service-search {
+  position: relative;
+}
+
+.appointment-service-results {
+  max-height: 300px;
+}
+
+.appointment-quick-client {
+  border: 1px solid var(--border-color, #dfe4ea);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+  padding: 14px;
+}
+
+.appointment-quick-client legend {
+  font-weight: 700;
+  padding: 0 6px;
+}
+
+.appointment-quick-client-fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.appointment-create-client-action {
+  border-top: 1px solid var(--border-color, #dfe4ea);
+  margin-top: 4px;
 }
 
 .appointment-client-results {
@@ -4760,7 +4796,8 @@ button.manager-metric-card:hover {
   }
 
   .appointment-real-form,
-  .appointment-date-time-row {
+  .appointment-date-time-row,
+  .appointment-quick-client-fields {
     grid-template-columns: minmax(0, 1fr);
   }
 

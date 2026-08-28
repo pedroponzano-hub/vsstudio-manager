@@ -5,7 +5,7 @@ import OperationalCalendarDayView from "./OperationalCalendarDayView.jsx";
 import { getTodayLocalDateString } from "../utils/date.js";
 import { shiftLocalDate } from "../utils/agendaCalendarDemo.js";
 import { formatDuration, getStatusClassName, normalizeTime, valueOrFallback } from "../utils/availabilityDemo.js";
-import { normalizeAppointmentRecord } from "../utils/appointmentModel.js";
+import { filterOperationalAppointments, normalizeAppointmentRecord } from "../utils/appointmentModel.js";
 import { realAgendaProfessionals, realAgendaServices } from "../utils/agendaRealConfig.js";
 
 function AgendaList({ onSelectAppointment, rows = [] }) {
@@ -40,6 +40,7 @@ function OperationalAgendaReal({
   clients = [],
   config = {},
   onCreateAppointment,
+  onCreateClient,
   onLoadAppointmentsByDate,
   onUpdateAppointment,
 }) {
@@ -107,6 +108,8 @@ function OperationalAgendaReal({
     })
     .sort((first, second) => String(first.time || "99:99").localeCompare(String(second.time || "99:99"))), [appointmentsForDate, clientMap, services]);
   const formattedDate = useMemo(() => new Intl.DateTimeFormat("es-ES", { day: "2-digit", month: "short", weekday: "short" }).format(new Date(`${selectedDate}T12:00:00`)), [selectedDate]);
+  const operationalRows = useMemo(() => filterOperationalAppointments(rows), [rows]);
+  const visibleRows = view === "calendar" ? operationalRows : rows;
 
   const openNewAppointment = (defaults = {}) => {
     setNotice("");
@@ -163,9 +166,9 @@ function OperationalAgendaReal({
       </section>
 
       <section className="agenda-summary-bar" aria-live="polite">
-        <strong>{formattedDate} · {rows.length} {rows.length === 1 ? "cita" : "citas"}</strong>
-        <span>Primera: {rows[0]?.time || "—"}</span>
-        <span>Última: {rows[rows.length - 1]?.time || "—"}</span>
+        <strong>{formattedDate} · {visibleRows.length} {visibleRows.length === 1 ? "cita" : "citas"}</strong>
+        <span>Primera: {visibleRows[0]?.time || "—"}</span>
+        <span>Última: {visibleRows[visibleRows.length - 1]?.time || "—"}</span>
         <span>{loadingDate ? "Cargando Firebase…" : "Agenda sincronizada por fecha"}</span>
       </section>
 
@@ -174,7 +177,7 @@ function OperationalAgendaReal({
 
       {view === "calendar" ? (
         <OperationalCalendarDayView
-          rows={rows}
+          rows={operationalRows}
           professionals={professionals}
           services={services}
           selectedDate={selectedDate}
@@ -193,6 +196,7 @@ function OperationalAgendaReal({
           initialProfessionalId={modalState.initialProfessionalId}
           initialStartTime={modalState.initialStartTime}
           onClose={() => setModalState(null)}
+          onCreateClient={onCreateClient}
           onSave={saveAppointment}
           onStatusChange={changeAppointmentStatus}
           professionals={professionals}

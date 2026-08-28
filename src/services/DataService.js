@@ -8,6 +8,7 @@ import {
   normalizeAppointmentDate,
   normalizeAppointmentRecord,
 } from "../utils/appointmentModel.js";
+import { createQuickClientOperation, findQuickClientDuplicate } from "../utils/clientQuickCreate.js";
 import {
   getMadridDateString,
   getMadridDayOfMonth,
@@ -288,6 +289,15 @@ async function readFirestoreAppointmentsByDate(date) {
   if (!normalizedDate) throw new Error("La fecha de Agenda no es válida.");
   const snapshot = await getDocs(query(collection(db, "appointments"), where("date", "==", normalizedDate)));
   return snapshot.docs.map((document) => normalizeAppointmentRecord({ id: document.id, ...document.data() }));
+}
+
+async function readFirestoreAppointmentsByClientId(clientId) {
+  const safeClientId = cleanText(clientId);
+  if (!safeClientId) return [];
+  const snapshot = await getDocs(query(collection(db, "appointments"), where("clientId", "==", safeClientId)));
+  return snapshot.docs
+    .map((document) => normalizeAppointmentRecord({ id: document.id, ...document.data() }))
+    .sort((first, second) => `${second.date} ${second.startTime}`.localeCompare(`${first.date} ${first.startTime}`));
 }
 
 async function readFirestoreAppointment(appointmentId) {
@@ -1142,14 +1152,7 @@ function normalizeEmail(value) {
 }
 
 function findExistingClient(clients, clientInput = {}) {
-  const phone = normalizePhone(clientInput.phoneNormalized || clientInput.phone);
-  const email = normalizeEmail(clientInput.email);
-
-  return clients.find((client) => {
-    const clientPhone = normalizePhone(client.phoneNormalized || client.phone);
-    const clientEmail = normalizeEmail(client.email);
-    return (phone && clientPhone === phone) || (email && clientEmail === email);
-  });
+  return findQuickClientDuplicate(clients, clientInput) || undefined;
 }
 
 function firstValue(row, keys) {
@@ -1276,6 +1279,10 @@ const DataService = {
     const appointments = await readFirestoreAppointmentsByDate(normalizedDate);
     mergeAppointmentDateIntoLocal(normalizedDate, appointments);
     return appointments;
+  },
+
+  async getAppointmentsByClientId(clientId) {
+    return readFirestoreAppointmentsByClientId(clientId);
   },
 
   getCommissionStatuses() {
@@ -1624,6 +1631,26 @@ const DataService = {
     const clients = writeCollection("clients", [client, ...currentClients]);
     saveDocumentToFirestore("clients", client);
     return { data: { ...this.getData(), clients }, client };
+  },
+
+  async createAgendaClient(clientInput) {
+    const currentClients = this.getClients();
+    const result = await createQuickClientOperation(clientInput, {
+      clients: currentClients,
+      createClientId: () => createId("client"),
+      saveClient: async (candidate) => {
+        const client = normalizeClient({
+          ...candidate,
+          observations: candidate.observations ?? candidate.notes ?? "",
+        });
+        await setDoc(doc(db, "clients", client.id), cleanFirestoreData(client));
+        return client;
+      },
+    });
+    const clients = result.created
+      ? writeCollection("clients", [result.client, ...currentClients])
+      : currentClients;
+    return { ...result, data: { ...this.getData(), clients } };
   },
 
   importTreatwellClients(rows = []) {

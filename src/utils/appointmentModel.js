@@ -6,8 +6,6 @@ const APPOINTMENT_STATUSES = Object.freeze([
   "No se presentó",
 ]);
 
-const TERMINAL_NON_BLOCKING_STATUSES = new Set(["Cancelada", "No se presentó"]);
-
 const STATUS_TRANSITIONS = Object.freeze({
   Confirmada: ["En servicio", "Cancelada", "No se presentó"],
   "En servicio": ["Finalizada", "Cancelada"],
@@ -30,6 +28,19 @@ function cleanText(value = "") {
 
 function normalizeText(value = "") {
   return cleanText(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+export function normalizeAppointmentSearchText(value = "") {
+  return normalizeText(value).replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function filterAppointmentServices(services = [], query = "") {
+  const terms = normalizeAppointmentSearchText(query).split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return services;
+  return services.filter((service) => {
+    const searchableName = normalizeAppointmentSearchText(service.name);
+    return terms.every((term) => searchableName.includes(term));
+  });
 }
 
 export function normalizeAppointmentDate(value = "") {
@@ -85,6 +96,14 @@ export function normalizeAppointmentStatus(value = "") {
   if (normalized === "cancelada") return "Cancelada";
   if (normalized.includes("no se present")) return "No se presentó";
   return "";
+}
+
+export function isAppointmentBlocking(status = "") {
+  return ["Confirmada", "En servicio", "Finalizada"].includes(normalizeAppointmentStatus(status));
+}
+
+export function filterOperationalAppointments(appointments = []) {
+  return appointments.filter((appointment) => isAppointmentBlocking(appointment.status || appointment.appointmentStatus));
 }
 
 export function normalizeAppointmentOrigin(value = "") {
@@ -192,6 +211,7 @@ export function buildAppointmentRecord(payload = {}, { actor = {}, existing = {}
 
 export function appointmentHasConflict(candidate, appointments = [], excludeId = "") {
   const normalizedCandidate = normalizeAppointmentRecord(candidate);
+  if (!isAppointmentBlocking(normalizedCandidate.status)) return false;
   const candidateStart = appointmentTimeToMinutes(normalizedCandidate.startTime);
   const candidateEnd = appointmentTimeToMinutes(normalizedCandidate.endTime);
   if (!normalizedCandidate.date || !normalizedCandidate.professionalId || !Number.isFinite(candidateStart) || !Number.isFinite(candidateEnd)) return false;
@@ -199,7 +219,7 @@ export function appointmentHasConflict(candidate, appointments = [], excludeId =
   return appointments.some((appointment) => {
     const existing = normalizeAppointmentRecord(appointment);
     if (!existing.id || existing.id === excludeId || existing.date !== normalizedCandidate.date) return false;
-    if (TERMINAL_NON_BLOCKING_STATUSES.has(existing.status)) return false;
+    if (!isAppointmentBlocking(existing.status)) return false;
     const sameProfessional = existing.professionalId
       ? existing.professionalId === normalizedCandidate.professionalId
       : normalizeText(existing.professionalName) === normalizeText(normalizedCandidate.professionalName);

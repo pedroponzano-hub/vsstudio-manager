@@ -724,6 +724,12 @@ function App() {
     setData(result.data);
     return result.client;
   };
+  const createClientFromAgenda = async (client) => {
+    if (!canPerform(effectiveRole, "manageClients")) throw new Error("No tienes permisos para crear clientes.");
+    const result = await DataService.createAgendaClient(client);
+    setData(result.data);
+    return result;
+  };
   const updateClient = (clientId, updates) => {
     if (!canPerform(effectiveRole, "manageClients")) return;
     DataService.updateClient(clientId, updates);
@@ -1161,6 +1167,7 @@ function App() {
             clients={scopedData.clients}
             config={scopedData.config}
             onCreateAppointment={addAppointment}
+            onCreateClient={roleCanManageClients ? createClientFromAgenda : null}
             onLoadAppointmentsByDate={loadAppointmentsByDate}
             onUpdateAppointment={updateAppointment}
           />

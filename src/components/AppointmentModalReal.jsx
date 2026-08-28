@@ -4,6 +4,7 @@ import {
   appointmentDurationMinutes,
   appointmentHasConflict,
   calculateAppointmentEndTime,
+  filterAppointmentServices,
   normalizeAppointmentOrigin,
   normalizeAppointmentRecord,
 } from "../utils/appointmentModel.js";
@@ -46,6 +47,7 @@ function createInitialDraft({ appointment, initialDate, initialProfessionalId, i
       origin: normalized.origin,
       professionalId: normalized.professionalId,
       serviceId: normalized.serviceId,
+      serviceQuery: normalized.serviceName,
       startTime: normalized.startTime,
     };
   }
@@ -62,6 +64,7 @@ function createInitialDraft({ appointment, initialDate, initialProfessionalId, i
     origin: "manual",
     professionalId: professional?.id || "",
     serviceId: service?.id || "",
+    serviceQuery: service?.name || "",
     startTime: initialStartTime || "",
   };
 }
@@ -75,6 +78,7 @@ function AppointmentModalReal({
   initialProfessionalId = "",
   initialStartTime = "",
   onClose,
+  onCreateClient,
   onSave,
   onStatusChange,
   professionals = [],
@@ -90,6 +94,11 @@ function AppointmentModalReal({
     services,
   }));
   const [clientResultsOpen, setClientResultsOpen] = useState(false);
+  const [serviceResultsOpen, setServiceResultsOpen] = useState(false);
+  const [quickClientOpen, setQuickClientOpen] = useState(false);
+  const [quickClient, setQuickClient] = useState({ name: "", phone: "", email: "" });
+  const [createdClient, setCreatedClient] = useState(null);
+  const [clientNotice, setClientNotice] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -101,7 +110,12 @@ function AppointmentModalReal({
     return [...new Map(entries.map(([value, label]) => [value, [value, label]])).values()];
   }, [configuredOrigins]);
 
-  const selectedClient = clients.find((client) => client.id === draft.clientId) || null;
+  const availableClients = useMemo(() => (
+    createdClient && !clients.some((client) => client.id === createdClient.id)
+      ? [createdClient, ...clients]
+      : clients
+  ), [clients, createdClient]);
+  const selectedClient = availableClients.find((client) => client.id === draft.clientId) || null;
   const selectedService = services.find((service) => service.id === draft.serviceId) || null;
   const selectedProfessional = professionals.find((professional) => professional.id === draft.professionalId) || null;
   const compatibleProfessionals = useMemo(() => professionals.filter((professional) => (
@@ -110,10 +124,13 @@ function AppointmentModalReal({
   const filteredClients = useMemo(() => {
     const query = String(draft.clientQuery || "").trim().toLowerCase();
     if (!query) return [];
-    return clients.filter((client) => (
+    return availableClients.filter((client) => (
       `${clientDisplayName(client)} ${client.phone || ""} ${client.email || ""}`.toLowerCase().includes(query)
     )).slice(0, 10);
-  }, [clients, draft.clientQuery]);
+  }, [availableClients, draft.clientQuery]);
+  const filteredServices = useMemo(() => (
+    filterAppointmentServices(services, draft.serviceQuery).slice(0, 20)
+  ), [draft.serviceQuery, services]);
   const endTime = calculateAppointmentEndTime(draft.startTime, draft.durationMinutes);
   const normalizedAppointment = appointment ? normalizeAppointmentRecord(appointment) : null;
 
@@ -125,17 +142,41 @@ function AppointmentModalReal({
   const selectClient = (client) => {
     updateDraft({ clientId: client.id, clientQuery: clientDisplayName(client) });
     setClientResultsOpen(false);
+    setQuickClientOpen(false);
   };
 
-  const selectService = (serviceId) => {
-    const service = services.find((item) => item.id === serviceId);
+  const selectService = (service) => {
+    const serviceId = service?.id || "";
     const professionalIsCompatible = selectedProfessional?.serviceIds?.includes(serviceId);
     const nextProfessional = professionalIsCompatible ? selectedProfessional : null;
     updateDraft({
       serviceId,
+      serviceQuery: service?.name || "",
       professionalId: nextProfessional?.id || "",
       durationMinutes: service ? defaultDurationForService(service, nextProfessional) : 30,
     });
+    setServiceResultsOpen(false);
+  };
+
+  const createQuickClient = async (event) => {
+    event.preventDefault();
+    if (!onCreateClient) return;
+    setSaving(true);
+    setError("");
+    setClientNotice("");
+    try {
+      const result = await onCreateClient(quickClient);
+      const client = result?.client || result;
+      if (!client?.id) throw new Error("No se pudo obtener el identificador real del cliente.");
+      setCreatedClient(client);
+      selectClient(client);
+      setQuickClient({ name: "", phone: "", email: "" });
+      setClientNotice(result?.created === false ? "Ya existía un cliente con ese teléfono o email; se ha seleccionado." : "Cliente creado y seleccionado correctamente.");
+    } catch (clientError) {
+      setError(clientError?.message || "No se pudo crear el cliente en Firebase.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const selectProfessional = (professionalId) => {
@@ -221,6 +262,7 @@ function AppointmentModalReal({
               value={draft.clientQuery}
               onChange={(event) => {
                 updateDraft({ clientId: "", clientQuery: event.target.value });
+                setClientNotice("");
                 setClientResultsOpen(Boolean(event.target.value.trim()));
               }}
               onFocus={() => setClientResultsOpen(Boolean(draft.clientQuery.trim()))}
@@ -234,16 +276,64 @@ function AppointmentModalReal({
                   </button>
                 ))}
                 {filteredClients.length === 0 && <p className="empty-state">No hay clientes que coincidan.</p>}
+                {onCreateClient && (
+                  <button
+                    className="service-result appointment-create-client-action"
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      setClientResultsOpen(false);
+                      setQuickClient((current) => ({ ...current, name: current.name || draft.clientQuery.trim() }));
+                      setQuickClientOpen(true);
+                    }}
+                  >
+                    <strong>+ Crear nuevo cliente</strong>
+                    <span>Alta rápida sin salir de la cita</span>
+                  </button>
+                )}
               </div>
             )}
           </label>
 
-          <label>
+          {quickClientOpen && (
+            <fieldset className="appointment-quick-client">
+              <legend>Nuevo cliente</legend>
+              <div className="appointment-quick-client-fields">
+                <label>Nombre *<input autoFocus value={quickClient.name} onChange={(event) => setQuickClient((current) => ({ ...current, name: event.target.value }))} /></label>
+                <label>Teléfono *<input inputMode="tel" value={quickClient.phone} onChange={(event) => setQuickClient((current) => ({ ...current, phone: event.target.value }))} /></label>
+                <label>Email<input type="email" value={quickClient.email} onChange={(event) => setQuickClient((current) => ({ ...current, email: event.target.value }))} /></label>
+              </div>
+              <div className="row-actions">
+                <button type="button" disabled={saving} onClick={createQuickClient}>{saving ? "Creando…" : "Crear y seleccionar"}</button>
+                <button className="secondary-button" type="button" disabled={saving} onClick={() => setQuickClientOpen(false)}>Cancelar</button>
+              </div>
+            </fieldset>
+          )}
+          {clientNotice && <p className="success-message appointment-client-notice" role="status">{clientNotice}</p>}
+
+          <label className="appointment-service-search">
             Servicio
-            <select value={draft.serviceId} onChange={(event) => selectService(event.target.value)}>
-              <option value="">Seleccionar servicio…</option>
-              {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-            </select>
+            <input
+              autoComplete="off"
+              placeholder="Escribe para buscar un servicio"
+              value={draft.serviceQuery}
+              onChange={(event) => {
+                updateDraft({ serviceId: "", serviceQuery: event.target.value });
+                setServiceResultsOpen(true);
+              }}
+              onFocus={() => setServiceResultsOpen(true)}
+            />
+            {serviceResultsOpen && (
+              <div className="service-results appointment-service-results">
+                {filteredServices.map((service) => (
+                  <button className="service-result" key={service.id} type="button" onMouseDown={() => selectService(service)}>
+                    <strong>{service.name}</strong>
+                    <span>{appointmentDurationMinutes(service.durationMinutes ?? service.duration)} min{Number.isFinite(Number(service.price)) ? ` · ${Number(service.price).toFixed(2)} €` : ""}</span>
+                  </button>
+                ))}
+                {filteredServices.length === 0 && <p className="empty-state">No se encontraron servicios</p>}
+              </div>
+            )}
           </label>
 
           <label>
