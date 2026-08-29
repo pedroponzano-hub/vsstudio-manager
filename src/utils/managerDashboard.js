@@ -103,9 +103,11 @@ function resolvedServices(sale, catalog) {
   });
 }
 
-function matchesProfessional(sale, professional) {
+function matchesProfessional(sale, professional, config = {}) {
   if (!professional || professional === "all") return true;
-  return sale.professionalId === professional || sale.employeeId === professional || sale.employee === professional || sale.professionalName === professional;
+  const configured = (config.employeeSettings || []).find((item) => item.id === professional || item.professionalId === professional);
+  const names = [professional, configured?.name, configured?.displayName].filter(Boolean);
+  return sale.professionalId === professional || sale.employeeId === professional || names.includes(sale.employee) || names.includes(sale.professionalName);
 }
 
 function matchesCategory(sale, category, catalog) {
@@ -145,13 +147,13 @@ export function deriveManagerDashboard(source = {}, options = {}) {
   const { bounds, period = "month", professional = "all", category = "all" } = options;
   const catalog = serviceCatalogMap(source.config);
   const allSales = source.sales || [];
-  const sales = allSales.filter(isCollectedSale).filter((sale) => inRange(sale, bounds)).filter((sale) => matchesProfessional(sale, professional)).filter((sale) => matchesCategory(sale, category, catalog));
+  const sales = allSales.filter(isCollectedSale).filter((sale) => inRange(sale, bounds)).filter((sale) => matchesProfessional(sale, professional, source.config)).filter((sale) => matchesCategory(sale, category, catalog));
   const expenses = (source.expenses || []).filter((expense) => inRange(expense, bounds));
   const pendingSales = allSales.filter((sale) => normalized(sale.status || sale.estadoVenta) === "pendiente_pago" && inRange(sale, bounds));
   const salesById = new Map(allSales.map((sale) => [sale.id, sale]));
   const commissions = (source.commissionRows || []).filter((row) => {
     const linkedSale = salesById.get(row.saleId || row.id) || row;
-    return matchesProfessional(row, professional) && matchesCategory(linkedSale, category, catalog);
+    return (matchesProfessional(row, professional, source.config) || matchesProfessional(linkedSale, professional, source.config)) && matchesCategory(linkedSale, category, catalog);
   });
   const totalSales = sales.reduce((sum, sale) => sum + saleAmount(sale), 0);
   const totalExpenses = expenses.reduce((sum, expense) => sum + number(expense.amount), 0);
@@ -164,11 +166,19 @@ export function deriveManagerDashboard(source = {}, options = {}) {
     if (sale.clientId) counts[sale.clientId] = (counts[sale.clientId] || 0) + 1;
     return counts;
   }, {});
-  const clientsNew = (source.clients || []).filter((client) => {
+  const clientsCreatedInPeriod = (source.clients || []).filter((client) => {
     const date = String(client.createdAt || client.firstVisit || client.createdDate || "").slice(0, 10);
     return date && date >= bounds.from && date <= bounds.to;
-  }).length;
-  const clientsRecurring = Object.values(clientSaleCounts).filter((count) => count > 1).length;
+  });
+  const newClients = hasDimensionFilter ? clientsCreatedInPeriod.filter((client) => clientIds.has(client.id)) : clientsCreatedInPeriod;
+  const recurringClientIds = new Set(Object.entries(clientSaleCounts).filter(([, count]) => count > 1).map(([clientId]) => clientId));
+  const clientsById = new Map((source.clients || []).map((client) => [client.id, client]));
+  const clientFromSale = (clientId) => {
+    const sale = sales.find((item) => item.clientId === clientId);
+    return clientsById.get(clientId) || { id: clientId, name: sale?.clientName || "Cliente" };
+  };
+  const recurringClients = Array.from(recurringClientIds).map(clientFromSale);
+  const clientsInSales = Array.from(clientIds).map(clientFromSale);
   const paymentMethods = Object.fromEntries(PAYMENT_METHODS.map((method) => [method, 0]));
   sales.flatMap(salePayments).forEach((payment) => {
     const method = normalizePaymentMethod(payment.method || payment.paymentMethod);
@@ -178,6 +188,7 @@ export function deriveManagerDashboard(source = {}, options = {}) {
   const byCategory = {};
   const byService = {};
   const byProfessional = {};
+  const serviceLines = [];
   sales.forEach((sale) => {
     const amount = saleAmount(sale);
     const services = resolvedServices(sale, catalog);
@@ -186,6 +197,19 @@ export function deriveManagerDashboard(source = {}, options = {}) {
       const units = number(service.quantity || 1);
       const serviceAmount = number(service.total ?? service.amount ?? service.price * units) || amount * (units / quantity);
       const serviceName = service.serviceName || service.name || "Sin servicio";
+      serviceLines.push({
+        id: `${sale.id || operationalDate(sale)}-${service.serviceId || serviceName}`,
+        saleId: sale.id || "",
+        date: operationalDate(sale),
+        clientId: sale.clientId || "",
+        clientName: sale.clientName || "Cliente mostrador",
+        professionalId: sale.professionalId || sale.employeeId || "",
+        professionalName: sale.employee || sale.professionalName || "Sin profesional",
+        serviceName,
+        category: service.category || "Sin categoría",
+        quantity: units,
+        amount: serviceAmount,
+      });
       const serviceRow = byService[serviceName] || { name: serviceName, units: 0, amount: 0 };
       serviceRow.units += units;
       serviceRow.amount += serviceAmount;
@@ -236,11 +260,17 @@ export function deriveManagerDashboard(source = {}, options = {}) {
       pendingCommissionAmount: pendingCommissions.reduce((sum, row) => sum + number(row.commissionAmount), 0),
       pendingCommissions: pendingCommissions.length,
       paidCommissions: paidCommissions.length,
-      clientsNew,
-      clientsRecurring,
+      clientsNew: newClients.length,
+      clientsRecurring: recurringClients.length,
     },
     sales,
     expenses,
+    serviceLines,
+    pendingCommissions,
+    paidCommissions,
+    clientsInSales,
+    newClients,
+    recurringClients,
     paymentMethods: Object.entries(paymentMethods).map(([name, amount]) => ({ name, amount })).filter((row) => row.amount > 0),
     salesSeries: groupSeries(sales, bounds, period),
     categories: Object.values(byCategory).sort((a, b) => b.amount - a.amount),
@@ -253,7 +283,7 @@ export function deriveManagerDashboard(source = {}, options = {}) {
 }
 
 export function managerFilterOptions(source = {}) {
-  const professionals = (source.config?.employeeSettings || []).filter((item) => item.active !== false && item.offersServices !== false).map((item) => ({ value: item.name || item.displayName, label: item.displayName || item.name })).filter((item) => item.label && item.value);
+  const professionals = (source.config?.employeeSettings || []).filter((item) => item.active !== false && item.offersServices !== false).map((item) => ({ value: item.id || item.professionalId || item.name || item.displayName, label: item.displayName || item.name })).filter((item) => item.label && item.value);
   const categories = Array.from(new Set((source.config?.services || []).filter((service) => service.active !== false).map((service) => service.category).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   return { professionals, categories };
 }

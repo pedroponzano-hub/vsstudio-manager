@@ -128,8 +128,8 @@ function ManagerDashboard({ commissionsData = {}, initialPeriod = "month", onNav
 
     <section className="manager-primary-metrics" aria-label="Indicadores principales">
       <MetricCard label="Ventas" value={money(metrics.totalSales)} onClick={() => navigate("sales")} />
-      <MetricCard label="Operaciones" value={metrics.salesCount} onClick={() => navigate("sales")} />
-      <MetricCard label="Servicios" value={metrics.servicesCount} />
+      <MetricCard label="Operaciones" value={metrics.salesCount} onClick={() => navigate("operations")} />
+      <MetricCard label="Servicios" value={metrics.servicesCount} onClick={() => navigate("services")} />
       <MetricCard label="Ticket medio" value={money(metrics.averageTicket)} />
       <MetricCard label="Clientes" value={metrics.clients} onClick={() => navigate("clients")} />
       <MetricCard label="Gastos" value={money(metrics.expenses)} tone="warning" onClick={() => navigate("expenses")} />
@@ -137,10 +137,10 @@ function ManagerDashboard({ commissionsData = {}, initialPeriod = "month", onNav
     </section>
 
     <section className="manager-secondary-metrics">
-      <MetricCard label="Comisiones pendientes" value={`${metrics.pendingCommissions} · ${money(metrics.pendingCommissionAmount)}`} tone={metrics.pendingCommissions ? "warning" : "success"} onClick={() => navigate("commissions")} />
-      <MetricCard label="Clientes nuevos" value={metrics.clientsNew} onClick={() => navigate("clients")} />
-      <MetricCard label="Clientes recurrentes" value={metrics.clientsRecurring} onClick={() => navigate("clients")} />
-      <MetricCard label="Comisiones pagadas" value={metrics.paidCommissions} onClick={() => navigate("commissions")} />
+      <MetricCard label="Comisiones pendientes" value={`${metrics.pendingCommissions} · ${money(metrics.pendingCommissionAmount)}`} tone={metrics.pendingCommissions ? "warning" : "success"} onClick={() => navigate("pending-commissions")} />
+      <MetricCard label="Clientes nuevos" value={metrics.clientsNew} onClick={() => navigate("new-clients")} />
+      <MetricCard label="Clientes recurrentes" value={metrics.clientsRecurring} onClick={() => navigate("recurring-clients")} />
+      <MetricCard label="Comisiones pagadas" value={metrics.paidCommissions} onClick={() => navigate("paid-commissions")} />
     </section>
 
     <section className="manager-dashboard-grid manager-dashboard-grid-featured">

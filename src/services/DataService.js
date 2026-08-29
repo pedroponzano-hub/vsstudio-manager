@@ -14,10 +14,10 @@ import {
   assertCommissionEditReason,
   commissionFieldsChanged,
   createCommissionAuditEntry,
-  filterOwnPositiveCommissions,
   normalizeProfessionalCommissionPolicy,
   resolveSaleCommissionSnapshot,
 } from "../utils/commissionSchedule.js";
+import { filterOwnCommissions } from "../utils/professionalHistory.js";
 import {
   getMadridDateString,
   getMadridDayOfMonth,
@@ -1357,9 +1357,10 @@ const DataService = {
     };
   },
 
-  getCommissionsForProfessional(professionalId) {
+  getCommissionsForProfessional(identity) {
     const commissions = this.getCommissions();
-    const rows = filterOwnPositiveCommissions(commissions.rows, professionalId);
+    const normalizedIdentity = typeof identity === "string" ? { professionalId: identity, names: [] } : identity;
+    const rows = filterOwnCommissions(commissions.rows, normalizedIdentity);
     const byEmployee = rows.reduce((totals, row) => {
       totals[row.employee] = (totals[row.employee] || 0) + Number(row.commissionAmount || 0);
       return totals;

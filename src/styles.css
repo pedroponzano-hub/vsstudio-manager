@@ -7344,3 +7344,12 @@ button.manager-metric-card:hover {
     max-height: 44px;
   }
 }
+.manager-drilldown-row {
+  grid-template-columns: minmax(110px, 0.7fr) minmax(220px, 1.8fr) minmax(180px, 1.2fr) minmax(110px, 0.7fr);
+}
+
+@media (max-width: 720px) {
+  .manager-drilldown-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -10,6 +10,13 @@ test("resuelve la ruta inicial del administrador", () => {
 
 test("resuelve la ruta propia de un profesional como Leo", () => {
   assert.equal(getDefaultRouteForUser({ role: "profesional", active: true, professionalId: "leo" }), "/pos/my-agenda");
+  assert.equal(resolveRouteForUser({ role: "profesional", active: true, professionalId: "leo" }, "/pos/my-sales"), "/pos/my-sales");
+});
+
+test("el detalle financiero del Dashboard permanece reservado al administrador", () => {
+  assert.equal(resolveRouteForUser({ role: "profesional", active: true, professionalId: "leo" }, "/manager/dashboard/detail"), "/pos/my-agenda");
+  assert.equal(resolveRouteForUser({ role: "direccion", active: true }, "/manager/dashboard/detail"), "/pos/agenda-v2");
+  assert.equal(resolveRouteForUser({ role: "admin", active: true }, "/manager/dashboard/detail"), "/manager/dashboard/detail");
 });
 
 test("bloquea /manager manual y devuelve a Leo a su área", () => {

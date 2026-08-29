@@ -14,15 +14,25 @@ import Settings from "./components/Settings.jsx";
 import Statistics from "./components/Statistics.jsx";
 import Login, { LoginLoading } from "./components/Login.jsx";
 import ManagerDashboard from "./components/ManagerDashboard.jsx";
+import ManagerDashboardDetail from "./components/ManagerDashboardDetail.jsx";
 import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
-import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
+import { ProfessionalAgenda, ProfessionalCommissions, ProfessionalSales } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import { accessDeniedMessageForRoute, allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, resolveRouteForUser } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
+import { filterOwnSales, resolveProfessionalIdentity } from "./utils/professionalHistory.js";
+import { buildDashboardDetailUrl } from "./utils/managerDashboardDrilldown.js";
 
 const navigationSections = [
+  {
+    id: "professional-sales",
+    label: "Mis ventas",
+    items: [
+      { key: "professional-sales", pageId: "professional.sales", tabId: "professionalSales", label: "Mis ventas" },
+    ],
+  },
   {
     id: "professional-agenda",
     label: "Mi agenda",
@@ -126,7 +136,7 @@ const navigationSections = [
 ];
 
 const platformSectionIds = {
-  pos: ["agenda", "sales", "clients", "expenses", "cash-closing", "professional-agenda", "professional-commissions"],
+  pos: ["agenda", "sales", "clients", "expenses", "cash-closing", "professional-agenda", "professional-sales", "professional-commissions"],
   manager: ["dashboard", "clients", "finance", "statistics", "commissions", "settings"],
 };
 
@@ -141,8 +151,10 @@ function getInitialPageFromPath(pathname = "") {
   const normalizedPath = String(pathname || "").toLowerCase();
   if (normalizedPath === "/no-permissions" || normalizedPath.startsWith("/no-permissions/")) return "access.noPermissions";
   if (normalizedPath === "/pos/my-agenda" || normalizedPath.startsWith("/pos/my-agenda/")) return "professional.agenda";
+  if (normalizedPath === "/pos/my-sales" || normalizedPath.startsWith("/pos/my-sales/")) return "professional.sales";
   if (normalizedPath === "/pos/my-commissions" || normalizedPath.startsWith("/pos/my-commissions/")) return "professional.commissions";
   if (normalizedPath === "/pos/agenda-v2" || normalizedPath.startsWith("/pos/agenda-v2/")) return "pos.agendaV2";
+  if (normalizedPath === "/manager/dashboard/detail" || normalizedPath.startsWith("/manager/dashboard/detail/")) return "dashboard.detail";
   if (normalizedPath === "/manager/dashboard/monthly" || normalizedPath.startsWith("/manager/dashboard/monthly/")) return "dashboard.monthly";
   if (normalizedPath === "/manager/dashboard/daily" || normalizedPath.startsWith("/manager/dashboard/daily/")) return "dashboard.daily";
   return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "pos.agendaV2" : "dashboard.daily";
@@ -152,6 +164,7 @@ function pathForPage(pageId = "") {
   const paths = {
     "access.noPermissions": "/no-permissions",
     "professional.agenda": "/pos/my-agenda",
+    "professional.sales": "/pos/my-sales",
     "professional.commissions": "/pos/my-commissions",
     "pos.agendaV2": "/pos/agenda-v2",
     "dashboard.daily": "/manager/dashboard/daily",
@@ -459,23 +472,28 @@ function App() {
   const roleCanCreateBackdatedSale = canPerform(effectiveRole, "sales.create_backdated") || effectiveRole === "admin";
   const roleCanEditSalesFully = effectiveRole === "admin" || effectiveRole === "direccion";
   const canShowRestoreData = platformMode !== "pos" && canPerform(effectiveRole, "restoreData");
+  const professionalIdentity = useMemo(() => resolveProfessionalIdentity(user, data.config?.employeeSettings || []), [data.config?.employeeSettings, user]);
   const scopedData = useMemo(() => {
     if (!isOwnEmployeeOnly(effectiveRole)) return data;
-    const ownEmployeeName = user?.professionalName || user?.employeeName || user?.nombre ? [user.professionalName || user.employeeName || user.nombre] : [];
+    const ownSales = filterOwnSales(data.sales || [], professionalIdentity);
+    const ownAppointments = onlyOwnEmployeeItems(data.appointments || [], user);
+    const ownClientIds = new Set([...ownSales, ...ownAppointments].map((item) => item.clientId).filter(Boolean));
+    const ownEmployeeName = professionalIdentity.displayName ? [professionalIdentity.displayName] : [];
     return {
       ...data,
-      appointments: onlyOwnEmployeeItems(data.appointments || [], user),
-      sales: onlyOwnEmployeeItems(data.sales || [], user),
+      appointments: ownAppointments,
+      sales: ownSales,
+      clients: (data.clients || []).filter((client) => ownClientIds.has(client.id)),
       config: {
         ...data.config,
         employees: ownEmployeeName,
       },
     };
-  }, [data, user, effectiveRole]);
+  }, [data, user, effectiveRole, professionalIdentity]);
   const ownCommissionsData = useMemo(() => {
     if (!isOwnEmployeeOnly(effectiveRole)) return DataService.getCommissions();
-    return DataService.getCommissionsForProfessional(user?.professionalId || user?.employeeId || "");
-  }, [data, user, effectiveRole]);
+    return DataService.getCommissionsForProfessional(professionalIdentity);
+  }, [data, effectiveRole, professionalIdentity]);
   const dashboardData = useMemo(() => DataService.getDashboardData(), [data, currentMadridDate]);
   const commissionsData = useMemo(() => {
     const commissions = DataService.getCommissions();
@@ -911,11 +929,14 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const openManagerDashboardTarget = (target) => {
+  const openManagerDashboardTarget = (target, context) => {
+    const detailTargets = new Set(["sales", "operations", "services", "clients", "expenses", "pending-commissions", "paid-commissions", "new-clients", "recurring-clients"]);
+    if (detailTargets.has(target)) {
+      const route = buildDashboardDetailUrl(target, context);
+      if (route) navigateToRoute(route, { replace: false });
+      return;
+    }
     const targetPages = {
-      sales: "statistics.salesHistory",
-      expenses: "finance.expenses",
-      clients: "clients.list",
       commissions: "finance.commissions",
       closing: "finance.cashClosing",
       categories: "statistics.category",
@@ -1107,11 +1128,13 @@ function App() {
       case "professional.agenda":
         return canAccessTab(effectiveRole, "professionalAgenda") ? <ProfessionalAgenda appointments={scopedData.appointments} /> : accessDeniedPage;
       case "professional.sales":
-        return accessDeniedPage;
+        return canAccessTab(effectiveRole, "professionalSales") ? <ProfessionalSales clients={clientMap} sales={scopedData.sales} /> : accessDeniedPage;
       case "professional.commissions":
         return canAccessTab(effectiveRole, "professionalCommissions") ? <ProfessionalCommissions sales={scopedData.sales} commissions={ownCommissionsData.rows} /> : accessDeniedPage;
       case "dashboard.monthly":
         return canAccessDashboardSection(effectiveRole, "month") ? <ManagerDashboard sourceData={scopedData} commissionsData={commissionsData} initialPeriod="month" onNavigate={openManagerDashboardTarget} /> : accessDeniedPage;
+      case "dashboard.detail":
+        return effectiveRole === "admin" ? <ManagerDashboardDetail sourceData={scopedData} commissionsData={commissionsData} /> : accessDeniedPage;
       case "sales.new":
         return canAccessTab(effectiveRole, "sales") ? renderSalesFormPage() : accessDeniedPage;
       case "sales.pending":

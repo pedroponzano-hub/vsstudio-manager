@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { getTodayLocalDateString } from "../utils/date.js";
+import { professionalBusinessDate } from "../utils/professionalHistory.js";
+import SafeSalesHistory from "./SafeSalesHistory.jsx";
 
 function money(value) {
   return `${Number(value || 0).toFixed(2)} EUR`;
@@ -71,7 +73,7 @@ function ProfessionalCommissions({ sales = [], commissions = [] }) {
   const rows = useMemo(() => (
     [...(commissions || [])]
       .filter((commission) => Number(commission.commissionAmount || 0) > 0)
-      .filter((commission) => inRange(String(commission.date || ""), range))
+      .filter((commission) => inRange(String(professionalBusinessDate(commission) || ""), range))
       .sort((first, second) => `${second.date || ""} ${second.hour || ""}`.localeCompare(`${first.date || ""} ${first.hour || ""}`))
   ), [commissions, range]);
 
@@ -147,6 +149,19 @@ function ProfessionalCommissions({ sales = [], commissions = [] }) {
   );
 }
 
+function ProfessionalSales({ clients = {}, sales = [] }) {
+  return (
+    <SafeSalesHistory
+      clients={clients}
+      emptyMessage="No tienes ventas registradas en este periodo."
+      mode="history"
+      sales={sales}
+      subtitle="Todas tus ventas, incluidas las que no generan comisión"
+      title="Mis ventas"
+    />
+  );
+}
+
 function ProfessionalAgenda({ appointments = [] }) {
   const rows = [...(appointments || [])].sort((first, second) => `${first.date || ""} ${first.startTime || first.time || ""}`.localeCompare(`${second.date || ""} ${second.startTime || second.time || ""}`));
 
@@ -180,4 +195,4 @@ function ProfessionalAgenda({ appointments = [] }) {
   );
 }
 
-export { ProfessionalAgenda, ProfessionalCommissions };
+export { ProfessionalAgenda, ProfessionalCommissions, ProfessionalSales };

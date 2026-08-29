@@ -60,7 +60,7 @@ test("comisiones pagadas se incluyen por fecha de pago y pendientes por devengo"
 
 test("opciones usan únicamente configuración real activa", () => {
   const options = managerFilterOptions(source);
-  assert.deepEqual(options.professionals, [{ value: "Marianne", label: "Marianne" }]);
+  assert.deepEqual(options.professionals, [{ value: "professional-1", label: "Marianne" }]);
   assert.deepEqual(options.categories, ["Facial", "Uñas"]);
 });
 

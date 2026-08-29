@@ -20,8 +20,8 @@ const permissionsByRole = {
     actions: ["manageSales", "manageExpenses", "manageCashClosing"],
   },
   profesional: {
-    tabs: ["professionalAgenda", "professionalCommissions"],
-    actions: ["viewOwnAgenda", "viewOwnCommissions"],
+    tabs: ["professionalAgenda", "professionalSales", "professionalCommissions"],
+    actions: ["viewOwnAgenda", "viewOwnSales", "viewOwnCommissions"],
     ownEmployeeOnly: true,
   },
 };
@@ -84,13 +84,15 @@ function canAccessRouteForUser(user = {}, pathname = "") {
   const path = String(pathname || "/").toLowerCase();
   if (path === "/no-permissions" || path.startsWith("/no-permissions/")) return tabs.length === 0;
   if (path === "/pos/my-agenda" || path.startsWith("/pos/my-agenda/")) return tabs.includes("professionalAgenda");
+  if (path === "/pos/my-sales" || path.startsWith("/pos/my-sales/")) return tabs.includes("professionalSales");
   if (path === "/pos/my-commissions" || path.startsWith("/pos/my-commissions/")) return tabs.includes("professionalCommissions");
+  if (path === "/manager/dashboard/detail" || path.startsWith("/manager/dashboard/detail/")) return role === "admin";
   if (path === "/manager" || path.startsWith("/manager/")) {
     const managerTabs = ["dashboard", "finance", "statistics", "commissions", "settings"];
     return tabs.some((tab) => managerTabs.includes(tab));
   }
   if (path === "/pos" || path.startsWith("/pos/")) {
-    const posTabs = ["sales", "expenses", "clients", "loyalty", "agenda", "cashClosing", "professionalAgenda", "professionalCommissions"];
+    const posTabs = ["sales", "expenses", "clients", "loyalty", "agenda", "cashClosing", "professionalAgenda", "professionalSales", "professionalCommissions"];
     return tabs.some((tab) => posTabs.includes(tab));
   }
   return false;
