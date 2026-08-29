@@ -69,6 +69,17 @@ function validateSchedule(weeklySchedule) {
   return "";
 }
 
+function validateCommissionSchedule(economics = {}) {
+  if (economics.commissionMode !== "mixed_schedule") return "";
+  for (const [dayKey, dayLabel] of weekDaysDemo) {
+    const entry = economics.commissionSchedule?.[dayKey];
+    if (!entry?.enabled) continue;
+    if (!entry.start || !entry.end || entry.end <= entry.start) return `${dayLabel}: el horario de comisión debe tener un inicio y fin válidos.`;
+    if (Number(entry.commissionPercent || 0) < 0) return `${dayLabel}: la comisión no puede ser negativa.`;
+  }
+  return "";
+}
+
 function ProfessionalModalDemo({ accessPanel = null, mode = "create", onClose, onSave, professional, servicesCatalog = [], persistent = false }) {
   const [draft, setDraft] = useState(() => clone(professional));
   const [activeTab, setActiveTab] = useState("professional-basic-info");
@@ -177,6 +188,11 @@ function ProfessionalModalDemo({ accessPanel = null, mode = "create", onClose, o
     const scheduleError = validateSchedule(draft.weeklySchedule);
     if (scheduleError) {
       setError(scheduleError);
+      return;
+    }
+    const commissionScheduleError = validateCommissionSchedule(draft.economics);
+    if (commissionScheduleError) {
+      setError(commissionScheduleError);
       return;
     }
     setSaving(true);
@@ -346,9 +362,22 @@ function ProfessionalModalDemo({ accessPanel = null, mode = "create", onClose, o
           {activeTab === "professional-economics" && (
             <section className="professional-tab-grid">
               <label>Comisión predeterminada de servicios<input min="0" step="0.01" type="number" value={draft.economics.defaultServiceCommissionPercent} onChange={(event) => updateNested("economics", { defaultServiceCommissionPercent: event.target.value })} /></label>
+              <label>Tipo de comisión<select value={draft.economics.commissionMode || "always"} onChange={(event) => updateNested("economics", { commissionMode: event.target.value })}><option value="always">Comisión siempre</option><option value="none">Sin comisión</option><option value="mixed_schedule">Mixta por horario</option></select></label>
               <label>Comisión de productos<input min="0" step="0.01" type="number" value={draft.economics.productCommissionPercent} onChange={(event) => updateNested("economics", { productCommissionPercent: event.target.value })} /></label>
               <label className="inline-check"><input checked={draft.economics.hasFixedSalary} type="checkbox" onChange={(event) => updateNested("economics", { hasFixedSalary: event.target.checked })} /> Tiene salario fijo</label>
               <label>Tipo de vinculación<select value={draft.employmentType} onChange={(event) => update({ employmentType: event.target.value })}><option>Empleada</option><option>Autónoma</option><option>Colaboradora</option></select></label>
+              {draft.economics.commissionMode === "mixed_schedule" && (
+                <section className="wide-field professional-commission-schedule">
+                  <h3>Horario con comisión especial</h3>
+                  <p className="empty-state">Fuera de estos tramos se aplica la comisión predeterminada. La hora final no está incluida.</p>
+                  <label>Fuera del horario<select value={draft.economics.outsideSchedule || "standard"} onChange={(event) => updateNested("economics", { outsideSchedule: event.target.value })}><option value="standard">Usar comisión normal del profesional</option></select></label>
+                  {weekDaysDemo.map(([dayKey, label]) => {
+                    const entry = draft.economics.commissionSchedule?.[dayKey] || { enabled: false, start: "10:00", end: "15:00", commissionPercent: 0 };
+                    const updateEntry = (updates) => updateNested("economics", { commissionSchedule: { ...(draft.economics.commissionSchedule || {}), [dayKey]: { ...entry, ...updates } } });
+                    return <div className="professional-commission-day" key={dayKey}><label className="inline-check"><input checked={entry.enabled} type="checkbox" onChange={(event) => updateEntry({ enabled: event.target.checked })} /> {label}</label><input aria-label={`Inicio ${label}`} disabled={!entry.enabled} type="time" value={entry.start} onChange={(event) => updateEntry({ start: event.target.value })} /><input aria-label={`Fin ${label}`} disabled={!entry.enabled} type="time" value={entry.end} onChange={(event) => updateEntry({ end: event.target.value })} /><label>Comisión dentro %<input disabled={!entry.enabled} min="0" step="0.01" type="number" value={entry.commissionPercent} onChange={(event) => updateEntry({ commissionPercent: event.target.value })} /></label></div>;
+                  })}
+                </section>
+              )}
               <label className="wide-field">Observaciones económicas internas<textarea value={draft.economics.internalEconomicNotes} onChange={(event) => updateNested("economics", { internalEconomicNotes: event.target.value })} /></label>
             </section>
           )}

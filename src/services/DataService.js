@@ -10,6 +10,15 @@ import {
 } from "../utils/appointmentModel.js";
 import { createQuickClientOperation, findQuickClientDuplicate } from "../utils/clientQuickCreate.js";
 import {
+  buildManualCommissionOverride,
+  assertCommissionEditReason,
+  commissionFieldsChanged,
+  createCommissionAuditEntry,
+  filterOwnPositiveCommissions,
+  normalizeProfessionalCommissionPolicy,
+  resolveSaleCommissionSnapshot,
+} from "../utils/commissionSchedule.js";
+import {
   getMadridDateString,
   getMadridDayOfMonth,
   getMadridDaysInCurrentMonth,
@@ -669,6 +678,12 @@ function comparableSaleSnapshot(sale) {
     entryChannel: sale.entryChannel || "",
     commissionPercent: Number(sale.commissionPercent || 0),
     commissionAmount: Number(sale.commissionAmount || 0),
+    commissionRateApplied: Number(sale.commissionRateApplied ?? sale.commissionPercent ?? 0),
+    commissionRule: sale.commissionRule || "",
+    commissionSource: sale.commissionSource || "",
+    appointmentId: sale.appointmentId || "",
+    serviceDate: sale.serviceDate || "",
+    serviceTime: sale.serviceTime || "",
     treatwellCommissionPercent: Number(sale.treatwellCommissionPercent || 0),
     treatwellCommissionAmount: Number(sale.treatwellCommissionAmount || 0),
     cardTipAmount: Number(sale.cardTipAmount || 0),
@@ -774,7 +789,7 @@ function commissionRows(sales, commissionStatuses) {
   const detailsBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item]));
 
   return sales
-    .filter((sale) => (isCollectedSale(sale) || isInternalServiceSale(sale)) && Number(sale.commissionPercent || 0) > 0)
+    .filter((sale) => isCollectedSale(sale) || isInternalServiceSale(sale))
     .map((sale) => {
       const details = detailsBySale[sale.id] || {};
       const commissionPercent = Number(details.commissionPercent ?? sale.commissionPercent ?? 0);
@@ -785,7 +800,7 @@ function commissionRows(sales, commissionStatuses) {
         id: sale.id,
         saleId: sale.id,
         date: saleOperationalDate(sale),
-        hour: sale.horaCierreLocal || sale.horaCreacionLocal || localTimeFromTimestamp(sale.horaCierre || sale.horaCreacion || sale.createdAt),
+        hour: sale.serviceTime || sale.horaCierreLocal || sale.horaCreacionLocal || localTimeFromTimestamp(sale.horaCierre || sale.horaCreacion || sale.createdAt),
         professionalId: details.professionalId || sale.professionalId || sale.employeeId || "",
         professionalName: details.professionalName || sale.professionalName || sale.employee || "Sin empleada",
         employee: details.employee || sale.employee || "Sin empleada",
@@ -796,6 +811,8 @@ function commissionRows(sales, commissionStatuses) {
         operationType: isInternalServiceSale(sale) ? "servicio_interno" : "venta",
         commissionPercent,
         commissionAmount,
+        commissionRule: sale.commissionRule || "",
+        commissionSource: sale.commissionSource || "",
         status: statusBySale[sale.id] || "pendiente",
         commissionStatus: statusBySale[sale.id] || "pendiente",
         paidAt: details.paidAt || "",
@@ -814,6 +831,7 @@ function commissionRows(sales, commissionStatuses) {
         correctionHistory: Array.isArray(details.correctionHistory) ? details.correctionHistory : [],
       };
     })
+    .filter((row) => Number(row.commissionAmount || 0) > 0)
     .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")));
 }
 
@@ -982,13 +1000,26 @@ function normalizeEmployeeSettings(config) {
 
   return uniqueNames.map((name) => {
     const existing = rawSettings.find((employee) => String(employee.name || "").trim().toLowerCase() === name.toLowerCase());
-    return {
+    const normalizedEmployee = {
       ...(existing || {}),
       id: existing?.id || `employee-${name.toLowerCase().replace(/\s+/g, "-")}`,
       name,
       active: existing?.active !== false,
       commissionPercent: Number(existing?.commissionPercent || 0),
       commissionHistory: Array.isArray(existing?.commissionHistory) ? existing.commissionHistory : [],
+    };
+    const policy = normalizeProfessionalCommissionPolicy(normalizedEmployee);
+    return {
+      ...normalizedEmployee,
+      commissionMode: policy.commissionMode,
+      commissionSchedule: policy.commissionSchedule,
+      economics: {
+        ...(normalizedEmployee.economics || {}),
+        defaultServiceCommissionPercent: policy.defaultCommissionPercent,
+        commissionMode: policy.commissionMode,
+        commissionSchedule: policy.commissionSchedule,
+        outsideSchedule: policy.outsideSchedule,
+      },
     };
   });
 }
@@ -1063,6 +1094,15 @@ function normalizeSale(sale) {
     cardTipAmount: Number(sale.cardTipAmount || 0),
     commissionPercent: fields.commissionPercent,
     commissionAmount: fields.commissionAmount,
+    commissionRateApplied: Number(sale.commissionRateApplied ?? fields.commissionPercent),
+    commissionRule: sale.commissionRule || "",
+    commissionSource: sale.commissionSource || "",
+    commissionAppliedAt: sale.commissionAppliedAt || "",
+    commissionScheduleSnapshot: sale.commissionScheduleSnapshot || null,
+    commissionSnapshotLocked: Boolean(sale.commissionSnapshotLocked),
+    appointmentId: sale.appointmentId || "",
+    serviceDate: sale.serviceDate || "",
+    serviceTime: sale.serviceTime || "",
     treatwellCommissionPercent: fields.treatwellCommissionPercent,
     treatwellCommissionAmount: fields.treatwellCommissionAmount,
     netAfterCommission: fields.netAfterCommission,
@@ -1314,6 +1354,18 @@ const DataService = {
     };
   },
 
+  getCommissionsForProfessional(professionalId) {
+    const commissions = this.getCommissions();
+    const rows = filterOwnPositiveCommissions(commissions.rows, professionalId);
+    const byEmployee = rows.reduce((totals, row) => {
+      totals[row.employee] = (totals[row.employee] || 0) + Number(row.commissionAmount || 0);
+      return totals;
+    }, {});
+    const generated = rows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
+    const pending = rows.filter((row) => row.status !== "pagada").reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
+    return { rows, totals: { generated, pending, paid: generated - pending, byEmployee } };
+  },
+
   getConfig() {
     const config = normalizeConfig({ ...clone(defaultData.config), ...readCollection("config"), agenda: this.getAppointments() });
     writeCollection("config", config);
@@ -1457,9 +1509,26 @@ const DataService = {
     const date = saleInput.saleDate || saleInput.fechaOperativa || saleInput.date || todayLocal();
     const status = saleStatus(saleInput);
     const saleId = createId("sale");
+    const preliminarySale = normalizeSale({
+      ...saleInput,
+      date,
+      saleDate: date,
+      fechaOperativa: date,
+      createdAt: technicalTimestamp,
+      horaCreacion: localTimestamp,
+      horaCreacionLocal: localTime,
+    });
+    const commissionSnapshot = resolveSaleCommissionSnapshot(preliminarySale, {
+      appointments: this.getAppointments(),
+      professionals: this.getConfig().employeeSettings || [],
+      appliedAt: technicalTimestamp,
+    });
     const sale = {
       ...normalizeSale({
         ...saleInput,
+        ...commissionSnapshot,
+        netAfterCommission: undefined,
+        netAfterTreatwellAndCommission: undefined,
         date,
         saleDate: date,
         fechaOperativa: date,
@@ -1528,11 +1597,42 @@ const DataService = {
       voidedBy: isVoid ? (updates.voidedBy || existingSale.voidedBy || "") : existingSale.voidedBy,
       voidReason: isVoid ? (updates.voidReason || existingSale.voidReason || "") : existingSale.voidReason,
     };
-    const draftSale = normalizeSale(updateInput);
+    const hasCommissionChange = commissionFieldsChanged(existingSale, updateInput);
+    assertCommissionEditReason(existingSale, updateInput, updates.editReason);
+    let commissionAwareInput = updateInput;
+    if (hasCommissionChange) {
+      const momentChanged = ["serviceDate", "serviceTime", "appointmentId"]
+        .some((field) => String(existingSale[field] || "") !== String(updateInput[field] || ""));
+      const rateChanged = Number(existingSale.commissionPercent || 0) !== Number(updateInput.commissionPercent || 0);
+      const amountChanged = Number(existingSale.commissionAmount || 0) !== Number(updateInput.commissionAmount || 0);
+      const manualUpdates = { ...updates };
+      if (momentChanged && !rateChanged && !amountChanged) {
+        delete manualUpdates.commissionPercent;
+        delete manualUpdates.commissionRateApplied;
+        delete manualUpdates.commissionAmount;
+      }
+      const normalizedForOverride = normalizeSale({
+        ...updateInput,
+        netAfterCommission: undefined,
+        netAfterTreatwellAndCommission: undefined,
+      });
+      const manualSnapshot = buildManualCommissionOverride(normalizedForOverride, manualUpdates, {
+        appointments: this.getAppointments(),
+        professionals: this.getConfig().employeeSettings || [],
+        appliedAt: technicalTimestamp,
+      });
+      commissionAwareInput = {
+        ...updateInput,
+        ...manualSnapshot,
+        netAfterCommission: undefined,
+        netAfterTreatwellAndCommission: undefined,
+      };
+    }
+    const draftSale = normalizeSale(commissionAwareInput);
     const editHistory = isAuditedEdit
       ? [
         ...saleEditHistory(existingSale),
-        {
+        createCommissionAuditEntry({
           id: createId("sale-edit"),
           editedAt: now,
           editedBy: updates.editedBy || existingSale.editedBy || "",
@@ -1540,7 +1640,7 @@ const DataService = {
           previousValues: comparableSaleSnapshot(existingSale),
           newValues: comparableSaleSnapshot(draftSale),
           changes: saleChanges(existingSale, draftSale),
-        },
+        }),
       ]
       : saleEditHistory(existingSale);
     const updatedSale = normalizeSale({
@@ -1866,6 +1966,22 @@ const DataService = {
     const currentRow = commissionRows(this.getSales(), currentStatuses).find((row) => row.saleId === saleId);
     const hasCorrection = Boolean(details.correctionReason);
     const isQuickStatusChange = Boolean(details.statusChangeOnly);
+    if (hasCorrection) {
+      const sale = this.getSales().find((item) => item.id === saleId);
+      if (sale) {
+        this.updateSale(saleId, {
+          employee: details.employee ?? sale.employee,
+          commissionPercent: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : sale.commissionPercent,
+          commissionAmount: details.commissionAmount !== undefined ? Number(details.commissionAmount || 0) : sale.commissionAmount,
+          commissionRule: "manual_override",
+          commissionRateApplied: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : sale.commissionRateApplied,
+          editReason: details.correctionReason,
+          editedBy: details.editedBy || details.updatedBy || "",
+          netAfterCommission: undefined,
+          netAfterTreatwellAndCommission: undefined,
+        });
+      }
+    }
     if (safeStatus === "pagada" && currentRow?.status === "pagada" && !hasCorrection) {
       return { ...this.getData(), commissions: currentStatuses };
     }

@@ -11,6 +11,7 @@ import {
   getAvailableProfessionalServices,
 } from "../utils/professionalsConfigDemo.js";
 import { normalizeRealEmployeeSettings } from "../utils/managerConfiguration.js";
+import { normalizeProfessionalCommissionPolicy } from "../utils/commissionSchedule.js";
 import {
   createOrLinkProfessionalAccess,
   listProfessionalAccesses,
@@ -22,6 +23,7 @@ function clone(value) {
 }
 
 function employeeToProfessional(employee = {}) {
+  const commissionPolicy = normalizeProfessionalCommissionPolicy(employee);
   const base = buildProfessional({
     id: employee.id,
     firstName: employee.firstName || employee.name || "",
@@ -40,7 +42,10 @@ function employeeToProfessional(employee = {}) {
     access: employee.access,
     economics: {
       ...(employee.economics || {}),
-      defaultServiceCommissionPercent: Number(employee.commissionPercent || 0),
+      defaultServiceCommissionPercent: commissionPolicy.defaultCommissionPercent,
+      commissionMode: commissionPolicy.commissionMode,
+      commissionSchedule: commissionPolicy.commissionSchedule,
+      outsideSchedule: commissionPolicy.outsideSchedule,
     },
     publicProfile: employee.publicProfile,
   });
@@ -141,6 +146,8 @@ function ProfessionalsSettingsReal({ config = {}, currentUser, onSave }) {
       scheduleExceptions: draft.scheduleExceptions,
       ...(existing?.access ? { access: existing.access } : {}),
       economics: { ...draft.economics, defaultServiceCommissionPercent: nextCommission },
+      commissionMode: draft.economics.commissionMode,
+      commissionSchedule: draft.economics.commissionSchedule,
       commissionPercent: nextCommission,
       commissionHistory: commissionChanged ? [{ id: `employee-commission-${Date.now()}`, date: now, user: actor, previousValue: Number(existing.commissionPercent || 0), newValue: nextCommission }, ...(existing.commissionHistory || [])] : existing?.commissionHistory || [],
       publicProfile: draft.publicProfile,

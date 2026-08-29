@@ -79,6 +79,7 @@ function AppointmentModalReal({
   initialStartTime = "",
   onClose,
   onCreateClient,
+  onCreateSale,
   onSave,
   onStatusChange,
   professionals = [],
@@ -384,6 +385,9 @@ function AppointmentModalReal({
             )}
             {appointment && !["Finalizada", "Cancelada", "No se presentó"].includes(normalizedAppointment.status) && (
               <button className="danger-button" type="button" disabled={saving} onClick={() => changeStatus("Cancelada")}>Cancelar cita</button>
+            )}
+            {appointment && !["Cancelada", "No se presentó"].includes(normalizedAppointment.status) && onCreateSale && (
+              <button className="secondary-button" type="button" disabled={saving} onClick={() => onCreateSale(normalizedAppointment)}>Crear venta desde cita</button>
             )}
           </div>
         </form>

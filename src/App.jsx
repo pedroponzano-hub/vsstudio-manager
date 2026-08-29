@@ -18,7 +18,7 @@ import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { accessDeniedMessageForRoute, allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem, resolveRouteForUser } from "./permissions.js";
+import { accessDeniedMessageForRoute, allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, resolveRouteForUser } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
 
@@ -432,6 +432,7 @@ function App() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [expenseNotice, setExpenseNotice] = useState("");
   const [salesFormHighlight, setSalesFormHighlight] = useState(false);
+  const [saleAppointment, setSaleAppointment] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeNavKey, setActiveNavKey] = useState("");
   const [openMenuSections, setOpenMenuSections] = useState({});
@@ -472,17 +473,8 @@ function App() {
     };
   }, [data, user, effectiveRole]);
   const ownCommissionsData = useMemo(() => {
-    const commissions = DataService.getCommissions();
-    if (!isOwnEmployeeOnly(effectiveRole)) return commissions;
-    const rows = (commissions.rows || []).filter((row) => professionalMatchesItem(row, user));
-    const byEmployee = rows.reduce((totals, row) => {
-      totals[row.employee] = (totals[row.employee] || 0) + Number(row.commissionAmount || 0);
-      return totals;
-    }, {});
-    const generated = rows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
-    const pending = rows.filter((row) => row.status !== "pagada").reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
-    const paid = generated - pending;
-    return { rows, totals: { generated, pending, paid, byEmployee } };
+    if (!isOwnEmployeeOnly(effectiveRole)) return DataService.getCommissions();
+    return DataService.getCommissionsForProfessional(user?.professionalId || user?.employeeId || "");
   }, [data, user, effectiveRole]);
   const dashboardData = useMemo(() => DataService.getDashboardData(), [data, currentMadridDate]);
   const commissionsData = useMemo(() => {
@@ -687,6 +679,7 @@ function App() {
     if (preparedSale.saleDate > getTodayLocalDateString()) return;
     setData(DataService.addSale(preparedSale));
     setEditingSale(null);
+    setSaleAppointment(null);
   };
   const updateSale = (saleId, updates) => {
     if (!canPerform(effectiveRole, "manageSales")) return;
@@ -952,6 +945,8 @@ function App() {
       <div className="sales-main-column">
         <div className={salesFormHighlight ? "sales-form-anchor editing-focus" : "sales-form-anchor"} ref={salesFormRef}>
           <SalesForm
+            appointments={scopedData.appointments || []}
+            initialAppointment={saleAppointment}
             clients={scopedData.clients}
             config={scopedData.config}
             editingSale={editingSale}
@@ -966,6 +961,7 @@ function App() {
             currentUser={user}
             onCancelEdit={() => {
               setEditingSale(null);
+              setSaleAppointment(null);
               setSalesFormHighlight(false);
             }}
             onDateChange={setSelectedSaleDate}
@@ -1047,6 +1043,7 @@ function App() {
               </div>
               <SalesForm
                 key={modalEditingSale.id}
+                appointments={scopedData.appointments || []}
                 clients={scopedData.clients}
                 config={scopedData.config}
                 editingSale={modalEditingSale}
@@ -1168,6 +1165,15 @@ function App() {
             config={scopedData.config}
             onCreateAppointment={addAppointment}
             onCreateClient={roleCanManageClients ? createClientFromAgenda : null}
+            onCreateSaleFromAppointment={canAccessTab(effectiveRole, "sales") ? (appointment) => {
+              setSaleAppointment(appointment);
+              setEditingSale(null);
+              setPlatformMode("pos");
+              setActivePage("sales.new");
+              setActiveTab("sales");
+              setActiveNavKey("sales-new");
+              setSalesFormHighlight(true);
+            } : null}
             onLoadAppointmentsByDate={loadAppointmentsByDate}
             onUpdateAppointment={updateAppointment}
           />

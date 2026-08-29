@@ -41,6 +41,7 @@ function OperationalAgendaReal({
   config = {},
   onCreateAppointment,
   onCreateClient,
+  onCreateSaleFromAppointment,
   onLoadAppointmentsByDate,
   onUpdateAppointment,
 }) {
@@ -197,6 +198,10 @@ function OperationalAgendaReal({
           initialStartTime={modalState.initialStartTime}
           onClose={() => setModalState(null)}
           onCreateClient={onCreateClient}
+          onCreateSale={(appointment) => {
+            setModalState(null);
+            onCreateSaleFromAppointment?.(appointment);
+          }}
           onSave={saveAppointment}
           onStatusChange={changeAppointmentStatus}
           professionals={professionals}
