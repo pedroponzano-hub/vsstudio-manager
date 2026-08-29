@@ -5,6 +5,8 @@ import {
   appointmentHasConflict,
   calculateAppointmentEndTime,
   filterAppointmentServices,
+  professionalHasAssignedService,
+  servicesAssignedToProfessional,
   normalizeAppointmentOrigin,
   normalizeAppointmentRecord,
 } from "../utils/appointmentModel.js";
@@ -53,7 +55,8 @@ function createInitialDraft({ appointment, initialDate, initialProfessionalId, i
   }
 
   const professional = professionals.find((item) => item.id === initialProfessionalId);
-  const service = services.length === 1 ? services[0] : null;
+  const assignedServices = servicesAssignedToProfessional(services, professional);
+  const service = assignedServices.length === 1 ? assignedServices[0] : null;
   const client = clients.length === 1 ? clients[0] : null;
   return {
     clientId: client?.id || "",
@@ -100,6 +103,7 @@ function AppointmentModalReal({
   const [quickClient, setQuickClient] = useState({ name: "", phone: "", email: "" });
   const [createdClient, setCreatedClient] = useState(null);
   const [clientNotice, setClientNotice] = useState("");
+  const [serviceNotice, setServiceNotice] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -119,9 +123,9 @@ function AppointmentModalReal({
   const selectedClient = availableClients.find((client) => client.id === draft.clientId) || null;
   const selectedService = services.find((service) => service.id === draft.serviceId) || null;
   const selectedProfessional = professionals.find((professional) => professional.id === draft.professionalId) || null;
-  const compatibleProfessionals = useMemo(() => professionals.filter((professional) => (
-    !draft.serviceId || professional.serviceIds?.includes(draft.serviceId)
-  )), [draft.serviceId, professionals]);
+  const professionalServices = useMemo(() => (
+    servicesAssignedToProfessional(services, selectedProfessional)
+  ), [selectedProfessional, services]);
   const filteredClients = useMemo(() => {
     const query = String(draft.clientQuery || "").trim().toLowerCase();
     if (!query) return [];
@@ -130,8 +134,8 @@ function AppointmentModalReal({
     )).slice(0, 10);
   }, [availableClients, draft.clientQuery]);
   const filteredServices = useMemo(() => (
-    filterAppointmentServices(services, draft.serviceQuery).slice(0, 20)
-  ), [draft.serviceQuery, services]);
+    filterAppointmentServices(professionalServices, draft.serviceQuery).slice(0, 20)
+  ), [draft.serviceQuery, professionalServices]);
   const endTime = calculateAppointmentEndTime(draft.startTime, draft.durationMinutes);
   const normalizedAppointment = appointment ? normalizeAppointmentRecord(appointment) : null;
 
@@ -148,7 +152,7 @@ function AppointmentModalReal({
 
   const selectService = (service) => {
     const serviceId = service?.id || "";
-    const professionalIsCompatible = selectedProfessional?.serviceIds?.includes(serviceId);
+    const professionalIsCompatible = professionalHasAssignedService(selectedProfessional, serviceId);
     const nextProfessional = professionalIsCompatible ? selectedProfessional : null;
     updateDraft({
       serviceId,
@@ -157,6 +161,7 @@ function AppointmentModalReal({
       durationMinutes: service ? defaultDurationForService(service, nextProfessional) : 30,
     });
     setServiceResultsOpen(false);
+    setServiceNotice("");
   };
 
   const createQuickClient = async (event) => {
@@ -182,10 +187,19 @@ function AppointmentModalReal({
 
   const selectProfessional = (professionalId) => {
     const professional = professionals.find((item) => item.id === professionalId);
+    const serviceRemainsValid = professionalHasAssignedService(professional, draft.serviceId);
     updateDraft({
       professionalId,
-      durationMinutes: selectedService ? defaultDurationForService(selectedService, professional) : draft.durationMinutes,
+      serviceId: serviceRemainsValid ? draft.serviceId : "",
+      serviceQuery: serviceRemainsValid ? draft.serviceQuery : "",
+      durationMinutes: serviceRemainsValid && selectedService
+        ? defaultDurationForService(selectedService, professional)
+        : 30,
     });
+    setServiceResultsOpen(false);
+    setServiceNotice(draft.serviceId && !serviceRemainsValid
+      ? "Este servicio no está asignado a la profesional seleccionada."
+      : "");
   };
 
   const payloadFromDraft = () => ({
@@ -312,14 +326,24 @@ function AppointmentModalReal({
           )}
           {clientNotice && <p className="success-message appointment-client-notice" role="status">{clientNotice}</p>}
 
+          <label>
+            Profesional
+            <select value={draft.professionalId} onChange={(event) => selectProfessional(event.target.value)}>
+              <option value="">Seleccionar profesional…</option>
+              {professionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
+            </select>
+          </label>
+
           <label className="appointment-service-search">
             Servicio
             <input
               autoComplete="off"
-              placeholder="Escribe para buscar un servicio"
+              disabled={!selectedProfessional}
+              placeholder={selectedProfessional ? "Escribe para buscar un servicio" : "Selecciona primero una profesional"}
               value={draft.serviceQuery}
               onChange={(event) => {
                 updateDraft({ serviceId: "", serviceQuery: event.target.value });
+                setServiceNotice("");
                 setServiceResultsOpen(true);
               }}
               onFocus={() => setServiceResultsOpen(true)}
@@ -336,14 +360,8 @@ function AppointmentModalReal({
               </div>
             )}
           </label>
-
-          <label>
-            Profesional
-            <select value={draft.professionalId} onChange={(event) => selectProfessional(event.target.value)}>
-              <option value="">Seleccionar profesional…</option>
-              {compatibleProfessionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
-            </select>
-          </label>
+          {!selectedProfessional && <p className="empty-state">Selecciona primero una profesional para ver sus servicios.</p>}
+          {serviceNotice && <p className="auth-warning" role="status">{serviceNotice}</p>}
 
           <div className="field-row appointment-date-time-row">
             <label>Fecha<input type="date" value={draft.date} onChange={(event) => updateDraft({ date: event.target.value })} /></label>

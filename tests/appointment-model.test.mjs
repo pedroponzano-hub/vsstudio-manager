@@ -12,6 +12,8 @@ import {
   filterOperationalAppointments,
   isAppointmentBlocking,
   normalizeAppointmentSearchText,
+  professionalHasAssignedService,
+  servicesAssignedToProfessional,
 } from "../src/utils/appointmentModel.js";
 
 const basePayload = {
@@ -123,6 +125,25 @@ test("seleccionar un servicio filtrado conserva su serviceId real", () => {
   const selected = filterAppointmentServices(services, "volumen")[0];
   const appointment = buildAppointmentRecord({ ...basePayload, serviceId: selected.id, serviceName: selected.name }, { id: "selected-service" });
   assert.equal(appointment.serviceId, "service-real-volume");
+});
+
+test("la búsqueda de Agenda usa solo servicios asignados al professionalId", () => {
+  const services = [
+    { id: "service-a", name: "Manicura semipermanente" },
+    { id: "service-b", name: "Lifting de pestañas" },
+    { id: "service-c", name: "Masaje corporal" },
+  ];
+  const professionalA = { id: "professional-a", serviceIds: ["service-a", "service-b"] };
+  const professionalB = { id: "professional-b", serviceIds: ["service-c"] };
+  assert.deepEqual(servicesAssignedToProfessional(services, professionalA).map((service) => service.id), ["service-a", "service-b"]);
+  assert.deepEqual(filterAppointmentServices(servicesAssignedToProfessional(services, professionalB), "lifting"), []);
+  assert.deepEqual(servicesAssignedToProfessional(services, professionalB).map((service) => service.id), ["service-c"]);
+});
+
+test("cambiar de profesional detecta y permite limpiar un servicio incompatible", () => {
+  const professional = { id: "professional-b", assignedServiceIds: ["service-b"] };
+  assert.equal(professionalHasAssignedService(professional, "service-a"), false);
+  assert.equal(professionalHasAssignedService(professional, "service-b"), true);
 });
 
 test("mantiene transiciones operativas controladas", () => {

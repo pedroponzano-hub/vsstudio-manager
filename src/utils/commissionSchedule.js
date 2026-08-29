@@ -1,5 +1,4 @@
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-const WEEKDAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 
 function cleanText(value = "") {
   return String(value ?? "").trim();
@@ -18,33 +17,22 @@ function localDateTimeParts(value = "") {
   return match ? { date: match[1], time: match[2] } : { date: "", time: "" };
 }
 
-export function defaultWeekdaySalariedSchedule() {
-  return Object.fromEntries(DAY_KEYS.map((dayKey) => [dayKey, {
-    enabled: WEEKDAY_KEYS.includes(dayKey),
-    start: "10:00",
-    end: "15:00",
-    commissionPercent: 0,
-  }]));
-}
-
 export function normalizeProfessionalCommissionPolicy(professional = {}) {
   const economics = professional.economics || {};
   const explicitMode = economics.commissionMode || professional.commissionMode;
-  const isInitialLeo = normalized(professional.displayName || professional.name) === "leo";
   const commissionMode = ["always", "none", "mixed_schedule"].includes(explicitMode)
     ? explicitMode
-    : isInitialLeo ? "mixed_schedule" : "always";
+    : "always";
   const defaultCommissionPercent = Number(
     economics.defaultServiceCommissionPercent ?? professional.commissionPercent ?? 0,
   );
   const rawSchedule = economics.commissionSchedule || professional.commissionSchedule || {};
-  const initialSchedule = isInitialLeo && commissionMode === "mixed_schedule" ? defaultWeekdaySalariedSchedule() : {};
   const commissionSchedule = Object.fromEntries(DAY_KEYS.map((dayKey) => {
-    const entry = rawSchedule[dayKey] || initialSchedule[dayKey] || {};
+    const entry = rawSchedule[dayKey] || {};
     return [dayKey, {
       enabled: Boolean(entry.enabled),
-      start: validTime(entry.start) ? entry.start : "10:00",
-      end: validTime(entry.end) ? entry.end : "15:00",
+      start: validTime(entry.start) ? entry.start : "",
+      end: validTime(entry.end) ? entry.end : "",
       commissionPercent: Number(entry.commissionPercent ?? 0),
     }];
   }));
@@ -53,6 +41,11 @@ export function normalizeProfessionalCommissionPolicy(professional = {}) {
     commissionMode,
     defaultCommissionPercent,
     commissionSchedule,
+    commissionRuleEffectiveFrom: cleanText(
+      economics.commissionRuleEffectiveFrom
+      || economics.effectiveFrom
+      || professional.commissionRuleEffectiveFrom,
+    ),
     outsideSchedule: "standard",
   };
 }
@@ -89,7 +82,12 @@ export function resolveCommissionServiceMoment(sale = {}, appointments = []) {
     };
   }
 
-  const created = localDateTimeParts(sale.horaCreacion || sale.createdAt || sale.createdAtLocal);
+  const created = localDateTimeParts(
+    sale.commissionCalculationTimestamp
+    || sale.horaCreacion
+    || sale.createdAt
+    || sale.createdAtLocal,
+  );
   return {
     appointmentId,
     serviceDate: created.date || cleanText(sale.saleDate || sale.fechaOperativa || sale.date),
@@ -107,6 +105,14 @@ function dayKeyForDate(date = "") {
 export function commissionRateForMoment(policy, serviceDate, serviceTime) {
   if (policy.commissionMode === "none") return { commissionRateApplied: 0, commissionRule: "no_commission" };
   if (policy.commissionMode !== "mixed_schedule") {
+    return { commissionRateApplied: policy.defaultCommissionPercent, commissionRule: "standard" };
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(policy.commissionRuleEffectiveFrom || "")) {
+    return { commissionRateApplied: policy.defaultCommissionPercent, commissionRule: "standard" };
+  }
+
+  if (policy.commissionRuleEffectiveFrom && serviceDate < policy.commissionRuleEffectiveFrom) {
     return { commissionRateApplied: policy.defaultCommissionPercent, commissionRule: "standard" };
   }
 
@@ -145,6 +151,7 @@ export function resolveSaleCommissionSnapshot(sale = {}, {
     commissionPercent: rate.commissionRateApplied,
     commissionAmount: total * (rate.commissionRateApplied / 100),
     commissionAppliedAt: appliedAt,
+    commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
     commissionScheduleSnapshot: policy,
     commissionSnapshotLocked: true,
   };

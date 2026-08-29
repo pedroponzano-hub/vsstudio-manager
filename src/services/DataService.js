@@ -1013,11 +1013,13 @@ function normalizeEmployeeSettings(config) {
       ...normalizedEmployee,
       commissionMode: policy.commissionMode,
       commissionSchedule: policy.commissionSchedule,
+      commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
       economics: {
         ...(normalizedEmployee.economics || {}),
         defaultServiceCommissionPercent: policy.defaultCommissionPercent,
         commissionMode: policy.commissionMode,
         commissionSchedule: policy.commissionSchedule,
+        commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
         outsideSchedule: policy.outsideSchedule,
       },
     };
@@ -1098,6 +1100,7 @@ function normalizeSale(sale) {
     commissionRule: sale.commissionRule || "",
     commissionSource: sale.commissionSource || "",
     commissionAppliedAt: sale.commissionAppliedAt || "",
+    commissionRuleEffectiveFrom: sale.commissionRuleEffectiveFrom || "",
     commissionScheduleSnapshot: sale.commissionScheduleSnapshot || null,
     commissionSnapshotLocked: Boolean(sale.commissionSnapshotLocked),
     appointmentId: sale.appointmentId || "",
@@ -1518,7 +1521,10 @@ const DataService = {
       horaCreacion: localTimestamp,
       horaCreacionLocal: localTime,
     });
-    const commissionSnapshot = resolveSaleCommissionSnapshot(preliminarySale, {
+    const commissionSnapshot = resolveSaleCommissionSnapshot({
+      ...preliminarySale,
+      commissionCalculationTimestamp: saleInput.commissionCalculationTimestamp,
+    }, {
       appointments: this.getAppointments(),
       professionals: this.getConfig().employeeSettings || [],
       appliedAt: technicalTimestamp,

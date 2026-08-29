@@ -43,6 +43,20 @@ export function filterAppointmentServices(services = [], query = "") {
   });
 }
 
+export function servicesAssignedToProfessional(services = [], professional = null) {
+  if (!professional?.id) return [];
+  const assignedIds = new Set(
+    (professional.serviceIds || professional.assignedServiceIds || []).map((serviceId) => cleanText(serviceId)),
+  );
+  return services.filter((service) => assignedIds.has(cleanText(service.id)));
+}
+
+export function professionalHasAssignedService(professional = null, serviceId = "") {
+  if (!professional?.id || !cleanText(serviceId)) return false;
+  return (professional.serviceIds || professional.assignedServiceIds || [])
+    .some((assignedId) => cleanText(assignedId) === cleanText(serviceId));
+}
+
 export function normalizeAppointmentDate(value = "") {
   const date = cleanText(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";

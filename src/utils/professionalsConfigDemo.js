@@ -160,6 +160,7 @@ export function buildProfessional({
       hasFixedSalary: Boolean(economics.hasFixedSalary),
       commissionMode: economics.commissionMode || "always",
       commissionSchedule: economics.commissionSchedule || {},
+      commissionRuleEffectiveFrom: economics.commissionRuleEffectiveFrom || "",
       outsideSchedule: "standard",
       serviceCommissionOverrides: economics.serviceCommissionOverrides || [],
       internalEconomicNotes: economics.internalEconomicNotes || "",

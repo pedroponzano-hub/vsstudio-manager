@@ -10,7 +10,21 @@ import {
   resolveSaleCommissionSnapshot,
 } from "../src/utils/commissionSchedule.js";
 
-const leo = { id: "professional-leo-real", name: "Leo", commissionPercent: 40 };
+const configuredProfessional = {
+  id: "professional-leo-real",
+  name: "Leo",
+  commissionPercent: 40,
+  economics: {
+    commissionMode: "mixed_schedule",
+    defaultServiceCommissionPercent: 40,
+    commissionRuleEffectiveFrom: "2026-09-01",
+    commissionSchedule: {
+      monday: { enabled: true, start: "10:00", end: "15:00", commissionPercent: 0 },
+      tuesday: { enabled: true, start: "10:00", end: "15:00", commissionPercent: 0 },
+    },
+  },
+};
+const leo = configuredProfessional;
 const appointments = [
   { id: "appointment-14", date: "2026-09-01", startTime: "14:00", professionalId: leo.id },
   { id: "appointment-16", date: "2026-09-01", startTime: "16:00", professionalId: leo.id },
@@ -29,11 +43,23 @@ function saleAt(date, time, extra = {}) {
   };
 }
 
-test("Leo martes 14:00 aplica 0%", () => {
+test("la regla configurada aplica 0% desde su fecha de vigencia", () => {
   const result = resolveSaleCommissionSnapshot(saleAt("2026-09-01", "14:00"), { professionals: [leo] });
   assert.equal(result.commissionRateApplied, 0);
   assert.equal(result.commissionRule, "salaried_schedule");
   assert.equal(resolveSaleCommissionSnapshot(saleAt("2026-09-01", "14:59"), { professionals: [leo] }).commissionRateApplied, 0);
+});
+
+test("un servicio anterior a la vigencia conserva la comisión estándar", () => {
+  const result = resolveSaleCommissionSnapshot(saleAt("2026-08-31", "14:00"), { professionals: [leo] });
+  assert.equal(result.commissionRateApplied, 40);
+  assert.equal(result.commissionRule, "standard");
+  assert.equal(result.commissionRuleEffectiveFrom, "2026-09-01");
+});
+
+test("una regla mixta sin fecha de vigencia no se activa por accidente", () => {
+  const withoutEffectiveDate = { ...leo, economics: { ...leo.economics, commissionRuleEffectiveFrom: "" } };
+  assert.equal(resolveSaleCommissionSnapshot(saleAt("2026-09-01", "14:00"), { professionals: [withoutEffectiveDate] }).commissionRateApplied, 40);
 });
 
 test("Leo martes 15:00 aplica comisión normal por límite final exclusivo", () => {
@@ -48,11 +74,62 @@ test("Leo sábado 12:00 aplica comisión normal", () => {
   assert.equal(resolveSaleCommissionSnapshot(saleAt("2026-09-05", "12:00"), { professionals: [leo] }).commissionRateApplied, 40);
 });
 
+test("los días obedecen la configuración y no el nombre de la profesional", () => {
+  const saturdayEnabled = {
+    ...leo,
+    name: "Profesional configurable",
+    economics: {
+      ...leo.economics,
+      commissionSchedule: {
+        ...leo.economics.commissionSchedule,
+        saturday: { enabled: true, start: "10:00", end: "15:00", commissionPercent: 0 },
+      },
+    },
+  };
+  assert.equal(resolveSaleCommissionSnapshot({ ...saleAt("2026-09-05", "11:00"), employee: saturdayEnabled.name }, { professionals: [saturdayEnabled] }).commissionRateApplied, 0);
+  assert.equal(resolveSaleCommissionSnapshot(saleAt("2026-09-05", "11:00"), { professionals: [leo] }).commissionRateApplied, 40);
+});
+
 test("cita a las 14:00 prevalece sobre venta cerrada a las 18:00", () => {
   const result = resolveSaleCommissionSnapshot(saleAt("2026-09-01", "18:00", { appointmentId: "appointment-14" }), { appointments, professionals: [leo] });
   assert.equal(result.commissionSource, "appointment");
   assert.equal(result.serviceTime, "14:00");
   assert.equal(result.commissionRateApplied, 0);
+});
+
+test("una cita anterior a la vigencia usa la regla anterior aunque se cierre después", () => {
+  const oldAppointment = { id: "appointment-old", date: "2026-08-31", startTime: "14:00", professionalId: leo.id };
+  const result = resolveSaleCommissionSnapshot(saleAt("2026-09-01", "18:00", { appointmentId: oldAppointment.id }), { appointments: [oldAppointment], professionals: [leo] });
+  assert.equal(result.commissionSource, "appointment");
+  assert.equal(result.serviceDate, "2026-08-31");
+  assert.equal(result.commissionRateApplied, 40);
+});
+
+test("previsualización y guardado usan el mismo fallback fijado al crear el borrador", () => {
+  const directSale = {
+    total: 12,
+    professionalId: leo.id,
+    employee: "Leo",
+    commissionCalculationTimestamp: "2026-09-01T14:00:00",
+  };
+  const preview = resolveSaleCommissionSnapshot(directSale, { professionals: [leo] });
+  const saved = resolveSaleCommissionSnapshot({ ...directSale, horaCreacion: "2026-09-01T18:00:00" }, { professionals: [leo] });
+  assert.equal(preview.commissionSource, "sale_created_at_fallback");
+  assert.equal(preview.commissionAmount, 0);
+  assert.equal(saved.commissionAmount, preview.commissionAmount);
+});
+
+test("previsualización y guardado coinciden también fuera del tramo", () => {
+  const directSale = {
+    total: 12,
+    professionalId: leo.id,
+    employee: "Leo",
+    commissionCalculationTimestamp: "2026-09-01T16:00:00",
+  };
+  const preview = resolveSaleCommissionSnapshot(directSale, { professionals: [leo] });
+  const saved = resolveSaleCommissionSnapshot({ ...directSale, horaCreacion: "2026-09-01T18:00:00" }, { professionals: [leo] });
+  assert.equal(preview.commissionAmount.toFixed(2), "4.80");
+  assert.equal(saved.commissionAmount, preview.commissionAmount);
 });
 
 test("cita a las 16:00 prevalece y aplica comisión normal", () => {
@@ -71,7 +148,7 @@ test("cambiar el horario después no cambia el snapshot histórico", () => {
 
 test("cambiar el porcentaje después no cambia el snapshot histórico", () => {
   const storedSale = { ...saleAt("2026-09-01", "16:00"), ...resolveSaleCommissionSnapshot(saleAt("2026-09-01", "16:00"), { professionals: [leo] }) };
-  const changedLeo = { ...leo, commissionPercent: 55 };
+  const changedLeo = { ...leo, commissionPercent: 55, economics: { ...leo.economics, defaultServiceCommissionPercent: 55 } };
   assert.equal(normalizeProfessionalCommissionPolicy(changedLeo).defaultCommissionPercent, 55);
   assert.equal(storedSale.commissionRateApplied, 40);
   assert.equal(storedSale.commissionAmount, 40);

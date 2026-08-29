@@ -19,11 +19,13 @@ export function normalizeRealEmployeeSettings(config = {}) {
       ...normalizedEmployee,
       commissionMode: policy.commissionMode,
       commissionSchedule: policy.commissionSchedule,
+      commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
       economics: {
         ...(normalizedEmployee.economics || {}),
         defaultServiceCommissionPercent: policy.defaultCommissionPercent,
         commissionMode: policy.commissionMode,
         commissionSchedule: policy.commissionSchedule,
+        commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
         outsideSchedule: policy.outsideSchedule,
       },
     };

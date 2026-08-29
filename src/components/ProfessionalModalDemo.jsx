@@ -71,6 +71,9 @@ function validateSchedule(weeklySchedule) {
 
 function validateCommissionSchedule(economics = {}) {
   if (economics.commissionMode !== "mixed_schedule") return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(economics.commissionRuleEffectiveFrom || "")) {
+    return "Indica desde qué fecha entra en vigor la comisión mixta.";
+  }
   for (const [dayKey, dayLabel] of weekDaysDemo) {
     const entry = economics.commissionSchedule?.[dayKey];
     if (!entry?.enabled) continue;
@@ -370,9 +373,10 @@ function ProfessionalModalDemo({ accessPanel = null, mode = "create", onClose, o
                 <section className="wide-field professional-commission-schedule">
                   <h3>Horario con comisión especial</h3>
                   <p className="empty-state">Fuera de estos tramos se aplica la comisión predeterminada. La hora final no está incluida.</p>
+                  <label>Vigente desde<input type="date" value={draft.economics.commissionRuleEffectiveFrom || ""} onChange={(event) => updateNested("economics", { commissionRuleEffectiveFrom: event.target.value })} /></label>
                   <label>Fuera del horario<select value={draft.economics.outsideSchedule || "standard"} onChange={(event) => updateNested("economics", { outsideSchedule: event.target.value })}><option value="standard">Usar comisión normal del profesional</option></select></label>
                   {weekDaysDemo.map(([dayKey, label]) => {
-                    const entry = draft.economics.commissionSchedule?.[dayKey] || { enabled: false, start: "10:00", end: "15:00", commissionPercent: 0 };
+                    const entry = draft.economics.commissionSchedule?.[dayKey] || { enabled: false, start: "", end: "", commissionPercent: 0 };
                     const updateEntry = (updates) => updateNested("economics", { commissionSchedule: { ...(draft.economics.commissionSchedule || {}), [dayKey]: { ...entry, ...updates } } });
                     return <div className="professional-commission-day" key={dayKey}><label className="inline-check"><input checked={entry.enabled} type="checkbox" onChange={(event) => updateEntry({ enabled: event.target.checked })} /> {label}</label><input aria-label={`Inicio ${label}`} disabled={!entry.enabled} type="time" value={entry.start} onChange={(event) => updateEntry({ start: event.target.value })} /><input aria-label={`Fin ${label}`} disabled={!entry.enabled} type="time" value={entry.end} onChange={(event) => updateEntry({ end: event.target.value })} /><label>Comisión dentro %<input disabled={!entry.enabled} min="0" step="0.01" type="number" value={entry.commissionPercent} onChange={(event) => updateEntry({ commissionPercent: event.target.value })} /></label></div>;
                   })}

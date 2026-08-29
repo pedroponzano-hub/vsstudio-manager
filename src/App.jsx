@@ -964,6 +964,13 @@ function App() {
               setSaleAppointment(null);
               setSalesFormHighlight(false);
             }}
+            onCancelNew={() => {
+              setSaleAppointment(null);
+              setEditingSale(null);
+              setActivePage("sales.today");
+              setActiveTab("sales");
+              setActiveNavKey("sales-today");
+            }}
             onDateChange={setSelectedSaleDate}
           />
         </div>

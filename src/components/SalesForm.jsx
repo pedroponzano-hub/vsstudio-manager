@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getMadridDateString } from "../utils/date.js";
+import { getMadridDateString, getMadridTimestamp } from "../utils/date.js";
 import { resolveSaleCommissionSnapshot } from "../utils/commissionSchedule.js";
+import { discardUnsavedSale, newSaleDraftHasData } from "../utils/salesDraft.js";
 
 const durationOptions = [
   { label: "15 min", value: 15 },
@@ -185,6 +186,7 @@ function SalesForm({
   canEditSaleDate = false,
   canEditCommission = false,
   onCancelEdit,
+  onCancelNew,
   onDateChange,
   cashClosings = [],
   currentUser,
@@ -214,6 +216,7 @@ function SalesForm({
   const [activeCategory, setActiveCategory] = useState(tpvCategories[0].id);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const appliedAppointmentIdRef = useRef("");
+  const draftCreatedAtRef = useRef(getMadridTimestamp());
 
   useEffect(() => {
     if (!editingSale) return;
@@ -353,6 +356,7 @@ function SalesForm({
     const automaticSnapshot = editingSale ? null : resolveSaleCommissionSnapshot({
       ...form,
       total,
+      commissionCalculationTimestamp: draftCreatedAtRef.current,
       professionalId: selectedEmployee?.id || "",
       professionalName: selectedEmployee?.displayName || selectedEmployee?.name || form.employee,
       saleDate: form.date,
@@ -617,12 +621,25 @@ function SalesForm({
     setQuickClient({ name: "", phone: "", email: "", observations: "" });
     setSaleError("");
     setForm({ ...emptySaleForm(), date: nextDate });
+    draftCreatedAtRef.current = getMadridTimestamp();
     onDateChange?.(nextDate);
   };
 
   const cancelEdit = () => {
     resetSaleForm();
     onCancelEdit?.();
+  };
+
+  const cancelNewSale = () => {
+    const hasDraftData = newSaleDraftHasData({
+      clientId: form.clientId,
+      clientQuery,
+      employee: form.employee,
+      payments,
+      services: saleServices,
+    });
+    if (hasDraftData && !window.confirm("¿Descartar esta venta?")) return;
+    discardUnsavedSale({ resetDraft: resetSaleForm, onDiscard: onCancelNew });
   };
 
   const buildPayload = (validPayments, effectiveDate, status) => {
@@ -674,6 +691,7 @@ function SalesForm({
       })),
       extra: Number(form.extra || 0),
       commissionPercent: Number(totals.commissionPercent || 0),
+      commissionCalculationTimestamp: draftCreatedAtRef.current,
       ...financialTotals,
     };
   };
@@ -1036,6 +1054,7 @@ function SalesForm({
       <div className="form-actions">
         <button type="submit">{isInternalService ? "Guardar servicio interno" : "Cobrar y cerrar"}</button>
         {!isInternalService && <button className="secondary-button" type="button" onClick={savePending}>Guardar pendiente</button>}
+        {!editingSale && <button className="secondary-button" type="button" onClick={cancelNewSale}>Cancelar</button>}
         {editingSale && <button className="secondary-button" type="button" onClick={cancelEdit}>Cancelar edicion</button>}
       </div>
     </form>

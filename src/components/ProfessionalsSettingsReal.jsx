@@ -45,6 +45,7 @@ function employeeToProfessional(employee = {}) {
       defaultServiceCommissionPercent: commissionPolicy.defaultCommissionPercent,
       commissionMode: commissionPolicy.commissionMode,
       commissionSchedule: commissionPolicy.commissionSchedule,
+      commissionRuleEffectiveFrom: commissionPolicy.commissionRuleEffectiveFrom,
       outsideSchedule: commissionPolicy.outsideSchedule,
     },
     publicProfile: employee.publicProfile,
