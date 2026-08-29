@@ -27,6 +27,7 @@ const permissionsByRole = {
 };
 
 const userRoleOverrides = {};
+const emptyRolePermissions = { tabs: [], actions: [], ownEmployeeOnly: false };
 
 function effectiveRoleForUser(user) {
   const email = String(user?.email || "").trim().toLowerCase();
@@ -35,7 +36,7 @@ function effectiveRoleForUser(user) {
 
 function rolePermissions(role) {
   const normalizedRole = String(role || "").trim().toLowerCase();
-  return permissionsByRole[normalizedRole] || permissionsByRole.profesional;
+  return permissionsByRole[normalizedRole] || emptyRolePermissions;
 }
 
 function allowedTabsForRole(role) {
@@ -58,6 +59,54 @@ function canAccessDashboardSection(role, section) {
 
 function defaultPageForRole(role) {
   return String(role || "").trim().toLowerCase() === "direccion" ? "pos.agendaV2" : "";
+}
+
+function getDefaultRouteForUser(user = {}) {
+  if (!user || user.active === false) return "/no-permissions";
+  const role = effectiveRoleForUser(user);
+  const tabs = allowedTabsForRole(role);
+  if (role === "admin") return "/manager";
+  if (role === "direccion") return "/pos/agenda-v2";
+  if (tabs.includes("professionalAgenda")) return "/pos/my-agenda";
+  if (tabs.includes("professionalCommissions")) return "/pos/my-commissions";
+
+  const posTabs = ["sales", "expenses", "clients", "loyalty", "agenda", "cashClosing"];
+  if (tabs.some((tab) => posTabs.includes(tab))) return "/pos";
+  const managerTabs = ["dashboard", "finance", "statistics", "commissions", "settings"];
+  if (tabs.some((tab) => managerTabs.includes(tab))) return "/manager";
+  return "/no-permissions";
+}
+
+function canAccessRouteForUser(user = {}, pathname = "") {
+  if (!user || user.active === false) return false;
+  const role = effectiveRoleForUser(user);
+  const tabs = allowedTabsForRole(role);
+  const path = String(pathname || "/").toLowerCase();
+  if (path === "/no-permissions" || path.startsWith("/no-permissions/")) return tabs.length === 0;
+  if (path === "/pos/my-agenda" || path.startsWith("/pos/my-agenda/")) return tabs.includes("professionalAgenda");
+  if (path === "/pos/my-commissions" || path.startsWith("/pos/my-commissions/")) return tabs.includes("professionalCommissions");
+  if (path === "/manager" || path.startsWith("/manager/")) {
+    const managerTabs = ["dashboard", "finance", "statistics", "commissions", "settings"];
+    return tabs.some((tab) => managerTabs.includes(tab));
+  }
+  if (path === "/pos" || path.startsWith("/pos/")) {
+    const posTabs = ["sales", "expenses", "clients", "loyalty", "agenda", "cashClosing", "professionalAgenda", "professionalCommissions"];
+    return tabs.some((tab) => posTabs.includes(tab));
+  }
+  return false;
+}
+
+function resolveRouteForUser(user = {}, requestedPath = "") {
+  return canAccessRouteForUser(user, requestedPath) ? requestedPath : getDefaultRouteForUser(user);
+}
+
+function accessDeniedMessageForRoute(user = {}, requestedPath = "") {
+  if (canAccessRouteForUser(user, requestedPath)) return "";
+  const path = String(requestedPath || "/").toLowerCase();
+  if (path === "/manager" || path.startsWith("/manager/")) {
+    return "No tienes permisos para acceder a Manager.";
+  }
+  return "No tienes permisos para acceder a esta sección.";
 }
 
 function isOwnEmployeeOnly(role) {
@@ -87,14 +136,18 @@ function onlyOwnEmployeeItems(items, user) {
 }
 
 export {
+  accessDeniedMessageForRoute,
   allowedTabsForRole,
+  canAccessRouteForUser,
   canAccessDashboardSection,
   canAccessTab,
   canPerform,
   defaultPageForRole,
   effectiveRoleForUser,
   employeeNameForUser,
+  getDefaultRouteForUser,
   isOwnEmployeeOnly,
   onlyOwnEmployeeItems,
   professionalMatchesItem,
+  resolveRouteForUser,
 };

@@ -1,5 +1,23 @@
-import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, setDoc, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../firebase.js";
+import {
+  assertAppointmentStatusTransition,
+  assertNoAppointmentConflict,
+  buildAppointmentRecord,
+  createAppointmentOperation,
+  normalizeAppointmentDate,
+  normalizeAppointmentRecord,
+} from "../utils/appointmentModel.js";
+import { createQuickClientOperation, findQuickClientDuplicate } from "../utils/clientQuickCreate.js";
+import {
+  buildManualCommissionOverride,
+  assertCommissionEditReason,
+  commissionFieldsChanged,
+  createCommissionAuditEntry,
+  filterOwnPositiveCommissions,
+  normalizeProfessionalCommissionPolicy,
+  resolveSaleCommissionSnapshot,
+} from "../utils/commissionSchedule.js";
 import {
   getMadridDateString,
   getMadridDayOfMonth,
@@ -273,6 +291,36 @@ function syncKeyToFirestore(key, value) {
 async function readFirestoreCollection(collectionName) {
   const snapshot = await getDocs(collection(db, collectionName));
   return snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
+}
+
+async function readFirestoreAppointmentsByDate(date) {
+  const normalizedDate = normalizeAppointmentDate(date);
+  if (!normalizedDate) throw new Error("La fecha de Agenda no es válida.");
+  const snapshot = await getDocs(query(collection(db, "appointments"), where("date", "==", normalizedDate)));
+  return snapshot.docs.map((document) => normalizeAppointmentRecord({ id: document.id, ...document.data() }));
+}
+
+async function readFirestoreAppointmentsByClientId(clientId) {
+  const safeClientId = cleanText(clientId);
+  if (!safeClientId) return [];
+  const snapshot = await getDocs(query(collection(db, "appointments"), where("clientId", "==", safeClientId)));
+  return snapshot.docs
+    .map((document) => normalizeAppointmentRecord({ id: document.id, ...document.data() }))
+    .sort((first, second) => `${second.date} ${second.startTime}`.localeCompare(`${first.date} ${first.startTime}`));
+}
+
+async function readFirestoreAppointment(appointmentId) {
+  const snapshot = await getDoc(doc(db, "appointments", appointmentId));
+  return snapshot.exists() ? normalizeAppointmentRecord({ id: snapshot.id, ...snapshot.data() }) : null;
+}
+
+function mergeAppointmentDateIntoLocal(date, appointments) {
+  const normalizedDate = normalizeAppointmentDate(date);
+  const incomingIds = new Set((appointments || []).map((appointment) => appointment.id));
+  const otherDates = readCollection("appointments").filter((appointment) => (
+    normalizeAppointmentRecord(appointment).date !== normalizedDate && !incomingIds.has(appointment.id)
+  ));
+  writeCollection("appointments", [...appointments, ...otherDates]);
 }
 
 async function readFirestoreConfig() {
@@ -630,6 +678,12 @@ function comparableSaleSnapshot(sale) {
     entryChannel: sale.entryChannel || "",
     commissionPercent: Number(sale.commissionPercent || 0),
     commissionAmount: Number(sale.commissionAmount || 0),
+    commissionRateApplied: Number(sale.commissionRateApplied ?? sale.commissionPercent ?? 0),
+    commissionRule: sale.commissionRule || "",
+    commissionSource: sale.commissionSource || "",
+    appointmentId: sale.appointmentId || "",
+    serviceDate: sale.serviceDate || "",
+    serviceTime: sale.serviceTime || "",
     treatwellCommissionPercent: Number(sale.treatwellCommissionPercent || 0),
     treatwellCommissionAmount: Number(sale.treatwellCommissionAmount || 0),
     cardTipAmount: Number(sale.cardTipAmount || 0),
@@ -735,7 +789,7 @@ function commissionRows(sales, commissionStatuses) {
   const detailsBySale = Object.fromEntries(commissionStatuses.map((item) => [item.saleId || item.id, item]));
 
   return sales
-    .filter((sale) => (isCollectedSale(sale) || isInternalServiceSale(sale)) && Number(sale.commissionPercent || 0) > 0)
+    .filter((sale) => isCollectedSale(sale) || isInternalServiceSale(sale))
     .map((sale) => {
       const details = detailsBySale[sale.id] || {};
       const commissionPercent = Number(details.commissionPercent ?? sale.commissionPercent ?? 0);
@@ -746,7 +800,7 @@ function commissionRows(sales, commissionStatuses) {
         id: sale.id,
         saleId: sale.id,
         date: saleOperationalDate(sale),
-        hour: sale.horaCierreLocal || sale.horaCreacionLocal || localTimeFromTimestamp(sale.horaCierre || sale.horaCreacion || sale.createdAt),
+        hour: sale.serviceTime || sale.horaCierreLocal || sale.horaCreacionLocal || localTimeFromTimestamp(sale.horaCierre || sale.horaCreacion || sale.createdAt),
         professionalId: details.professionalId || sale.professionalId || sale.employeeId || "",
         professionalName: details.professionalName || sale.professionalName || sale.employee || "Sin empleada",
         employee: details.employee || sale.employee || "Sin empleada",
@@ -757,6 +811,8 @@ function commissionRows(sales, commissionStatuses) {
         operationType: isInternalServiceSale(sale) ? "servicio_interno" : "venta",
         commissionPercent,
         commissionAmount,
+        commissionRule: sale.commissionRule || "",
+        commissionSource: sale.commissionSource || "",
         status: statusBySale[sale.id] || "pendiente",
         commissionStatus: statusBySale[sale.id] || "pendiente",
         paidAt: details.paidAt || "",
@@ -775,6 +831,7 @@ function commissionRows(sales, commissionStatuses) {
         correctionHistory: Array.isArray(details.correctionHistory) ? details.correctionHistory : [],
       };
     })
+    .filter((row) => Number(row.commissionAmount || 0) > 0)
     .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")));
 }
 
@@ -943,13 +1000,28 @@ function normalizeEmployeeSettings(config) {
 
   return uniqueNames.map((name) => {
     const existing = rawSettings.find((employee) => String(employee.name || "").trim().toLowerCase() === name.toLowerCase());
-    return {
+    const normalizedEmployee = {
       ...(existing || {}),
       id: existing?.id || `employee-${name.toLowerCase().replace(/\s+/g, "-")}`,
       name,
       active: existing?.active !== false,
       commissionPercent: Number(existing?.commissionPercent || 0),
       commissionHistory: Array.isArray(existing?.commissionHistory) ? existing.commissionHistory : [],
+    };
+    const policy = normalizeProfessionalCommissionPolicy(normalizedEmployee);
+    return {
+      ...normalizedEmployee,
+      commissionMode: policy.commissionMode,
+      commissionSchedule: policy.commissionSchedule,
+      commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
+      economics: {
+        ...(normalizedEmployee.economics || {}),
+        defaultServiceCommissionPercent: policy.defaultCommissionPercent,
+        commissionMode: policy.commissionMode,
+        commissionSchedule: policy.commissionSchedule,
+        commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
+        outsideSchedule: policy.outsideSchedule,
+      },
     };
   });
 }
@@ -1024,6 +1096,16 @@ function normalizeSale(sale) {
     cardTipAmount: Number(sale.cardTipAmount || 0),
     commissionPercent: fields.commissionPercent,
     commissionAmount: fields.commissionAmount,
+    commissionRateApplied: Number(sale.commissionRateApplied ?? fields.commissionPercent),
+    commissionRule: sale.commissionRule || "",
+    commissionSource: sale.commissionSource || "",
+    commissionAppliedAt: sale.commissionAppliedAt || "",
+    commissionRuleEffectiveFrom: sale.commissionRuleEffectiveFrom || "",
+    commissionScheduleSnapshot: sale.commissionScheduleSnapshot || null,
+    commissionSnapshotLocked: Boolean(sale.commissionSnapshotLocked),
+    appointmentId: sale.appointmentId || "",
+    serviceDate: sale.serviceDate || "",
+    serviceTime: sale.serviceTime || "",
     treatwellCommissionPercent: fields.treatwellCommissionPercent,
     treatwellCommissionAmount: fields.treatwellCommissionAmount,
     netAfterCommission: fields.netAfterCommission,
@@ -1113,14 +1195,7 @@ function normalizeEmail(value) {
 }
 
 function findExistingClient(clients, clientInput = {}) {
-  const phone = normalizePhone(clientInput.phoneNormalized || clientInput.phone);
-  const email = normalizeEmail(clientInput.email);
-
-  return clients.find((client) => {
-    const clientPhone = normalizePhone(client.phoneNormalized || client.phone);
-    const clientEmail = normalizeEmail(client.email);
-    return (phone && clientPhone === phone) || (email && clientEmail === email);
-  });
+  return findQuickClientDuplicate(clients, clientInput) || undefined;
 }
 
 function firstValue(row, keys) {
@@ -1238,7 +1313,19 @@ const DataService = {
   },
 
   getAppointments() {
-    return readCollection("appointments");
+    return readCollection("appointments").map(normalizeAppointmentRecord);
+  },
+
+  async getAppointmentsByDate(date) {
+    const normalizedDate = normalizeAppointmentDate(date);
+    if (!normalizedDate) throw new Error("Selecciona una fecha válida.");
+    const appointments = await readFirestoreAppointmentsByDate(normalizedDate);
+    mergeAppointmentDateIntoLocal(normalizedDate, appointments);
+    return appointments;
+  },
+
+  async getAppointmentsByClientId(clientId) {
+    return readFirestoreAppointmentsByClientId(clientId);
   },
 
   getCommissionStatuses() {
@@ -1270,6 +1357,18 @@ const DataService = {
     };
   },
 
+  getCommissionsForProfessional(professionalId) {
+    const commissions = this.getCommissions();
+    const rows = filterOwnPositiveCommissions(commissions.rows, professionalId);
+    const byEmployee = rows.reduce((totals, row) => {
+      totals[row.employee] = (totals[row.employee] || 0) + Number(row.commissionAmount || 0);
+      return totals;
+    }, {});
+    const generated = rows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
+    const pending = rows.filter((row) => row.status !== "pagada").reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
+    return { rows, totals: { generated, pending, paid: generated - pending, byEmployee } };
+  },
+
   getConfig() {
     const config = normalizeConfig({ ...clone(defaultData.config), ...readCollection("config"), agenda: this.getAppointments() });
     writeCollection("config", config);
@@ -1299,7 +1398,7 @@ const DataService = {
         readFirestoreCollection("sales"),
         readFirestoreCollection("expenses"),
         readFirestoreCollection("clients"),
-        readFirestoreCollection("appointments"),
+        readFirestoreAppointmentsByDate(todayLocal()),
         readFirestoreCollection("commissions"),
         readFirestoreCollection("commissionPaymentBatches"),
         readFirestoreCollection("cashClosings"),
@@ -1364,9 +1463,9 @@ const DataService = {
         writeCollection("clients", clients);
         refreshFromLocal();
       }, handleError),
-      onSnapshot(collection(db, "appointments"), (snapshot) => {
-        const appointments = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
-        writeCollection("appointments", appointments);
+      onSnapshot(query(collection(db, "appointments"), where("date", "==", todayLocal())), (snapshot) => {
+        const appointments = snapshot.docs.map((document) => normalizeAppointmentRecord({ id: document.id, ...document.data() }));
+        mergeAppointmentDateIntoLocal(todayLocal(), appointments);
         refreshFromLocal();
       }, handleError),
       onSnapshot(collection(db, "commissions"), (snapshot) => {
@@ -1413,9 +1512,29 @@ const DataService = {
     const date = saleInput.saleDate || saleInput.fechaOperativa || saleInput.date || todayLocal();
     const status = saleStatus(saleInput);
     const saleId = createId("sale");
+    const preliminarySale = normalizeSale({
+      ...saleInput,
+      date,
+      saleDate: date,
+      fechaOperativa: date,
+      createdAt: technicalTimestamp,
+      horaCreacion: localTimestamp,
+      horaCreacionLocal: localTime,
+    });
+    const commissionSnapshot = resolveSaleCommissionSnapshot({
+      ...preliminarySale,
+      commissionCalculationTimestamp: saleInput.commissionCalculationTimestamp,
+    }, {
+      appointments: this.getAppointments(),
+      professionals: this.getConfig().employeeSettings || [],
+      appliedAt: technicalTimestamp,
+    });
     const sale = {
       ...normalizeSale({
         ...saleInput,
+        ...commissionSnapshot,
+        netAfterCommission: undefined,
+        netAfterTreatwellAndCommission: undefined,
         date,
         saleDate: date,
         fechaOperativa: date,
@@ -1484,11 +1603,42 @@ const DataService = {
       voidedBy: isVoid ? (updates.voidedBy || existingSale.voidedBy || "") : existingSale.voidedBy,
       voidReason: isVoid ? (updates.voidReason || existingSale.voidReason || "") : existingSale.voidReason,
     };
-    const draftSale = normalizeSale(updateInput);
+    const hasCommissionChange = commissionFieldsChanged(existingSale, updateInput);
+    assertCommissionEditReason(existingSale, updateInput, updates.editReason);
+    let commissionAwareInput = updateInput;
+    if (hasCommissionChange) {
+      const momentChanged = ["serviceDate", "serviceTime", "appointmentId"]
+        .some((field) => String(existingSale[field] || "") !== String(updateInput[field] || ""));
+      const rateChanged = Number(existingSale.commissionPercent || 0) !== Number(updateInput.commissionPercent || 0);
+      const amountChanged = Number(existingSale.commissionAmount || 0) !== Number(updateInput.commissionAmount || 0);
+      const manualUpdates = { ...updates };
+      if (momentChanged && !rateChanged && !amountChanged) {
+        delete manualUpdates.commissionPercent;
+        delete manualUpdates.commissionRateApplied;
+        delete manualUpdates.commissionAmount;
+      }
+      const normalizedForOverride = normalizeSale({
+        ...updateInput,
+        netAfterCommission: undefined,
+        netAfterTreatwellAndCommission: undefined,
+      });
+      const manualSnapshot = buildManualCommissionOverride(normalizedForOverride, manualUpdates, {
+        appointments: this.getAppointments(),
+        professionals: this.getConfig().employeeSettings || [],
+        appliedAt: technicalTimestamp,
+      });
+      commissionAwareInput = {
+        ...updateInput,
+        ...manualSnapshot,
+        netAfterCommission: undefined,
+        netAfterTreatwellAndCommission: undefined,
+      };
+    }
+    const draftSale = normalizeSale(commissionAwareInput);
     const editHistory = isAuditedEdit
       ? [
         ...saleEditHistory(existingSale),
-        {
+        createCommissionAuditEntry({
           id: createId("sale-edit"),
           editedAt: now,
           editedBy: updates.editedBy || existingSale.editedBy || "",
@@ -1496,7 +1646,7 @@ const DataService = {
           previousValues: comparableSaleSnapshot(existingSale),
           newValues: comparableSaleSnapshot(draftSale),
           changes: saleChanges(existingSale, draftSale),
-        },
+        }),
       ]
       : saleEditHistory(existingSale);
     const updatedSale = normalizeSale({
@@ -1589,6 +1739,26 @@ const DataService = {
     return { data: { ...this.getData(), clients }, client };
   },
 
+  async createAgendaClient(clientInput) {
+    const currentClients = this.getClients();
+    const result = await createQuickClientOperation(clientInput, {
+      clients: currentClients,
+      createClientId: () => createId("client"),
+      saveClient: async (candidate) => {
+        const client = normalizeClient({
+          ...candidate,
+          observations: candidate.observations ?? candidate.notes ?? "",
+        });
+        await setDoc(doc(db, "clients", client.id), cleanFirestoreData(client));
+        return client;
+      },
+    });
+    const clients = result.created
+      ? writeCollection("clients", [result.client, ...currentClients])
+      : currentClients;
+    return { ...result, data: { ...this.getData(), clients } };
+  },
+
   importTreatwellClients(rows = []) {
     const currentClients = this.getClients();
     const phoneIndex = new Map(currentClients.map((client) => [
@@ -1677,6 +1847,13 @@ const DataService = {
     return { ...this.getData(), config };
   },
 
+  async updateProfessionalSettings(updates) {
+    const config = normalizeConfig({ ...this.getConfig(), ...updates });
+    await syncConfigToFirestore(config);
+    writeCollection("config", config);
+    return { ...this.getData(), config };
+  },
+
   createService(serviceInput) {
     const currentConfig = this.getConfig();
     const categoryName = cleanText(serviceInput.category);
@@ -1725,31 +1902,53 @@ const DataService = {
     return { ...this.getData(), config };
   },
 
-  addAppointment(appointment) {
-    const item = { ...appointment, id: createId("appointment") };
-    writeCollection("appointments", [item, ...this.getAppointments()]);
-    saveDocumentToFirestore("appointments", item);
-    return this.getData();
+  async createAppointment(appointment, actor = {}) {
+    const item = await createAppointmentOperation(appointment, {
+      actor,
+      id: createId("appointment"),
+      loadAppointmentsByDate: readFirestoreAppointmentsByDate,
+      now: getTechnicalTimestamp(),
+      saveAppointment: (record) => setDoc(doc(db, "appointments", record.id), cleanFirestoreData(record)),
+    });
+    const appointmentsForDate = await readFirestoreAppointmentsByDate(item.date);
+    mergeAppointmentDateIntoLocal(item.date, [item, ...appointmentsForDate]);
+    return { appointment: item, data: this.getData() };
   },
 
-  updateAppointment(appointmentId, updates) {
+  async updateAppointment(appointmentId, updates, actor = {}) {
     const currentAppointments = this.getAppointments();
-    const existingAppointment = currentAppointments.find((appointment) => appointment.id === appointmentId);
-    if (!existingAppointment) return this.getData();
+    const existingAppointment = currentAppointments.find((appointment) => appointment.id === appointmentId)
+      || await readFirestoreAppointment(appointmentId);
+    if (!existingAppointment) throw new Error("La cita ya no existe.");
 
-    const updatedAppointment = { ...existingAppointment, ...updates, id: appointmentId };
-    writeCollection(
-      "appointments",
-      currentAppointments.map((appointment) => (appointment.id === appointmentId ? updatedAppointment : appointment)),
-    );
-    saveDocumentToFirestore("appointments", updatedAppointment);
-    return this.getData();
+    const updatedAppointment = buildAppointmentRecord(updates, {
+      actor,
+      existing: existingAppointment,
+      now: getTechnicalTimestamp(),
+    });
+    assertAppointmentStatusTransition(existingAppointment.status, updatedAppointment.status);
+    const appointmentsForDate = await readFirestoreAppointmentsByDate(updatedAppointment.date);
+    assertNoAppointmentConflict(updatedAppointment, appointmentsForDate, appointmentId);
+    await setDoc(doc(db, "appointments", appointmentId), cleanFirestoreData(updatedAppointment));
+
+    const withoutUpdated = appointmentsForDate.filter((appointment) => appointment.id !== appointmentId);
+    mergeAppointmentDateIntoLocal(updatedAppointment.date, [updatedAppointment, ...withoutUpdated]);
+    if (existingAppointment.date !== updatedAppointment.date) {
+      writeCollection("appointments", this.getAppointments().filter((appointment) => (
+        appointment.id !== appointmentId || appointment.date === updatedAppointment.date
+      )));
+    }
+    return { appointment: updatedAppointment, data: this.getData() };
   },
 
-  deleteAppointment(appointmentId) {
-    writeCollection("appointments", this.getAppointments().filter((appointment) => appointment.id !== appointmentId));
-    deleteDocumentFromFirestore("appointments", appointmentId);
-    return this.getData();
+  async addAppointment(appointment, actor = {}) {
+    const result = await this.createAppointment(appointment, actor);
+    return result.data;
+  },
+
+  async deleteAppointment(appointmentId, actor = {}) {
+    const result = await this.updateAppointment(appointmentId, { status: "Cancelada" }, actor);
+    return result.data;
   },
 
   deleteSale(arg1, arg2) {
@@ -1773,6 +1972,22 @@ const DataService = {
     const currentRow = commissionRows(this.getSales(), currentStatuses).find((row) => row.saleId === saleId);
     const hasCorrection = Boolean(details.correctionReason);
     const isQuickStatusChange = Boolean(details.statusChangeOnly);
+    if (hasCorrection) {
+      const sale = this.getSales().find((item) => item.id === saleId);
+      if (sale) {
+        this.updateSale(saleId, {
+          employee: details.employee ?? sale.employee,
+          commissionPercent: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : sale.commissionPercent,
+          commissionAmount: details.commissionAmount !== undefined ? Number(details.commissionAmount || 0) : sale.commissionAmount,
+          commissionRule: "manual_override",
+          commissionRateApplied: details.commissionPercent !== undefined ? Number(details.commissionPercent || 0) : sale.commissionRateApplied,
+          editReason: details.correctionReason,
+          editedBy: details.editedBy || details.updatedBy || "",
+          netAfterCommission: undefined,
+          netAfterTreatwellAndCommission: undefined,
+        });
+      }
+    }
     if (safeStatus === "pagada" && currentRow?.status === "pagada" && !hasCorrection) {
       return { ...this.getData(), commissions: currentStatuses };
     }

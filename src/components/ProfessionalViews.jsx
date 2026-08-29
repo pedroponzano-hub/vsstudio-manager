@@ -70,6 +70,7 @@ function ProfessionalCommissions({ sales = [], commissions = [] }) {
   const [range, setRange] = useState(initialRange);
   const rows = useMemo(() => (
     [...(commissions || [])]
+      .filter((commission) => Number(commission.commissionAmount || 0) > 0)
       .filter((commission) => inRange(String(commission.date || ""), range))
       .sort((first, second) => `${second.date || ""} ${second.hour || ""}`.localeCompare(`${first.date || ""} ${first.hour || ""}`))
   ), [commissions, range]);

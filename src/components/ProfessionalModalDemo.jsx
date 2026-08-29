@@ -69,12 +69,27 @@ function validateSchedule(weeklySchedule) {
   return "";
 }
 
-function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional, servicesCatalog = [], persistent = false }) {
+function validateCommissionSchedule(economics = {}) {
+  if (economics.commissionMode !== "mixed_schedule") return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(economics.commissionRuleEffectiveFrom || "")) {
+    return "Indica desde qué fecha entra en vigor la comisión mixta.";
+  }
+  for (const [dayKey, dayLabel] of weekDaysDemo) {
+    const entry = economics.commissionSchedule?.[dayKey];
+    if (!entry?.enabled) continue;
+    if (!entry.start || !entry.end || entry.end <= entry.start) return `${dayLabel}: el horario de comisión debe tener un inicio y fin válidos.`;
+    if (Number(entry.commissionPercent || 0) < 0) return `${dayLabel}: la comisión no puede ser negativa.`;
+  }
+  return "";
+}
+
+function ProfessionalModalDemo({ accessPanel = null, mode = "create", onClose, onSave, professional, servicesCatalog = [], persistent = false }) {
   const [draft, setDraft] = useState(() => clone(professional));
   const [activeTab, setActiveTab] = useState("professional-basic-info");
   const [serviceQuery, setServiceQuery] = useState("");
   const [openCategories, setOpenCategories] = useState(Object.fromEntries(demoServiceCategories.map((category, index) => [category, index === 0])));
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const assignmentServices = useMemo(() => getAvailableProfessionalServices(servicesCatalog), [servicesCatalog]);
   const groupedServices = useMemo(() => groupServicesByOperationalCategory(assignmentServices), [assignmentServices]);
   const selectedCount = normalizeAssignedServiceIds(draft.assignedServiceIds, assignmentServices).length;
@@ -149,7 +164,7 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
       current[category] === isOpen ? current : { ...current, [category]: isOpen }
     ));
   };
-  const save = () => {
+  const save = async () => {
     if (!draft.firstName.trim()) {
       setError("El nombre es obligatorio.");
       return;
@@ -178,11 +193,23 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
       setError(scheduleError);
       return;
     }
-    onSave?.({
-      ...draft,
-      assignedServiceIds: finalAssignedServiceIds,
-      professionalServiceSettings: finalProfessionalServiceSettings,
-    });
+    const commissionScheduleError = validateCommissionSchedule(draft.economics);
+    if (commissionScheduleError) {
+      setError(commissionScheduleError);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave?.({
+        ...draft,
+        assignedServiceIds: finalAssignedServiceIds,
+        professionalServiceSettings: finalProfessionalServiceSettings,
+      });
+    } catch {
+      setError("No se pudo confirmar el guardado del profesional en Firebase.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -318,25 +345,43 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
           )}
           {activeTab === "professional-permissions" && (
             <section className="professional-permissions-tab">
-              {persistent && <p className="empty-state">Estos campos preparan la configuración operativa futura y no cambian los roles de acceso actuales.</p>}
-              <label className="inline-check"><input checked={draft.access.enabled} type="checkbox" onChange={(event) => updateNested("access", { enabled: event.target.checked })} /> {persistent ? "Acceso operativo previsto" : "Tiene acceso al sistema"}</label>
-              <label>{persistent ? "Perfil de permisos" : "Rol demo"}<select value={draft.access.role} onChange={(event) => changeRole(event.target.value)}>{Object.keys(professionalDemoRoles).map((role) => <option key={role}>{role}</option>)}</select></label>
-              {Object.entries(professionalPermissionGroups).map(([group, permissions]) => (
-                <article className="professional-permission-group" key={group}>
-                  <h3>{group}</h3>
-                  {permissions.map(([permissionId, label]) => (
-                    <label className="inline-check" key={permissionId}><input checked={draft.access.permissions.includes(permissionId)} type="checkbox" onChange={() => togglePermission(permissionId)} /> {label}</label>
+              {persistent && accessPanel}
+              {!persistent && (
+                <>
+                  <label className="inline-check"><input checked={draft.access.enabled} type="checkbox" onChange={(event) => updateNested("access", { enabled: event.target.checked })} /> Tiene acceso al sistema</label>
+                  <label>Rol demo<select value={draft.access.role} onChange={(event) => changeRole(event.target.value)}>{Object.keys(professionalDemoRoles).map((role) => <option key={role}>{role}</option>)}</select></label>
+                  {Object.entries(professionalPermissionGroups).map(([group, permissions]) => (
+                    <article className="professional-permission-group" key={group}>
+                      <h3>{group}</h3>
+                      {permissions.map(([permissionId, label]) => (
+                        <label className="inline-check" key={permissionId}><input checked={draft.access.permissions.includes(permissionId)} type="checkbox" onChange={() => togglePermission(permissionId)} /> {label}</label>
+                      ))}
+                    </article>
                   ))}
-                </article>
-              ))}
+                </>
+              )}
             </section>
           )}
           {activeTab === "professional-economics" && (
             <section className="professional-tab-grid">
               <label>Comisión predeterminada de servicios<input min="0" step="0.01" type="number" value={draft.economics.defaultServiceCommissionPercent} onChange={(event) => updateNested("economics", { defaultServiceCommissionPercent: event.target.value })} /></label>
+              <label>Tipo de comisión<select value={draft.economics.commissionMode || "always"} onChange={(event) => updateNested("economics", { commissionMode: event.target.value })}><option value="always">Comisión siempre</option><option value="none">Sin comisión</option><option value="mixed_schedule">Mixta por horario</option></select></label>
               <label>Comisión de productos<input min="0" step="0.01" type="number" value={draft.economics.productCommissionPercent} onChange={(event) => updateNested("economics", { productCommissionPercent: event.target.value })} /></label>
               <label className="inline-check"><input checked={draft.economics.hasFixedSalary} type="checkbox" onChange={(event) => updateNested("economics", { hasFixedSalary: event.target.checked })} /> Tiene salario fijo</label>
               <label>Tipo de vinculación<select value={draft.employmentType} onChange={(event) => update({ employmentType: event.target.value })}><option>Empleada</option><option>Autónoma</option><option>Colaboradora</option></select></label>
+              {draft.economics.commissionMode === "mixed_schedule" && (
+                <section className="wide-field professional-commission-schedule">
+                  <h3>Horario con comisión especial</h3>
+                  <p className="empty-state">Fuera de estos tramos se aplica la comisión predeterminada. La hora final no está incluida.</p>
+                  <label>Vigente desde<input type="date" value={draft.economics.commissionRuleEffectiveFrom || ""} onChange={(event) => updateNested("economics", { commissionRuleEffectiveFrom: event.target.value })} /></label>
+                  <label>Fuera del horario<select value={draft.economics.outsideSchedule || "standard"} onChange={(event) => updateNested("economics", { outsideSchedule: event.target.value })}><option value="standard">Usar comisión normal del profesional</option></select></label>
+                  {weekDaysDemo.map(([dayKey, label]) => {
+                    const entry = draft.economics.commissionSchedule?.[dayKey] || { enabled: false, start: "", end: "", commissionPercent: 0 };
+                    const updateEntry = (updates) => updateNested("economics", { commissionSchedule: { ...(draft.economics.commissionSchedule || {}), [dayKey]: { ...entry, ...updates } } });
+                    return <div className="professional-commission-day" key={dayKey}><label className="inline-check"><input checked={entry.enabled} type="checkbox" onChange={(event) => updateEntry({ enabled: event.target.checked })} /> {label}</label><input aria-label={`Inicio ${label}`} disabled={!entry.enabled} type="time" value={entry.start} onChange={(event) => updateEntry({ start: event.target.value })} /><input aria-label={`Fin ${label}`} disabled={!entry.enabled} type="time" value={entry.end} onChange={(event) => updateEntry({ end: event.target.value })} /><label>Comisión dentro %<input disabled={!entry.enabled} min="0" step="0.01" type="number" value={entry.commissionPercent} onChange={(event) => updateEntry({ commissionPercent: event.target.value })} /></label></div>;
+                  })}
+                </section>
+              )}
               <label className="wide-field">Observaciones económicas internas<textarea value={draft.economics.internalEconomicNotes} onChange={(event) => updateNested("economics", { internalEconomicNotes: event.target.value })} /></label>
             </section>
           )}
@@ -354,8 +399,8 @@ function ProfessionalModalDemo({ mode = "create", onClose, onSave, professional,
         </div>
         {error && <p className="auth-error">{error}</p>}
         <div className="professional-modal-footer">
-          <button type="button" onClick={save}>Guardar</button>
-          <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
+          <button disabled={saving} type="button" onClick={save}>{saving ? "Guardando…" : "Guardar"}</button>
+          <button className="secondary-button" disabled={saving} type="button" onClick={onClose}>Cancelar</button>
         </div>
       </article>
     </section>

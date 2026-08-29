@@ -10,12 +10,14 @@ import {
   getAvailableProfessionalServices,
 } from "../utils/professionalsConfigDemo.js";
 import { normalizeRealEmployeeSettings } from "../utils/managerConfiguration.js";
+import { normalizeProfessionalCommissionPolicy } from "../utils/commissionSchedule.js";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
 function employeeToProfessional(employee = {}) {
+  const commissionPolicy = normalizeProfessionalCommissionPolicy(employee);
   const base = buildProfessional({
     id: employee.id,
     firstName: employee.firstName || employee.name || "",
@@ -34,7 +36,11 @@ function employeeToProfessional(employee = {}) {
     access: employee.access,
     economics: {
       ...(employee.economics || {}),
-      defaultServiceCommissionPercent: Number(employee.commissionPercent || 0),
+      defaultServiceCommissionPercent: commissionPolicy.defaultCommissionPercent,
+      commissionMode: commissionPolicy.commissionMode,
+      commissionSchedule: commissionPolicy.commissionSchedule,
+      commissionRuleEffectiveFrom: commissionPolicy.commissionRuleEffectiveFrom,
+      outsideSchedule: commissionPolicy.outsideSchedule,
     },
     publicProfile: employee.publicProfile,
   });
@@ -45,7 +51,7 @@ function employeeToProfessional(employee = {}) {
 }
 
 function changedFields(previous = {}, next = {}) {
-  return ["displayName", "active", "offersServices", "assignedServiceIds", "professionalServiceSettings", "weeklySchedule", "scheduleExceptions", "access", "economics", "publicProfile"]
+  return ["displayName", "active", "offersServices", "assignedServiceIds", "professionalServiceSettings", "weeklySchedule", "scheduleExceptions", "economics", "publicProfile"]
     .filter((field) => JSON.stringify(previous[field]) !== JSON.stringify(next[field]));
 }
 
@@ -67,13 +73,13 @@ function ProfessionalsSettingsReal({ config = {}, currentUser, onSave }) {
   };
 
   const persistEmployees = (nextEmployees) => {
-    onSave({
+    return onSave({
       employeeSettings: nextEmployees,
       employees: nextEmployees.filter((employee) => employee.active !== false).map((employee) => employee.name),
     });
   };
 
-  const saveProfessional = (draft) => {
+  const saveProfessional = async (draft) => {
     const existing = employees.find((employee) => employee.id === draft.id);
     const now = new Date().toISOString();
     const nextCommission = Number(draft.economics?.defaultServiceCommissionPercent || 0);
@@ -96,25 +102,31 @@ function ProfessionalsSettingsReal({ config = {}, currentUser, onSave }) {
       professionalServiceSettings: draft.professionalServiceSettings,
       weeklySchedule: draft.weeklySchedule,
       scheduleExceptions: draft.scheduleExceptions,
-      access: draft.access,
+      ...(existing?.access ? { access: existing.access } : {}),
       economics: { ...draft.economics, defaultServiceCommissionPercent: nextCommission },
+      commissionMode: draft.economics.commissionMode,
+      commissionSchedule: draft.economics.commissionSchedule,
       commissionPercent: nextCommission,
       commissionHistory: commissionChanged ? [{ id: `employee-commission-${Date.now()}`, date: now, user: actor, previousValue: Number(existing.commissionPercent || 0), newValue: nextCommission }, ...(existing.commissionHistory || [])] : existing?.commissionHistory || [],
       publicProfile: draft.publicProfile,
       professionalHistory: [{ action: existing ? "professional_updated" : "professional_created", changedAt: now, changedBy: actor, professionalId: existing?.id || draft.id, professionalName: draft.displayName.trim(), changedFields: changedFields(existing ? employeeToProfessional(existing) : {}, draft) }, ...(existing?.professionalHistory || [])],
     };
-    persistEmployees(existing ? employees.map((employee) => employee.id === existing.id ? nextEmployee : employee) : [...employees, nextEmployee]);
+    await persistEmployees(existing ? employees.map((employee) => employee.id === existing.id ? nextEmployee : employee) : [...employees, nextEmployee]);
     setModalState(null);
     setNotice(`${nextEmployee.displayName || nextEmployee.name} guardada correctamente.`);
   };
 
-  const handleAction = (action, professional) => {
+  const handleAction = async (action, professional) => {
     if (action === "edit") {
       setModalState({ mode: "edit", professional: clone(professional) });
       return;
     }
     if (action === "activate" || action === "deactivate") {
-      saveProfessional({ ...professional, active: action === "activate" });
+      try {
+        await saveProfessional({ ...professional, active: action === "activate" });
+      } catch {
+        setNotice("No se pudo confirmar el cambio del profesional en Firebase.");
+      }
       return;
     }
     if (action === "agenda") setNotice("La Agenda utilizará esta configuración en una fase posterior.");
@@ -127,7 +139,15 @@ function ProfessionalsSettingsReal({ config = {}, currentUser, onSave }) {
     <section className="panel professional-demo-controls"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar profesional..." /><div className="segmented-controls"><button className={filter === "all" ? "active" : ""} type="button" onClick={() => setFilter("all")}>Todas</button><button className={filter === "active" ? "active" : ""} type="button" onClick={() => setFilter("active")}>Activas</button><button className={filter === "inactive" ? "active" : ""} type="button" onClick={() => setFilter("inactive")}>Inactivas</button></div></section>
     <ProfessionalsListDemo filter={filter} onAction={handleAction} professionals={professionals} query={query} servicesCatalog={services} allowDuplicate={false} />
     <ProfessionalHistoryDemo history={history} />
-    {modalState && <ProfessionalModalDemo mode={modalState.mode} onClose={() => setModalState(null)} onSave={saveProfessional} professional={modalState.professional} servicesCatalog={services} persistent />}
+    {modalState && <ProfessionalModalDemo
+      accessPanel={<p className="empty-state">Gestión de acceso próximamente.</p>}
+      mode={modalState.mode}
+      onClose={() => setModalState(null)}
+      onSave={saveProfessional}
+      professional={modalState.professional}
+      servicesCatalog={services}
+      persistent
+    />}
   </section>;
 }
 

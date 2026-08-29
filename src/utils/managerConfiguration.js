@@ -1,9 +1,11 @@
+import { normalizeProfessionalCommissionPolicy } from "./commissionSchedule.js";
+
 export function normalizeRealEmployeeSettings(config = {}) {
   const settings = Array.isArray(config.employeeSettings) ? config.employeeSettings : [];
   const names = [...(config.employees || []), ...settings.map((employee) => employee.name)].filter(Boolean);
   return Array.from(new Set(names.map((name) => String(name).trim()).filter(Boolean))).map((name) => {
     const existing = settings.find((employee) => String(employee.name || "").trim().toLowerCase() === name.toLowerCase()) || {};
-    return {
+    const normalizedEmployee = {
       ...existing,
       id: existing.id || `employee-${name.toLowerCase().replace(/\s+/g, "-")}`,
       name,
@@ -11,6 +13,21 @@ export function normalizeRealEmployeeSettings(config = {}) {
       commissionPercent: Number(existing.commissionPercent || 0),
       commissionHistory: Array.isArray(existing.commissionHistory) ? existing.commissionHistory : [],
       professionalHistory: Array.isArray(existing.professionalHistory) ? existing.professionalHistory : [],
+    };
+    const policy = normalizeProfessionalCommissionPolicy(normalizedEmployee);
+    return {
+      ...normalizedEmployee,
+      commissionMode: policy.commissionMode,
+      commissionSchedule: policy.commissionSchedule,
+      commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
+      economics: {
+        ...(normalizedEmployee.economics || {}),
+        defaultServiceCommissionPercent: policy.defaultCommissionPercent,
+        commissionMode: policy.commissionMode,
+        commissionSchedule: policy.commissionSchedule,
+        commissionRuleEffectiveFrom: policy.commissionRuleEffectiveFrom,
+        outsideSchedule: policy.outsideSchedule,
+      },
     };
   });
 }

@@ -18,7 +18,7 @@ import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, defaultPageForRole, effectiveRoleForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, professionalMatchesItem } from "./permissions.js";
+import { accessDeniedMessageForRoute, allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, resolveRouteForUser } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
 
@@ -139,10 +139,25 @@ function getPlatformModeFromPath(pathname = "") {
 
 function getInitialPageFromPath(pathname = "") {
   const normalizedPath = String(pathname || "").toLowerCase();
+  if (normalizedPath === "/no-permissions" || normalizedPath.startsWith("/no-permissions/")) return "access.noPermissions";
+  if (normalizedPath === "/pos/my-agenda" || normalizedPath.startsWith("/pos/my-agenda/")) return "professional.agenda";
+  if (normalizedPath === "/pos/my-commissions" || normalizedPath.startsWith("/pos/my-commissions/")) return "professional.commissions";
   if (normalizedPath === "/pos/agenda-v2" || normalizedPath.startsWith("/pos/agenda-v2/")) return "pos.agendaV2";
   if (normalizedPath === "/manager/dashboard/monthly" || normalizedPath.startsWith("/manager/dashboard/monthly/")) return "dashboard.monthly";
   if (normalizedPath === "/manager/dashboard/daily" || normalizedPath.startsWith("/manager/dashboard/daily/")) return "dashboard.daily";
-  return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "agenda.appointments" : "dashboard.daily";
+  return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "pos.agendaV2" : "dashboard.daily";
+}
+
+function pathForPage(pageId = "") {
+  const paths = {
+    "access.noPermissions": "/no-permissions",
+    "professional.agenda": "/pos/my-agenda",
+    "professional.commissions": "/pos/my-commissions",
+    "pos.agendaV2": "/pos/agenda-v2",
+    "dashboard.daily": "/manager/dashboard/daily",
+    "dashboard.monthly": "/manager/dashboard/monthly",
+  };
+  return paths[pageId] || "";
 }
 
 function money(value) {
@@ -364,10 +379,6 @@ function firstNavigationKeyForTab(sections, tabId) {
   return "";
 }
 
-function firstNavigationItem(sections) {
-  return sections[0]?.items?.[0] || null;
-}
-
 function navigationItemForPage(sections, pageId) {
   for (const section of sections) {
     const item = section.items.find((entry) => entry.pageId === pageId);
@@ -421,6 +432,7 @@ function App() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [expenseNotice, setExpenseNotice] = useState("");
   const [salesFormHighlight, setSalesFormHighlight] = useState(false);
+  const [saleAppointment, setSaleAppointment] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeNavKey, setActiveNavKey] = useState("");
   const [openMenuSections, setOpenMenuSections] = useState({});
@@ -461,17 +473,8 @@ function App() {
     };
   }, [data, user, effectiveRole]);
   const ownCommissionsData = useMemo(() => {
-    const commissions = DataService.getCommissions();
-    if (!isOwnEmployeeOnly(effectiveRole)) return commissions;
-    const rows = (commissions.rows || []).filter((row) => professionalMatchesItem(row, user));
-    const byEmployee = rows.reduce((totals, row) => {
-      totals[row.employee] = (totals[row.employee] || 0) + Number(row.commissionAmount || 0);
-      return totals;
-    }, {});
-    const generated = rows.reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
-    const pending = rows.filter((row) => row.status !== "pagada").reduce((total, row) => total + Number(row.commissionAmount || 0), 0);
-    const paid = generated - pending;
-    return { rows, totals: { generated, pending, paid, byEmployee } };
+    if (!isOwnEmployeeOnly(effectiveRole)) return DataService.getCommissions();
+    return DataService.getCommissionsForProfessional(user?.professionalId || user?.employeeId || "");
   }, [data, user, effectiveRole]);
   const dashboardData = useMemo(() => DataService.getDashboardData(), [data, currentMadridDate]);
   const commissionsData = useMemo(() => {
@@ -481,11 +484,28 @@ function App() {
   }, [data, effectiveRole, ownCommissionsData]);
   const clientMap = useMemo(() => Object.fromEntries(scopedData.clients.map((client) => [client.id, client.name])), [scopedData.clients]);
 
+  const navigateToRoute = (route, { replace = true } = {}) => {
+    const nextRoute = route || "/no-permissions";
+    if (replace) window.history.replaceState(null, "", nextRoute);
+    else window.history.pushState(null, "", nextRoute);
+    const nextPage = getInitialPageFromPath(nextRoute);
+    const nextPlatform = getPlatformModeFromPath(nextRoute);
+    setPlatformMode(nextPlatform);
+    setActivePage(nextPage);
+    const nextSections = buildVisibleNavigation(allowedTabIds, effectiveRole, nextPlatform);
+    const nextItem = navigationItemForPage(nextSections, nextPage);
+    setActiveTab(nextItem?.tabId || "");
+    setActiveNavKey(nextItem?.key || "");
+    setMobileMenuOpen(false);
+  };
+
+  const goToDefaultArea = () => {
+    navigateToRoute(getDefaultRouteForUser(user));
+    setAccessDeniedMessage("");
+  };
+
   useEffect(() => {
     const syncPlatformMode = () => {
-      if (window.location.pathname === "/") {
-        window.history.replaceState(null, "", `/manager${window.location.search}${window.location.hash}`);
-      }
       setPlatformMode(getPlatformModeFromPath(window.location.pathname));
       setActivePage((currentPage) => {
         const pageFromPath = getInitialPageFromPath(window.location.pathname);
@@ -508,15 +528,24 @@ function App() {
     if (landingUserRef.current === userKey) return;
     landingUserRef.current = userKey;
 
-    if (defaultPageForRole(effectiveRole) !== "pos.agendaV2") return;
+    const requestedPath = window.location.pathname;
+    const requestedPage = getInitialPageFromPath(requestedPath);
+    const requestedPlatform = getPlatformModeFromPath(requestedPath);
+    const requestedSections = buildVisibleNavigation(allowedTabIds, effectiveRole, requestedPlatform);
+    const requestedItem = navigationItemForPage(requestedSections, requestedPage);
+    const resolvedRoute = resolveRouteForUser(user, requestedPath);
+    const requestedRouteIsAllowed = resolvedRoute === requestedPath
+      && requestedItem
+      && allowedTabIds.includes(requestedItem.tabId);
 
-    window.history.replaceState(null, "", "/pos/agenda-v2");
-    setPlatformMode("pos");
-    setActivePage("pos.agendaV2");
-    setActiveTab("agenda");
-    setActiveNavKey("agenda-operational-v2");
-    setAccessDeniedMessage("");
-  }, [effectiveRole, user]);
+    if (requestedPath === "/" || effectiveRole === "direccion") {
+      navigateToRoute(getDefaultRouteForUser(user));
+      setAccessDeniedMessage("");
+      return;
+    }
+
+    setAccessDeniedMessage(requestedRouteIsAllowed ? "" : accessDeniedMessageForRoute(user, requestedPath));
+  }, [allowedTabIds, effectiveRole, user]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -555,24 +584,16 @@ function App() {
 
   useEffect(() => {
     if (!user) return;
+    if (activePage === "access.noPermissions" && getDefaultRouteForUser(user) === "/no-permissions") return;
     const pageItem = navigationItemForPage(visibleNavigation, activePage);
     if (pageItem && allowedTabIds.includes(pageItem.tabId)) {
       if (activeTab !== pageItem.tabId) setActiveTab(pageItem.tabId);
-      if (accessDeniedMessage) setAccessDeniedMessage("");
+      setAccessDeniedMessage("");
       return;
     }
 
-    const roleDefaultPage = defaultPageForRole(effectiveRole);
-    const firstItem = navigationItemForPage(visibleNavigation, roleDefaultPage) || firstNavigationItem(visibleNavigation);
-    if (roleDefaultPage === "pos.agendaV2") {
-      window.history.replaceState(null, "", "/pos/agenda-v2");
-      setPlatformMode("pos");
-    }
-    setAccessDeniedMessage("No tienes permisos para acceder a esta sección.");
-    setActivePage(firstItem?.pageId || "agenda.appointments");
-    setActiveTab(firstItem?.tabId || allowedTabIds[0] || "agenda");
-    setActiveNavKey(firstItem?.key || "");
-  }, [accessDeniedMessage, activePage, activeTab, allowedTabIds, effectiveRole, visibleNavigation, user]);
+    setAccessDeniedMessage(accessDeniedMessageForRoute(user, window.location.pathname));
+  }, [activePage, activeTab, allowedTabIds, effectiveRole, visibleNavigation, user]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -658,6 +679,7 @@ function App() {
     if (preparedSale.saleDate > getTodayLocalDateString()) return;
     setData(DataService.addSale(preparedSale));
     setEditingSale(null);
+    setSaleAppointment(null);
   };
   const updateSale = (saleId, updates) => {
     if (!canPerform(effectiveRole, "manageSales")) return;
@@ -695,6 +717,12 @@ function App() {
     setData(result.data);
     return result.client;
   };
+  const createClientFromAgenda = async (client) => {
+    if (!canPerform(effectiveRole, "manageClients")) throw new Error("No tienes permisos para crear clientes.");
+    const result = await DataService.createAgendaClient(client);
+    setData(result.data);
+    return result;
+  };
   const updateClient = (clientId, updates) => {
     if (!canPerform(effectiveRole, "manageClients")) return;
     DataService.updateClient(clientId, updates);
@@ -707,26 +735,45 @@ function App() {
   const canWriteAppointments = (appointment) => {
     if (canPerform(effectiveRole, "manageAppointments")) return true;
     if (!canPerform(effectiveRole, "manageOwnAppointments")) return false;
-    if (!appointment?.employee) return true;
+    if (!appointment?.professionalId && !appointment?.employee && !appointment?.professionalName) return false;
     return onlyOwnEmployeeItems([appointment], user).length === 1;
   };
-  const addAppointment = (appointment) => {
-    if (!canWriteAppointments(appointment)) return;
-    setData(DataService.addAppointment(appointment));
+  const appointmentActor = { uid: user?.uid || "", email: user?.email || "", nombre: user?.nombre || "" };
+  const loadAppointmentsByDate = async (date) => {
+    if (!canAccessTab(effectiveRole, "agenda") && !canAccessTab(effectiveRole, "professionalAgenda")) {
+      throw new Error("No tienes permisos para consultar la Agenda.");
+    }
+    return DataService.getAppointmentsByDate(date);
   };
-  const updateAppointment = (appointmentId, updates) => {
-    const existingAppointment = data.appointments.find((appointment) => appointment.id === appointmentId);
-    if (!canWriteAppointments({ ...existingAppointment, ...updates })) return;
-    setData(DataService.updateAppointment(appointmentId, updates));
+  const addAppointment = async (appointment) => {
+    if (!canWriteAppointments(appointment)) throw new Error("No tienes permisos para crear esta cita.");
+    const result = await DataService.createAppointment(appointment, appointmentActor);
+    setData(result.data);
+    return result.appointment;
   };
-  const deleteAppointment = (appointmentId) => {
+  const updateAppointment = async (appointmentId, updates) => {
     const existingAppointment = data.appointments.find((appointment) => appointment.id === appointmentId);
-    if (!canWriteAppointments(existingAppointment)) return;
-    setData(DataService.deleteAppointment(appointmentId));
+    if (!canWriteAppointments({ ...existingAppointment, ...updates })) throw new Error("No tienes permisos para editar esta cita.");
+    const result = await DataService.updateAppointment(appointmentId, updates, appointmentActor);
+    setData(result.data);
+    return result.appointment;
+  };
+  const deleteAppointment = async (appointmentId) => {
+    const existingAppointment = data.appointments.find((appointment) => appointment.id === appointmentId);
+    if (!canWriteAppointments(existingAppointment)) throw new Error("No tienes permisos para cancelar esta cita.");
+    const result = await DataService.updateAppointment(appointmentId, { status: "Cancelada" }, appointmentActor);
+    setData(result.data);
+    return result.appointment;
   };
   const updateConfig = (updates) => {
     if (!canPerform(effectiveRole, "manageSettings")) return;
     setData(DataService.updateConfig(updates));
+  };
+  const updateProfessionalConfig = async (updates) => {
+    if (!canPerform(effectiveRole, "manageSettings")) throw new Error("No tienes permisos para guardar profesionales.");
+    const nextData = await DataService.updateProfessionalSettings(updates);
+    setData(nextData);
+    return nextData;
   };
   const updateFinanceControls = (financeControls) => {
     if (!canPerform(effectiveRole, "viewFinance")) return;
@@ -854,6 +901,8 @@ function App() {
   };
 
   const openNavigationItem = (item) => {
+    const nextPath = pathForPage(item.pageId);
+    if (nextPath) window.history.pushState(null, "", nextPath);
     setActiveTab(item.tabId);
     setActivePage(item.pageId);
     setActiveNavKey(item.key);
@@ -896,6 +945,8 @@ function App() {
       <div className="sales-main-column">
         <div className={salesFormHighlight ? "sales-form-anchor editing-focus" : "sales-form-anchor"} ref={salesFormRef}>
           <SalesForm
+            appointments={scopedData.appointments || []}
+            initialAppointment={saleAppointment}
             clients={scopedData.clients}
             config={scopedData.config}
             editingSale={editingSale}
@@ -910,7 +961,15 @@ function App() {
             currentUser={user}
             onCancelEdit={() => {
               setEditingSale(null);
+              setSaleAppointment(null);
               setSalesFormHighlight(false);
+            }}
+            onCancelNew={() => {
+              setSaleAppointment(null);
+              setEditingSale(null);
+              setActivePage("sales.today");
+              setActiveTab("sales");
+              setActiveNavKey("sales-today");
             }}
             onDateChange={setSelectedSaleDate}
           />
@@ -991,6 +1050,7 @@ function App() {
               </div>
               <SalesForm
                 key={modalEditingSale.id}
+                appointments={scopedData.appointments || []}
                 clients={scopedData.clients}
                 config={scopedData.config}
                 editingSale={modalEditingSale}
@@ -1021,6 +1081,7 @@ function App() {
       <section className="module">
         <section className="panel">
           <p className="empty-state">No tienes permisos para acceder a esta sección.</p>
+          <button type="button" onClick={goToDefaultArea}>Ir a mi área</button>
         </section>
       </section>
     );
@@ -1034,6 +1095,15 @@ function App() {
     );
 
     switch (activePage) {
+      case "access.noPermissions":
+        return (
+          <section className="module">
+            <section className="panel">
+              <h2>Sin permisos asignados</h2>
+              <p className="empty-state">Tu cuenta no tiene permisos asignados. Contacta con el administrador.</p>
+            </section>
+          </section>
+        );
       case "professional.agenda":
         return canAccessTab(effectiveRole, "professionalAgenda") ? <ProfessionalAgenda appointments={scopedData.appointments} /> : accessDeniedPage;
       case "professional.sales":
@@ -1100,6 +1170,19 @@ function App() {
             appointments={scopedData.appointments}
             clients={scopedData.clients}
             config={scopedData.config}
+            onCreateAppointment={addAppointment}
+            onCreateClient={roleCanManageClients ? createClientFromAgenda : null}
+            onCreateSaleFromAppointment={canAccessTab(effectiveRole, "sales") ? (appointment) => {
+              setSaleAppointment(appointment);
+              setEditingSale(null);
+              setPlatformMode("pos");
+              setActivePage("sales.new");
+              setActiveTab("sales");
+              setActiveNavKey("sales-new");
+              setSalesFormHighlight(true);
+            } : null}
+            onLoadAppointmentsByDate={loadAppointmentsByDate}
+            onUpdateAppointment={updateAppointment}
           />
         ) : accessDeniedPage;
       case "finance.expenses":
@@ -1195,7 +1278,7 @@ function App() {
           />
         ) : accessDeniedPage;
       case "settings.professionals":
-        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsReal config={scopedData.config} currentUser={user} onSave={updateConfig} /> : accessDeniedPage;
+        return canAccessTab(effectiveRole, "settings") ? <ProfessionalsSettingsReal config={scopedData.config} currentUser={user} onSave={updateProfessionalConfig} /> : accessDeniedPage;
       case "settings.services":
       case "settings.products":
       case "settings.catalogs":
@@ -1289,7 +1372,7 @@ function App() {
       {accessDeniedMessage && (
         <section className="version-notice" aria-live="polite">
           <span>{accessDeniedMessage}</span>
-          <button type="button" onClick={() => setAccessDeniedMessage("")}>Cerrar</button>
+          <button type="button" onClick={goToDefaultArea}>Ir a mi área</button>
         </section>
       )}
 

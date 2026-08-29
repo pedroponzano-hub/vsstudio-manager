@@ -37,3 +37,35 @@ test("detecta referencias históricas por ID sin modificar la venta", () => {
   assert.equal(historicalReferenceExists(sales, { id: "service-2", name: "Pedicura" }), false);
   assert.equal(sales[0].services[0].serviceId, "service-1");
 });
+
+test("la modalidad mixta solo procede de la configuración guardada, sin reglas por nombre", () => {
+  const config = {
+    employees: ["Leo"],
+    employeeSettings: [{
+      id: "professional-leo-real",
+      name: "Leo",
+      active: true,
+      commissionPercent: 40,
+      economics: {
+        commissionMode: "mixed_schedule",
+        commissionRuleEffectiveFrom: "2026-09-01",
+        commissionSchedule: { tuesday: { enabled: true, start: "10:00", end: "15:00", commissionPercent: 0 } },
+      },
+    }],
+  };
+  const [leo] = normalizeRealEmployeeSettings(config);
+  assert.equal(leo.id, "professional-leo-real");
+  assert.equal(leo.commissionPercent, 40);
+  assert.equal(leo.economics.commissionMode, "mixed_schedule");
+  assert.deepEqual(leo.economics.commissionSchedule.tuesday, { enabled: true, start: "10:00", end: "15:00", commissionPercent: 0 });
+  assert.equal(leo.economics.commissionRuleEffectiveFrom, "2026-09-01");
+  assert.equal(leo.economics.commissionSchedule.monday.enabled, false);
+  assert.equal(leo.economics.commissionSchedule.saturday.enabled, false);
+  assert.equal(leo.economics.commissionSchedule.sunday.enabled, false);
+});
+
+test("un nombre Leo sin configuración explícita no activa reglas especiales", () => {
+  const [leo] = normalizeRealEmployeeSettings({ employees: ["Leo"], employeeSettings: [{ id: "leo", name: "Leo", commissionPercent: 40 }] });
+  assert.equal(leo.economics.commissionMode, "always");
+  assert.equal(leo.economics.commissionRuleEffectiveFrom, "");
+});

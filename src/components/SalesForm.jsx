@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { getMadridDateString } from "../utils/date.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getMadridDateString, getMadridTimestamp } from "../utils/date.js";
+import { resolveSaleCommissionSnapshot } from "../utils/commissionSchedule.js";
+import { discardUnsavedSale, newSaleDraftHasData, startSaleDraftTimestamp } from "../utils/salesDraft.js";
 
 const durationOptions = [
   { label: "15 min", value: 15 },
@@ -153,6 +155,9 @@ function emptySaleForm() {
     operationType: "venta",
     clientId: "",
     employee: "",
+    appointmentId: "",
+    serviceDate: "",
+    serviceTime: "",
     extra: "0",
     paymentMethod: "",
     entryChannel: "",
@@ -170,6 +175,8 @@ function emptySaleForm() {
 function SalesForm({
   clients,
   config,
+  appointments = [],
+  initialAppointment = null,
   editingSale,
   onSave,
   onUpdate,
@@ -179,11 +186,12 @@ function SalesForm({
   canEditSaleDate = false,
   canEditCommission = false,
   onCancelEdit,
+  onCancelNew,
   onDateChange,
   cashClosings = [],
   currentUser,
 }) {
-  const catalogServices = (config.services || []).filter((service) => service.active !== false);
+  const catalogServices = useMemo(() => (config.services || []).filter((service) => service.active !== false), [config.services]);
   const employeeSettings = useMemo(() => normalizeEmployeeSettings(config), [config]);
   const activeEmployees = useMemo(() => employeeSettings.filter((employee) => employee.active !== false), [employeeSettings]);
   const serviceCategories = useMemo(() => {
@@ -207,6 +215,12 @@ function SalesForm({
   const [saleError, setSaleError] = useState("");
   const [activeCategory, setActiveCategory] = useState(tpvCategories[0].id);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const appliedAppointmentIdRef = useRef("");
+  const [draftCommissionTimestamp, setDraftCommissionTimestamp] = useState("");
+
+  const startDraftCommissionClock = () => {
+    setDraftCommissionTimestamp((current) => startSaleDraftTimestamp(current, getMadridTimestamp()));
+  };
 
   useEffect(() => {
     if (!editingSale) return;
@@ -217,6 +231,9 @@ function SalesForm({
       operationType: editingSale.operationType || (String(editingSale.status || "").toLowerCase() === "servicio_interno" ? "servicio_interno" : "venta"),
       clientId: editingSale.clientId || "",
       employee: editingSale.employee || "",
+      appointmentId: editingSale.appointmentId || "",
+      serviceDate: editingSale.serviceDate || "",
+      serviceTime: editingSale.serviceTime || "",
       extra: String(editingSale.extra ?? 0),
       paymentMethod: editingSale.paymentMethod || "",
       entryChannel: editingSale.entryChannel || "",
@@ -253,6 +270,38 @@ function SalesForm({
     setSaleError("");
     onDateChange?.(nextDate);
   }, [editingSale, clients, onDateChange]);
+
+  useEffect(() => {
+    if (editingSale || !initialAppointment?.id || appliedAppointmentIdRef.current === initialAppointment.id) return;
+    appliedAppointmentIdRef.current = initialAppointment.id;
+    const employee = employeeSettings.find((item) => (
+      (initialAppointment.professionalId && item.id === initialAppointment.professionalId)
+      || String(item.name || "").toLowerCase() === String(initialAppointment.professionalName || initialAppointment.employee || "").toLowerCase()
+    ));
+    const client = clients.find((item) => item.id === initialAppointment.clientId);
+    setForm((current) => ({
+      ...current,
+      appointmentId: initialAppointment.id,
+      serviceDate: initialAppointment.date || current.serviceDate,
+      serviceTime: initialAppointment.startTime || initialAppointment.time || current.serviceTime,
+      clientId: initialAppointment.clientId || current.clientId,
+      employee: employee?.name || initialAppointment.professionalName || current.employee,
+      commissionPercent: String(employee?.commissionPercent ?? current.commissionPercent),
+    }));
+    setClientQuery(client?.name || initialAppointment.clientName || "");
+    const service = catalogServices.find((item) => item.id === initialAppointment.serviceId);
+    if (service || initialAppointment.serviceId || initialAppointment.serviceName) {
+      setSaleServices([{
+        lineId: createLineId(),
+        serviceId: service?.id || initialAppointment.serviceId || "",
+        serviceName: service?.name || initialAppointment.serviceName || "Servicio de cita",
+        category: service?.category || "",
+        duration: service?.duration || "",
+        price: Number(service?.price || 0),
+        quantity: 1,
+      }]);
+    }
+  }, [catalogServices, clients, editingSale, employeeSettings, initialAppointment]);
 
   useEffect(() => {
     if (editingSale || canEditSaleDate) return undefined;
@@ -307,13 +356,25 @@ function SalesForm({
     const ivaPercent = 21;
     const ivaAmount = (total * ivaPercent) / 121;
     const netWithoutVat = total - ivaAmount;
-    const commissionAmount = total * (Number(form.commissionPercent || 0) / 100);
+    const selectedEmployee = employeeSettings.find((employee) => String(employee.name || "") === form.employee);
+    const automaticSnapshot = editingSale ? null : resolveSaleCommissionSnapshot({
+      ...form,
+      total,
+      commissionCalculationTimestamp: draftCommissionTimestamp,
+      professionalId: selectedEmployee?.id || "",
+      professionalName: selectedEmployee?.displayName || selectedEmployee?.name || form.employee,
+      saleDate: form.date,
+    }, { appointments, professionals: employeeSettings });
+    const commissionPercent = Number(automaticSnapshot?.commissionRateApplied ?? form.commissionPercent ?? 0);
+    const commissionAmount = Number(
+      automaticSnapshot?.commissionAmount ?? total * (commissionPercent / 100),
+    );
     const treatwellCommissionAmount = Number(form.treatwellCommissionAmount || 0);
     const netAfterCommission = netWithoutVat - commissionAmount;
     const netAfterTreatwellAndCommission = total - treatwellCommissionAmount - commissionAmount;
 
-    return { subtotalServices, total, ivaPercent, ivaAmount, netWithoutVat, commissionAmount, treatwellCommissionAmount, netAfterCommission, netAfterTreatwellAndCommission };
-  }, [saleServices, form.extra, form.commissionPercent, form.treatwellCommissionAmount]);
+    return { subtotalServices, total, ivaPercent, ivaAmount, netWithoutVat, commissionPercent, commissionAmount, treatwellCommissionAmount, netAfterCommission, netAfterTreatwellAndCommission };
+  }, [appointments, draftCommissionTimestamp, editingSale, employeeSettings, saleServices, form, form.extra, form.commissionPercent, form.treatwellCommissionAmount]);
 
   const paymentMethods = useMemo(() => {
     const configured = (config.paymentMethods || []).map(normalizePaymentOption);
@@ -348,10 +409,37 @@ function SalesForm({
     }
     if (name === "employee") {
       const employee = employeeSettings.find((item) => String(item.name || "") === value);
+      startDraftCommissionClock();
       setForm({ ...form, employee: value, commissionPercent: String(employee?.commissionPercent ?? 0) });
     } else {
       setForm({ ...form, [name]: value });
     }
+    setSaleError("");
+  };
+
+  const selectAppointment = (event) => {
+    const appointmentId = event.target.value;
+    const appointment = appointments.find((item) => item.id === appointmentId);
+    if (!appointment) {
+      setForm((current) => ({ ...current, appointmentId: "" }));
+      return;
+    }
+    const employee = employeeSettings.find((item) => (
+      (appointment.professionalId && item.id === appointment.professionalId)
+      || String(item.name || "").toLowerCase() === String(appointment.professionalName || appointment.employee || "").toLowerCase()
+    ));
+    const client = clients.find((item) => item.id === appointment.clientId);
+    setForm((current) => ({
+      ...current,
+      appointmentId: appointment.id,
+      serviceDate: appointment.date || current.serviceDate,
+      serviceTime: appointment.startTime || appointment.time || current.serviceTime,
+      clientId: appointment.clientId || current.clientId,
+      employee: employee?.name || appointment.professionalName || current.employee,
+      commissionPercent: String(employee?.commissionPercent ?? current.commissionPercent),
+    }));
+    if (client) setClientQuery(client.name || appointment.clientName || "");
+    else if (appointment.clientName) setClientQuery(appointment.clientName);
     setSaleError("");
   };
 
@@ -386,6 +474,7 @@ function SalesForm({
   };
 
   const addServiceLine = (service) => {
+    startDraftCommissionClock();
     setSaleServices((current) => [
       ...current,
       {
@@ -540,12 +629,25 @@ function SalesForm({
     setQuickClient({ name: "", phone: "", email: "", observations: "" });
     setSaleError("");
     setForm({ ...emptySaleForm(), date: nextDate });
+    setDraftCommissionTimestamp("");
     onDateChange?.(nextDate);
   };
 
   const cancelEdit = () => {
     resetSaleForm();
     onCancelEdit?.();
+  };
+
+  const cancelNewSale = () => {
+    const hasDraftData = newSaleDraftHasData({
+      clientId: form.clientId,
+      clientQuery,
+      employee: form.employee,
+      payments,
+      services: saleServices,
+    });
+    if (hasDraftData && !window.confirm("¿Descartar esta venta?")) return;
+    discardUnsavedSale({ resetDraft: resetSaleForm, onDiscard: onCancelNew });
   };
 
   const buildPayload = (validPayments, effectiveDate, status) => {
@@ -558,6 +660,7 @@ function SalesForm({
     const financialTotals = isInternalService
       ? { ...totals, ivaAmount: 0, netWithoutVat: 0, netAfterCommission: -totals.commissionAmount, netAfterTreatwellAndCommission: -totals.commissionAmount }
       : totals;
+    const selectedEmployee = employeeSettings.find((employee) => String(employee.name || "") === form.employee);
 
     return {
       ...form,
@@ -573,6 +676,13 @@ function SalesForm({
       relatedClosureId: historicalSale && backdatedClosure ? (backdatedClosure.id || "") : "",
       closureStatusAtCreation: historicalSale ? closureStatusAtCreation : "",
       operationType: form.operationType,
+      professionalId: editingSale && !editingSale.professionalId && editingSale.employee === form.employee
+        ? ""
+        : selectedEmployee?.id || editingSale?.professionalId || "",
+      professionalName: selectedEmployee?.displayName || selectedEmployee?.name || form.employee,
+      appointmentId: form.appointmentId || "",
+      serviceDate: form.serviceDate || "",
+      serviceTime: form.serviceTime || "",
       clientName: client?.name || clientQuery.trim() || "Cliente mostrador",
       referralClientId: status === "cobrado" && !isInternalService ? (referralClient?.id || "") : "",
       referralClientName: status === "cobrado" && !isInternalService ? (referralClient?.name || "") : "",
@@ -588,7 +698,8 @@ function SalesForm({
         quantity: Number(service.quantity || 1),
       })),
       extra: Number(form.extra || 0),
-      commissionPercent: Number(form.commissionPercent || 0),
+      commissionPercent: Number(totals.commissionPercent || 0),
+      commissionCalculationTimestamp: draftCommissionTimestamp || getMadridTimestamp(),
       ...financialTotals,
     };
   };
@@ -676,7 +787,7 @@ function SalesForm({
     if (isInternalService) {
       const effectiveDate = effectiveOperationalDate("servicio_interno");
       if (!validateOperationalDate(effectiveDate)) return;
-      if (saleServices.length === 0 || !clientQuery.trim() || !form.employee || totals.total <= 0 || Number(form.commissionPercent || 0) <= 0 || !form.notes.trim()) {
+      if (saleServices.length === 0 || !clientQuery.trim() || !form.employee || totals.total <= 0 || Number(totals.commissionPercent || 0) <= 0 || !form.notes.trim()) {
         setSaleError("Completa socio/persona beneficiaria, servicio, profesional, precio de referencia, comision % y motivo/observacion obligatoria.");
         return;
       }
@@ -904,8 +1015,14 @@ function SalesForm({
           </button>
           {showAdvanced && (
             <div className="advanced-sale-fields">
+              <label>Cita vinculada<select name="appointmentId" value={form.appointmentId} onChange={selectAppointment}><option value="">Sin cita vinculada</option>{appointments.filter((appointment) => !["Cancelada", "No se presentó"].includes(appointment.status)).map((appointment) => <option key={appointment.id} value={appointment.id}>{appointment.date} {appointment.startTime || appointment.time} · {appointment.clientName || "Sin cliente"} · {appointment.professionalName || appointment.employee || "Sin profesional"}</option>)}</select></label>
+              <div className="field-row">
+                <label>Fecha real del servicio<input type="date" name="serviceDate" value={form.serviceDate} onChange={updateField} /></label>
+                <label>Hora real del servicio<input type="time" name="serviceTime" value={form.serviceTime} onChange={updateField} /></label>
+              </div>
               <div className="field-row">
                 <label>Comision aplicada %<input type="number" min="0" step="0.01" name="commissionPercent" value={form.commissionPercent} onChange={updateField} disabled={!canEditCommission} /></label>
+                {!editingSale && <span className="empty-state">Comisión automática prevista: {Number(totals.commissionPercent || 0).toFixed(2)}%</span>}
               </div>
               <div className="field-row">
                 <label>Comision Treatwell %<input type="number" min="0" step="0.01" name="treatwellCommissionPercent" value={form.treatwellCommissionPercent} onChange={updateTreatwellPercent} /></label>
@@ -945,6 +1062,7 @@ function SalesForm({
       <div className="form-actions">
         <button type="submit">{isInternalService ? "Guardar servicio interno" : "Cobrar y cerrar"}</button>
         {!isInternalService && <button className="secondary-button" type="button" onClick={savePending}>Guardar pendiente</button>}
+        {!editingSale && <button className="secondary-button" type="button" onClick={cancelNewSale}>Cancelar</button>}
         {editingSale && <button className="secondary-button" type="button" onClick={cancelEdit}>Cancelar edicion</button>}
       </div>
     </form>
