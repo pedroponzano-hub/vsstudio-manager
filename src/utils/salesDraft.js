@@ -12,3 +12,7 @@ export function discardUnsavedSale({ onDiscard, resetDraft } = {}) {
   resetDraft?.();
   onDiscard?.();
 }
+
+export function startSaleDraftTimestamp(currentTimestamp = "", nowTimestamp = "") {
+  return String(currentTimestamp || "").trim() || String(nowTimestamp || "").trim();
+}

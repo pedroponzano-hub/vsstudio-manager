@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   assertCommissionEditReason,
   buildManualCommissionOverride,
+  commissionRateForMoment,
   createCommissionAuditEntry,
   filterOwnPositiveCommissions,
   normalizeProfessionalCommissionPolicy,
@@ -30,6 +31,21 @@ const appointments = [
   { id: "appointment-16", date: "2026-09-01", startTime: "16:00", professionalId: leo.id },
 ];
 
+const saturdayTestProfessional = {
+  id: "professional-leo-real",
+  name: "Leo",
+  commissionPercent: 40,
+  economics: {
+    commissionMode: "mixed_schedule",
+    defaultServiceCommissionPercent: 40,
+    commissionRuleEffectiveFrom: "2026-08-29",
+    commissionSchedule: {
+      saturday: { enabled: true, start: "10:00", end: "15:00", commissionPercent: 0 },
+      sunday: { enabled: false, start: "10:00", end: "15:00", commissionPercent: 0 },
+    },
+  },
+};
+
 function saleAt(date, time, extra = {}) {
   return {
     id: `sale-${date}-${time}`,
@@ -48,6 +64,61 @@ test("la regla configurada aplica 0% desde su fecha de vigencia", () => {
   assert.equal(result.commissionRateApplied, 0);
   assert.equal(result.commissionRule, "salaried_schedule");
   assert.equal(resolveSaleCommissionSnapshot(saleAt("2026-09-01", "14:59"), { professionals: [leo] }).commissionRateApplied, 0);
+});
+
+test("caso real: sábado 29/08/2026 a las 11:00 genera 0 sobre una venta de 12 EUR", () => {
+  const result = resolveSaleCommissionSnapshot({
+    total: 12,
+    professionalId: saturdayTestProfessional.id,
+    employee: "Leo",
+    commissionCalculationTimestamp: "2026-08-29T11:00:00",
+  }, { professionals: [saturdayTestProfessional] });
+  assert.equal(result.serviceDate, "2026-08-29");
+  assert.equal(result.serviceTime, "11:00");
+  assert.equal(result.commissionRateApplied, 0);
+  assert.equal(result.commissionAmount, 0);
+  assert.equal(result.commissionRule, "salaried_schedule");
+});
+
+test("una comisión interior de 0 no cae al porcentaje predeterminado", () => {
+  const policy = normalizeProfessionalCommissionPolicy(saturdayTestProfessional);
+  const result = commissionRateForMoment(policy, "2026-08-29", "11:00");
+  assert.equal(policy.commissionSchedule.saturday.commissionPercent, 0);
+  assert.equal(result.commissionRateApplied, 0);
+});
+
+test("sábado 29/08/2026 a las 16:00 conserva 40% y 4,80 EUR", () => {
+  const result = resolveSaleCommissionSnapshot({
+    total: 12,
+    professionalId: saturdayTestProfessional.id,
+    employee: "Leo",
+    serviceDate: "2026-08-29",
+    serviceTime: "16:00",
+  }, { professionals: [saturdayTestProfessional] });
+  assert.equal(result.commissionRateApplied, 40);
+  assert.equal(result.commissionAmount.toFixed(2), "4.80");
+  assert.equal(result.commissionRule, "standard");
+});
+
+test("un domingo no habilitado conserva la comisión normal", () => {
+  const result = resolveSaleCommissionSnapshot({
+    total: 12,
+    professionalId: saturdayTestProfessional.id,
+    employee: "Leo",
+    serviceDate: "2026-08-30",
+    serviceTime: "11:00",
+  }, { professionals: [saturdayTestProfessional] });
+  assert.equal(result.commissionRateApplied, 40);
+});
+
+test("la fecha de vigencia es inclusiva y bloquea fechas anteriores", () => {
+  const futurePolicy = {
+    ...saturdayTestProfessional,
+    economics: { ...saturdayTestProfessional.economics, commissionRuleEffectiveFrom: "2026-09-01" },
+  };
+  const sale = { total: 12, professionalId: saturdayTestProfessional.id, employee: "Leo", serviceDate: "2026-08-29", serviceTime: "11:00" };
+  assert.equal(resolveSaleCommissionSnapshot(sale, { professionals: [futurePolicy] }).commissionRateApplied, 40);
+  assert.equal(resolveSaleCommissionSnapshot(sale, { professionals: [saturdayTestProfessional] }).commissionRateApplied, 0);
 });
 
 test("un servicio anterior a la vigencia conserva la comisión estándar", () => {

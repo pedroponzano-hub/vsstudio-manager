@@ -124,7 +124,7 @@ export function commissionRateForMoment(policy, serviceDate, serviceTime) {
     && serviceTime < schedule.end,
   );
   return insideSchedule
-    ? { commissionRateApplied: Number(schedule.commissionPercent || 0), commissionRule: "salaried_schedule" }
+    ? { commissionRateApplied: Number(schedule.commissionPercent ?? 0), commissionRule: "salaried_schedule" }
     : { commissionRateApplied: policy.defaultCommissionPercent, commissionRule: "standard" };
 }
 

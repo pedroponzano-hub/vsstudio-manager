@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { discardUnsavedSale, newSaleDraftHasData } from "../src/utils/salesDraft.js";
+import { discardUnsavedSale, newSaleDraftHasData, startSaleDraftTimestamp } from "../src/utils/salesDraft.js";
 
 test("detecta datos introducidos antes de cancelar una nueva venta", () => {
   assert.equal(newSaleDraftHasData(), false);
@@ -20,4 +20,9 @@ test("cancelar una venta no guardada solo descarta estado local", () => {
   assert.equal(resetCount, 1);
   assert.equal(navigationCount, 1);
   assert.equal(persistenceCount, 0);
+});
+
+test("la hora de comisión empieza con la venta y no al abrir una pantalla vacía", () => {
+  assert.equal(startSaleDraftTimestamp("", "2026-08-29T11:00:00"), "2026-08-29T11:00:00");
+  assert.equal(startSaleDraftTimestamp("2026-08-29T11:00:00", "2026-08-29T16:00:00"), "2026-08-29T11:00:00");
 });

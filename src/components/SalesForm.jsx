@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getMadridDateString, getMadridTimestamp } from "../utils/date.js";
 import { resolveSaleCommissionSnapshot } from "../utils/commissionSchedule.js";
-import { discardUnsavedSale, newSaleDraftHasData } from "../utils/salesDraft.js";
+import { discardUnsavedSale, newSaleDraftHasData, startSaleDraftTimestamp } from "../utils/salesDraft.js";
 
 const durationOptions = [
   { label: "15 min", value: 15 },
@@ -216,7 +216,11 @@ function SalesForm({
   const [activeCategory, setActiveCategory] = useState(tpvCategories[0].id);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const appliedAppointmentIdRef = useRef("");
-  const draftCreatedAtRef = useRef(getMadridTimestamp());
+  const [draftCommissionTimestamp, setDraftCommissionTimestamp] = useState("");
+
+  const startDraftCommissionClock = () => {
+    setDraftCommissionTimestamp((current) => startSaleDraftTimestamp(current, getMadridTimestamp()));
+  };
 
   useEffect(() => {
     if (!editingSale) return;
@@ -356,19 +360,21 @@ function SalesForm({
     const automaticSnapshot = editingSale ? null : resolveSaleCommissionSnapshot({
       ...form,
       total,
-      commissionCalculationTimestamp: draftCreatedAtRef.current,
+      commissionCalculationTimestamp: draftCommissionTimestamp,
       professionalId: selectedEmployee?.id || "",
       professionalName: selectedEmployee?.displayName || selectedEmployee?.name || form.employee,
       saleDate: form.date,
     }, { appointments, professionals: employeeSettings });
     const commissionPercent = Number(automaticSnapshot?.commissionRateApplied ?? form.commissionPercent ?? 0);
-    const commissionAmount = total * (commissionPercent / 100);
+    const commissionAmount = Number(
+      automaticSnapshot?.commissionAmount ?? total * (commissionPercent / 100),
+    );
     const treatwellCommissionAmount = Number(form.treatwellCommissionAmount || 0);
     const netAfterCommission = netWithoutVat - commissionAmount;
     const netAfterTreatwellAndCommission = total - treatwellCommissionAmount - commissionAmount;
 
     return { subtotalServices, total, ivaPercent, ivaAmount, netWithoutVat, commissionPercent, commissionAmount, treatwellCommissionAmount, netAfterCommission, netAfterTreatwellAndCommission };
-  }, [appointments, editingSale, employeeSettings, saleServices, form, form.extra, form.commissionPercent, form.treatwellCommissionAmount]);
+  }, [appointments, draftCommissionTimestamp, editingSale, employeeSettings, saleServices, form, form.extra, form.commissionPercent, form.treatwellCommissionAmount]);
 
   const paymentMethods = useMemo(() => {
     const configured = (config.paymentMethods || []).map(normalizePaymentOption);
@@ -403,6 +409,7 @@ function SalesForm({
     }
     if (name === "employee") {
       const employee = employeeSettings.find((item) => String(item.name || "") === value);
+      startDraftCommissionClock();
       setForm({ ...form, employee: value, commissionPercent: String(employee?.commissionPercent ?? 0) });
     } else {
       setForm({ ...form, [name]: value });
@@ -467,6 +474,7 @@ function SalesForm({
   };
 
   const addServiceLine = (service) => {
+    startDraftCommissionClock();
     setSaleServices((current) => [
       ...current,
       {
@@ -621,7 +629,7 @@ function SalesForm({
     setQuickClient({ name: "", phone: "", email: "", observations: "" });
     setSaleError("");
     setForm({ ...emptySaleForm(), date: nextDate });
-    draftCreatedAtRef.current = getMadridTimestamp();
+    setDraftCommissionTimestamp("");
     onDateChange?.(nextDate);
   };
 
@@ -691,7 +699,7 @@ function SalesForm({
       })),
       extra: Number(form.extra || 0),
       commissionPercent: Number(totals.commissionPercent || 0),
-      commissionCalculationTimestamp: draftCreatedAtRef.current,
+      commissionCalculationTimestamp: draftCommissionTimestamp || getMadridTimestamp(),
       ...financialTotals,
     };
   };
