@@ -150,6 +150,23 @@ export function calculateTreasuryResult({ collections = 0, paidExpenses = 0, pai
     - Number(platformPayments || 0);
 }
 
+// El cierre diario concilia únicamente cobros. Las salidas se concilian en Finanzas/cierre mensual.
+export function calculateDailyPaymentMethodReconciliation({ method = "", registered = 0, real } = {}) {
+  const registeredAmount = Number(registered || 0);
+  const hasRealAmount = real !== undefined && real !== null && real !== "";
+  const confirmedAmount = hasRealAmount ? Number(real || 0) : registeredAmount;
+  const rawDifference = confirmedAmount - registeredAmount;
+
+  return {
+    method,
+    registered: registeredAmount,
+    reconciliationTarget: registeredAmount,
+    confirmedAmount,
+    real: hasRealAmount ? confirmedAmount : 0,
+    difference: Math.abs(rawDifference) < 0.000001 ? 0 : rawDifference,
+  };
+}
+
 export function calculatePaymentMethodReconciliation({ method = "", registered = 0, openingBalance = 0, paidExpenses = 0, paidCommissions = 0, otherOutflows = 0, real } = {}) {
   const registeredAmount = Number(registered || 0);
   const outflows = Number(paidExpenses || 0) + Number(paidCommissions || 0) + Number(otherOutflows || 0);

@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const helperSource = await readFile(new URL("../src/utils/commissionFinance.js", import.meta.url), "utf8");
 const {
   buildCommissionPaymentFields,
+  calculateDailyPaymentMethodReconciliation,
   calculateOperatingResult,
   calculatePaymentMethodReconciliation,
   calculateTreasuryResult,
@@ -16,6 +17,7 @@ const {
   resolveFinancialInput,
   selectPayableCommissions,
 } = await import(`data:text/javascript;base64,${Buffer.from(helperSource).toString("base64")}`);
+const cashClosingSource = await readFile(new URL("../src/components/CashClosing.jsx", import.meta.url), "utf8");
 
 const july = { from: "2026-07-01", to: "2026-07-31" };
 const august = { from: "2026-08-01", to: "2026-08-31" };
@@ -107,6 +109,47 @@ test("efectivo se concilia contra caja esperada y tarjeta contra cobros brutos",
   assert.equal(card.reconciliationTarget, 1748);
   assert.equal(card.difference, 0);
   assert.equal(Number(card.treasuryBalance.toFixed(2)), 755.46);
+});
+
+test("el cierre diario de efectivo concilia solo cobros aunque haya gastos y comisiones", () => {
+  const cash = calculateDailyPaymentMethodReconciliation({
+    method: "Efectivo",
+    registered: 35,
+    paidExpenses: 12,
+    paidCommissions: 339.60,
+    real: 35,
+  });
+
+  assert.equal(cash.reconciliationTarget, 35);
+  assert.equal(cash.difference, 0);
+});
+
+test("el cierre diario de tarjeta no resta gastos de los cobros", () => {
+  const card = calculateDailyPaymentMethodReconciliation({
+    method: "Tarjeta",
+    registered: 90,
+    paidExpenses: 588.50,
+    real: 90,
+  });
+
+  assert.equal(card.reconciliationTarget, 90);
+  assert.equal(card.difference, 0);
+});
+
+test("gastos y comisiones son informativos y no intervienen en el esperado diario", () => {
+  const cash = calculateDailyPaymentMethodReconciliation({ method: "Efectivo", registered: 35, real: 35 });
+  const card = calculateDailyPaymentMethodReconciliation({ method: "Tarjeta", registered: 90, real: 90 });
+
+  assert.equal(cash.reconciliationTarget, 35);
+  assert.equal(card.reconciliationTarget, 90);
+  assert.match(cashClosingSource, /Gastos pagados/);
+  assert.match(cashClosingSource, /Comisiones pagadas/);
+});
+
+test("el cierre diario no depende de fondo inicial ni muestra tesoreria neta", () => {
+  assert.doesNotMatch(cashClosingSource, /Fondo inicial de caja/);
+  assert.doesNotMatch(cashClosingSource, /Pendiente de fondo inicial/);
+  assert.doesNotMatch(cashClosingSource, /Tesoreria neta/);
 });
 
 test("fondo inicial, cobros y salidas producen el efectivo esperado sin alterar cobros", () => {

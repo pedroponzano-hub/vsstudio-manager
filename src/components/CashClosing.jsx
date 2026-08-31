@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  calculatePaymentMethodReconciliation,
+  calculateDailyPaymentMethodReconciliation,
   groupPaidCommissionsByMethod as groupCommissionPaymentsByMethod,
   paidCommissionsInRange,
 } from "../utils/commissionFinance.js";
@@ -115,14 +115,12 @@ function buildReportHtml(closing, snapshot) {
     <tr>
       <td>${escapeHtml(row.method)}</td>
       <td>${money(row.registered)}</td>
-      <td>${row.method === "Efectivo" ? row.openingBalanceProvided ? money(row.openingBalance) : "No informado" : "No aplica"}</td>
-      <td>${row.method === "Efectivo" && !row.openingBalanceProvided ? "No informado" : money(row.expectedBalance)}</td>
+      <td>${money(row.reconciliationTarget)}</td>
       <td>${money(row.real)}</td>
       <td>${money(row.difference)}</td>
       <td>${money(row.expenses)}</td>
       <td>${money(row.paidCommissions)}</td>
       <td>${money(row.treatwellCommission)}</td>
-      <td>${money(row.finalBalance)}</td>
     </tr>
   `).join("");
   const expensesHtml = paymentMethods.map((method) => `
@@ -173,9 +171,9 @@ function buildReportHtml(closing, snapshot) {
           <div class="box"><span>Fecha del cierre</span><strong>${escapeHtml(closing.date)}</strong></div>
           <div class="box"><span>Responsable</span><strong>${escapeHtml(closing.responsible || "Sin responsable")}</strong></div>
           <div class="box"><span>Venta total registrada</span><strong>${money(snapshot.summary.totalSales)}</strong></div>
-          <div class="box"><span>Tesorería neta esperada</span><strong>${snapshot.summary.openingCashProvided === false ? "No informado" : money(snapshot.summary.totalExpectedTreasury ?? snapshot.summary.totalTheoreticalForClosing)}</strong></div>
+          <div class="box"><span>Total esperado según cobros</span><strong>${money(snapshot.summary.totalExpectedForClosing ?? snapshot.summary.totalSales)}</strong></div>
           <div class="box"><span>Total real confirmado</span><strong>${money(snapshot.summary.totalReal)}</strong></div>
-          <div class="box"><span>Diferencia total de cierre</span><strong>${snapshot.summary.openingCashProvided === false ? "No calculable" : money(snapshot.summary.totalDifference)}</strong></div>
+          <div class="box"><span>Diferencia total de cierre</span><strong>${money(snapshot.summary.totalDifference)}</strong></div>
           <div class="box"><span>Propinas tarjeta</span><strong>${money(snapshot.summary.cardTips)}</strong></div>
           <div class="box"><span>Total esperado datafono</span><strong>${money(cardSummary.expectedTerminalTotal)}</strong></div>
         </section>
@@ -187,9 +185,9 @@ function buildReportHtml(closing, snapshot) {
           <tr><td>Tarjeta real confirmada</td><td>${money(cardSummary.realConfirmed)}</td></tr>
           <tr><td>Diferencia tarjeta</td><td>${money(cardSummary.difference)}</td></tr>
         </tbody></table>
-        <h2>Cobros, salidas, conciliación y tesorería</h2>
+        <h2>Conciliación diaria de cobros</h2>
         <table>
-          <thead><tr><th>Metodo</th><th>Cobros registrados</th><th>Fondo inicial</th><th>Esperado para conciliación</th><th>Real confirmado</th><th>Diferencia</th><th>Gastos pagados</th><th>Comisiones pagadas</th><th>Comision Treatwell</th><th>Tesorería neta</th></tr></thead>
+          <thead><tr><th>Metodo</th><th>Cobros registrados</th><th>Esperado para conciliación</th><th>Real confirmado</th><th>Diferencia</th><th>Gastos pagados</th><th>Comisiones pagadas</th><th>Comision Treatwell</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
         <h2>Gastos pagados por metodo</h2>
@@ -239,7 +237,6 @@ function snapshotWithStoredClosing(snapshot, closing = {}) {
     const expectedTerminalTotal = Number(storedExpectedTerminalTotal ?? row.expectedTerminalTotal ?? 0);
     const real = Number(storedCardReal ?? row.real ?? 0);
     const difference = Number(storedCardDifference ?? real - Number(row.reconciliationTarget || row.registered || 0));
-    const finalBalance = real - Number(row.expenses || 0) - Number(row.paidCommissions || 0) - Number(row.treatwellCommission || 0);
 
     return {
       ...row,
@@ -248,23 +245,20 @@ function snapshotWithStoredClosing(snapshot, closing = {}) {
       real,
       confirmedAmount: real,
       difference,
-      treasuryBalance: finalBalance,
-      finalBalance,
     };
   });
   const cardRow = nextRows.find((row) => row.method === "Tarjeta") || {};
-  const totalTheoreticalForClosing = Number(snapshot.summary.totalTheoreticalForClosing ?? snapshot.summary.totalSales ?? 0);
+  const totalExpectedForClosing = Number(snapshot.summary.totalExpectedForClosing ?? snapshot.summary.totalSales ?? 0);
   const totalReal = nextRows.reduce((total, row) => total + Number(row.real || 0), 0);
   const summary = {
     ...snapshot.summary,
     ...(closing.summary || {}),
     cardTips: Number(storedCardTips ?? closing.summary?.cardTips ?? snapshot.summary.cardTips ?? 0),
     expectedTerminalTotal: Number(storedExpectedTerminalTotal ?? closing.summary?.expectedTerminalTotal ?? snapshot.summary.expectedTerminalTotal ?? 0),
-    totalTheoreticalForClosing,
-    totalExpectedTreasury: Number(snapshot.summary.totalExpectedTreasury ?? totalTheoreticalForClosing),
+    totalTheoreticalForClosing: totalExpectedForClosing,
+    totalExpectedForClosing,
     totalReal,
     totalDifference: roundMoney(nextRows.reduce((total, row) => total + Number(row.difference || 0), 0)),
-    totalFinalBalance: nextRows.reduce((total, row) => total + Number(row.finalBalance || 0), 0),
     card: {
       ...(snapshot.summary.card || {}),
       ...(closing.summary?.card || {}),
@@ -282,7 +276,6 @@ function snapshotWithStoredClosing(snapshot, closing = {}) {
 function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
   const [date, setDate] = useState(todayDate());
   const [realAmounts, setRealAmounts] = useState({});
-  const [openingCash, setOpeningCash] = useState("");
   const [responsible, setResponsible] = useState(user?.nombre || "");
   const [observations, setObservations] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
@@ -292,7 +285,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
     (data.cashClosings || []).find((closing) => closing.date === date)
   ), [data.cashClosings, date]);
 
-  const createSnapshot = (targetDate, targetRealAmounts = realAmounts, targetOpeningCash = openingCash) => {
+  const createSnapshot = (targetDate, targetRealAmounts = realAmounts) => {
     const daySales = (data.sales || []).filter((sale) => operationalDate(sale) === targetDate);
     const sales = daySales.filter(isCollectedSale);
     const editedSales = daySales.filter((sale) => isCollectedSale(sale) && saleIsEdited(sale));
@@ -307,58 +300,44 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
     const cardTips = cardTipsTotal(sales);
     const cardSales = Number(registeredSales.Tarjeta || 0);
     const expectedTerminalTotal = cardSales + cardTips;
-    const openingCashProvided = targetOpeningCash !== undefined && targetOpeningCash !== null && targetOpeningCash !== "";
-    const openingCashAmount = openingCashProvided ? Number(targetOpeningCash || 0) : 0;
-
     const rows = paymentMethods.map((method) => {
       const registered = Number(registeredSales[method] || 0);
       const expensesAmount = Number(paidExpenses[method] || 0);
       const paidCommissionsAmount = Number(paidCommissions[method] || 0);
       const treatwellAmount = method === "Treatwell" ? treatwellCommission : 0;
-      const treasury = calculatePaymentMethodReconciliation({
+      const reconciliation = calculateDailyPaymentMethodReconciliation({
         method,
         registered,
-        openingBalance: method === "Efectivo" ? openingCashAmount : 0,
-        paidExpenses: expensesAmount,
-        paidCommissions: paidCommissionsAmount,
-        otherOutflows: treatwellAmount,
         real: targetRealAmounts[method],
       });
 
       return {
         method,
         registered,
-        openingBalance: treasury.openingBalance,
-        openingBalanceProvided: method !== "Efectivo" || openingCashProvided,
         cardTips: method === "Tarjeta" ? cardTips : 0,
         expectedTerminalTotal: method === "Tarjeta" ? expectedTerminalTotal : registered,
-        outflows: treasury.outflows,
-        expectedBalance: treasury.expectedBalance,
-        reconciliationTarget: treasury.reconciliationTarget,
-        real: treasury.real,
-        confirmedAmount: treasury.confirmedAmount,
-        difference: treasury.difference,
+        expectedBalance: reconciliation.reconciliationTarget,
+        reconciliationTarget: reconciliation.reconciliationTarget,
+        real: reconciliation.real,
+        confirmedAmount: reconciliation.confirmedAmount,
+        difference: reconciliation.difference,
         expenses: expensesAmount,
         paidCommissions: paidCommissionsAmount,
         treatwellCommission: treatwellAmount,
-        finalBalance: treasury.finalBalance,
       };
     });
     const cardRow = rows.find((row) => row.method === "Tarjeta") || {};
-    const totalExpectedTreasury = rows.reduce((total, row) => total + Number(row.expectedBalance || 0), 0);
+    const totalExpectedForClosing = rows.reduce((total, row) => total + Number(row.reconciliationTarget || 0), 0);
     const totalRealConfirmed = rows.reduce((total, row) => total + Number(row.real || 0), 0);
 
     const summary = {
       totalSales: rows.reduce((total, row) => total + row.registered, 0),
-      openingCash: openingCashProvided ? openingCashAmount : null,
-      openingCashProvided,
-      totalTheoreticalForClosing: totalExpectedTreasury,
-      totalExpectedTreasury,
+      totalTheoreticalForClosing: totalExpectedForClosing,
+      totalExpectedForClosing,
       totalReal: totalRealConfirmed,
       totalExpenses: rows.reduce((total, row) => total + row.expenses, 0),
       totalPaidCommissions: rows.reduce((total, row) => total + row.paidCommissions, 0),
       totalDifference: roundMoney(rows.reduce((total, row) => total + Number(row.difference || 0), 0)),
-      totalFinalBalance: rows.reduce((total, row) => total + row.finalBalance, 0),
       treatwellCommission,
       cardTips,
       expectedTerminalTotal,
@@ -377,19 +356,17 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
     return { sales, daySales, auditSales, editedSales, voidedSales, expenses, commissions, registeredSales, paidExpenses, paidCommissions, treatwellCommission, rows, summary };
   };
 
-  const dayData = useMemo(() => createSnapshot(date, realAmounts, openingCash), [data.sales, data.expenses, commissionsData.rows, date, realAmounts, openingCash]);
+  const dayData = useMemo(() => createSnapshot(date, realAmounts), [data.sales, data.expenses, commissionsData.rows, date, realAmounts]);
 
   useEffect(() => {
     if (existingClosing) {
       setRealAmounts(existingClosing.realAmounts || {});
-      setOpeningCash(existingClosing.openingCash ?? existingClosing.summary?.openingCash ?? "");
       setResponsible(existingClosing.responsible || user?.nombre || "");
       setObservations(existingClosing.observations || "");
       return;
     }
 
     setRealAmounts({});
-    setOpeningCash("");
     setResponsible(user?.nombre || "");
     setObservations("");
   }, [date, existingClosing, user?.nombre]);
@@ -403,7 +380,6 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
   const closingPayload = () => ({
     date,
     responsible,
-    openingCash: openingCash === "" ? null : Number(openingCash || 0),
     realAmounts: Object.fromEntries(paymentMethods.map((method) => {
       const value = realAmounts[method];
       return [method, value === undefined || value === "" ? 0 : Number(value || 0)];
@@ -417,13 +393,8 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
   });
 
   const saveClosing = () => {
-    if (openingCash === "") {
-      setSavedMessage("");
-      setClosingError("Introduce el fondo inicial de caja. Si no existe fondo, introduce 0 explícitamente.");
-      return;
-    }
     const missingMethods = dayData.rows
-      .filter((row) => (Math.abs(Number(row.registered || 0)) > 0.009 || Math.abs(Number(row.outflows || 0)) > 0.009 || Math.abs(Number(row.openingBalance || 0)) > 0.009)
+      .filter((row) => Math.abs(Number(row.registered || 0)) > 0.009
         && (realAmounts[row.method] === undefined || realAmounts[row.method] === ""))
       .map((row) => row.method);
     if (missingMethods.length > 0) {
@@ -449,12 +420,12 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
   };
 
   const viewReport = (closing) => {
-    const snapshot = snapshotWithStoredClosing(createSnapshot(closing.date, closing.realAmounts || {}, closing.openingCash ?? closing.summary?.openingCash ?? ""), closing);
+    const snapshot = snapshotWithStoredClosing(createSnapshot(closing.date, closing.realAmounts || {}), closing);
     openReportWindow(closing, snapshot, false);
   };
 
   const printHistoryReport = (closing) => {
-    const snapshot = snapshotWithStoredClosing(createSnapshot(closing.date, closing.realAmounts || {}, closing.openingCash ?? closing.summary?.openingCash ?? ""), closing);
+    const snapshot = snapshotWithStoredClosing(createSnapshot(closing.date, closing.realAmounts || {}), closing);
     openReportWindow(closing, snapshot, true);
   };
 
@@ -474,9 +445,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
       <section className="panel filters-panel">
         <label>Fecha del cierre<input type="date" value={date} onChange={(event) => setDate(event.target.value || todayDate())} /></label>
         <label>Responsable<input value={responsible} onChange={(event) => setResponsible(event.target.value)} placeholder="Responsable del cierre" /></label>
-        <label>Fondo inicial de caja<input aria-label="Fondo inicial de caja" min="0" step="0.01" type="number" value={openingCash} onChange={(event) => { setOpeningCash(event.target.value); setSavedMessage(""); setClosingError(""); }} placeholder="Introduce el fondo inicial" /></label>
       </section>
-      {openingCash === "" && <p className="warning-message">El efectivo esperado no se considera confirmado hasta indicar el fondo inicial. Introduce 0 si la caja comenzó sin fondo.</p>}
 
       <section className="summary-grid compact">
         {dayData.rows.map((row) => (
@@ -510,8 +479,8 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
       <section className="panel">
         <h3>Confirmacion diaria por metodo</h3>
         <div className="stat-row">
-          <span>Tesorería neta esperada</span>
-          <strong>{dayData.summary.openingCashProvided ? money(dayData.summary.totalExpectedTreasury) : "Pendiente de fondo inicial"}</strong>
+          <span>Total esperado según cobros</span>
+          <strong>{money(dayData.summary.totalExpectedForClosing)}</strong>
         </div>
         <div className="stat-row">
           <span>Total real confirmado</span>
@@ -519,15 +488,15 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
         </div>
         <div className="stat-row">
           <span>Diferencia total de cierre</span>
-          <strong className={Math.abs(Number(dayData.summary.totalDifference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{dayData.summary.openingCashProvided ? money(dayData.summary.totalDifference) : "Pendiente de fondo inicial"}</strong>
+          <strong className={Math.abs(Number(dayData.summary.totalDifference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(dayData.summary.totalDifference)}</strong>
         </div>
         <div className="finance-table">
-          <div className="finance-header cash"><span>Metodo</span><span>Cobros registrados</span><span>Fondo inicial</span><span>Esperado para conciliacion</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span><span>Gastos pagados</span><span>Comisiones pagadas</span><span>Tesoreria neta</span></div>
+          <div className="finance-header cash"><span>Metodo</span><span>Cobros registrados</span><span>Esperado para conciliacion</span><span>Real contado / recibido</span><span>Diferencia conciliacion</span><span>Gastos pagados</span><span>Comisiones pagadas</span></div>
           {dayData.rows.map((row) => (
             <div className="finance-row cash" key={row.method}>
               <span>
                 {row.method}
-                <small className="cash-card-breakdown">{row.method === "Efectivo" ? "Fondo + cobros - salidas" : "Conciliacion de cobros"}</small>
+                <small className="cash-card-breakdown">Conciliacion de cobros</small>
                 {row.method === "Tarjeta" && (
                   <small className="cash-card-breakdown">
                     Tarjeta ventas: {money(row.registered)} · Propinas tarjeta: {money(row.cardTips)} · Total esperado datáfono: {money(row.expectedTerminalTotal)}
@@ -535,8 +504,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
                 )}
               </span>
               <strong data-label="Cobros registrados">{money(row.registered)}</strong>
-              <strong data-label="Fondo inicial">{row.method === "Efectivo" ? row.openingBalanceProvided ? money(row.openingBalance) : "Pendiente" : "No aplica"}</strong>
-              <strong data-label={row.method === "Efectivo" ? "Efectivo esperado" : "Cobros esperados"}>{row.method === "Efectivo" && !row.openingBalanceProvided ? "Pendiente" : money(row.reconciliationTarget)}</strong>
+              <strong data-label="Esperado para conciliacion">{money(row.reconciliationTarget)}</strong>
               <label className="cash-real-field">
                 <span>Real contado / recibido</span>
                 <input
@@ -548,10 +516,9 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
                   placeholder="0.00"
                 />
               </label>
-              <strong data-label="Diferencia conciliacion" className={Math.abs(Number(row.difference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{row.method === "Efectivo" && !row.openingBalanceProvided ? "Pendiente" : money(row.difference)}</strong>
+              <strong data-label="Diferencia conciliacion" className={Math.abs(Number(row.difference || 0)) < 0.009 ? "closing-difference is-ok" : "closing-difference has-issue"}>{money(row.difference)}</strong>
               <strong data-label="Gastos pagados">{money(row.expenses)}</strong>
               <strong data-label="Comisiones pagadas">{money(row.paidCommissions)}</strong>
-              <strong data-label="Tesoreria neta">{money(row.finalBalance)}</strong>
             </div>
           ))}
         </div>
@@ -601,7 +568,7 @@ function CashClosing({ data, commissionsData = { rows: [] }, user, onSave }) {
         <div className="finance-table">
           <div className="finance-header closing-history"><span>Fecha</span><span>Responsable</span><span>Total ventas</span><span>Total gastos</span><span>Diferencia total</span><span>Observaciones</span><span>Accion</span></div>
           {closingHistory.map((closing) => {
-            const snapshot = snapshotWithStoredClosing(createSnapshot(closing.date, closing.realAmounts || {}, closing.openingCash ?? closing.summary?.openingCash ?? ""), closing);
+            const snapshot = snapshotWithStoredClosing(createSnapshot(closing.date, closing.realAmounts || {}), closing);
             const summary = { ...snapshot.summary, ...(closing.summary || {}) };
             return (
               <div className="finance-row closing-history" key={closing.id || closing.date}>
