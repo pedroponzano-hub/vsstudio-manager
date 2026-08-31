@@ -2028,8 +2028,8 @@ h3 {
 
 .finance-header.cash,
 .finance-row.cash {
-  grid-template-columns: minmax(150px, 1fr) repeat(7, minmax(130px, 0.8fr));
-  min-width: 1150px;
+  grid-template-columns: minmax(150px, 1fr) repeat(8, minmax(130px, 0.8fr));
+  min-width: 1280px;
 }
 
 .warning-message {

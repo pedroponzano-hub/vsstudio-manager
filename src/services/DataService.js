@@ -729,11 +729,13 @@ function normalizeExpense(expense) {
 
 function normalizeCashClosing(closing) {
   const date = closing.date || todayLocal();
+  const storedOpeningCash = closing.openingCash ?? closing.summary?.openingCash;
 
   return cleanFirestoreData({
     id: closing.id || `cash-closing-${date}`,
     date,
     responsible: closing.responsible || "",
+    openingCash: storedOpeningCash === undefined || storedOpeningCash === null || storedOpeningCash === "" ? null : Number(storedOpeningCash || 0),
     realAmounts: closing.realAmounts || {},
     cardTips: Number(closing.cardTips || closing.summary?.cardTips || 0),
     expectedTerminalTotal: Number(closing.expectedTerminalTotal || closing.summary?.expectedTerminalTotal || 0),

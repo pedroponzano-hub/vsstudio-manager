@@ -150,11 +150,12 @@ export function calculateTreasuryResult({ collections = 0, paidExpenses = 0, pai
     - Number(platformPayments || 0);
 }
 
-export function calculatePaymentMethodReconciliation({ method = "", registered = 0, paidExpenses = 0, paidCommissions = 0, otherOutflows = 0, real } = {}) {
+export function calculatePaymentMethodReconciliation({ method = "", registered = 0, openingBalance = 0, paidExpenses = 0, paidCommissions = 0, otherOutflows = 0, real } = {}) {
   const registeredAmount = Number(registered || 0);
   const outflows = Number(paidExpenses || 0) + Number(paidCommissions || 0) + Number(otherOutflows || 0);
-  const expectedBalance = registeredAmount - outflows;
   const isCash = normalizeCommissionPaymentMethod(method) === "Efectivo";
+  const openingAmount = isCash ? Number(openingBalance || 0) : 0;
+  const expectedBalance = openingAmount + registeredAmount - outflows;
   const reconciliationTarget = isCash ? expectedBalance : registeredAmount;
   const hasRealAmount = real !== undefined && real !== null && real !== "";
   const confirmedAmount = hasRealAmount ? Number(real || 0) : reconciliationTarget;
@@ -164,6 +165,7 @@ export function calculatePaymentMethodReconciliation({ method = "", registered =
     method,
     isCash,
     registered: registeredAmount,
+    openingBalance: openingAmount,
     outflows,
     expectedBalance,
     reconciliationTarget,

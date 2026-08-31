@@ -109,6 +109,46 @@ test("efectivo se concilia contra caja esperada y tarjeta contra cobros brutos",
   assert.equal(Number(card.treasuryBalance.toFixed(2)), 755.46);
 });
 
+test("fondo inicial, cobros y salidas producen el efectivo esperado sin alterar cobros", () => {
+  const cash = calculatePaymentMethodReconciliation({
+    method: "Efectivo",
+    openingBalance: 500,
+    registered: 35,
+    paidExpenses: 12,
+    paidCommissions: 339.60,
+    real: 183.40,
+  });
+
+  assert.equal(cash.registered, 35);
+  assert.equal(cash.openingBalance, 500);
+  assert.equal(Number(cash.expectedBalance.toFixed(2)), 183.40);
+  assert.equal(Number(cash.difference.toFixed(2)), 0);
+});
+
+test("gastos y comisiones de efectivo reducen caja esperada pero nunca los cobros", () => {
+  const expenseOnly = calculatePaymentMethodReconciliation({ method: "Efectivo", openingBalance: 100, registered: 35, paidExpenses: 12 });
+  const commissionOnly = calculatePaymentMethodReconciliation({ method: "Efectivo", openingBalance: 100, registered: 35, paidCommissions: 20 });
+  assert.equal(expenseOnly.registered, 35);
+  assert.equal(expenseOnly.expectedBalance, 123);
+  assert.equal(commissionOnly.registered, 35);
+  assert.equal(commissionOnly.expectedBalance, 115);
+});
+
+test("una comisión por transferencia no modifica el efectivo esperado", () => {
+  const cash = calculatePaymentMethodReconciliation({ method: "Efectivo", openingBalance: 100, registered: 35, paidCommissions: 0 });
+  const transfer = calculatePaymentMethodReconciliation({ method: "Transferencia", registered: 50, paidCommissions: 20, real: 50 });
+  assert.equal(cash.expectedBalance, 135);
+  assert.equal(transfer.registered, 50);
+  assert.equal(transfer.expectedBalance, 30);
+  assert.equal(transfer.reconciliationTarget, 50);
+});
+
+test("fondo inicial cero explícito permite mostrar un movimiento neto negativo sin cambiar ventas", () => {
+  const cash = calculatePaymentMethodReconciliation({ method: "Efectivo", openingBalance: 0, registered: 35, paidExpenses: 12, paidCommissions: 339.60 });
+  assert.equal(cash.registered, 35);
+  assert.equal(Number(cash.expectedBalance.toFixed(2)), -316.60);
+});
+
 test("tarjeta conserva 10 euros de cobros aunque haya 10 euros de gastos", () => {
   const card = calculatePaymentMethodReconciliation({
     method: "Tarjeta",
@@ -137,6 +177,20 @@ test("tarjeta conserva 100 euros de cobros aunque haya 30 euros de gastos", () =
   assert.equal(card.difference, 0);
   assert.equal(card.outflows, 30);
   assert.equal(card.treasuryBalance, 70);
+});
+
+test("tarjeta conserva 90 euros de cobros y refleja -498,50 de tesorería", () => {
+  const card = calculatePaymentMethodReconciliation({
+    method: "Tarjeta",
+    registered: 90,
+    paidExpenses: 588.50,
+    real: 90,
+  });
+
+  assert.equal(card.registered, 90);
+  assert.equal(card.reconciliationTarget, 90);
+  assert.equal(card.difference, 0);
+  assert.equal(Number(card.treasuryBalance.toFixed(2)), -498.50);
 });
 
 test("bizum y transferencia concilian cobros antes de aplicar sus salidas", () => {
