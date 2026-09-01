@@ -96,7 +96,7 @@ function ManagerDashboard({ commissionsData = {}, initialPeriod = "month", onNav
   const options = useMemo(() => managerFilterOptions(sourceData), [sourceData]);
   const dashboard = useMemo(() => deriveManagerDashboard(source, { bounds, period, professional, category }), [bounds, category, period, professional, source]);
   const { metrics } = dashboard;
-  const navigate = (target) => onNavigate?.(target, { bounds, professional, category });
+  const navigate = (target) => onNavigate?.(target, { bounds, period, professional, category });
   const salesColumns = [
     { key: "name", label: "Profesional" },
     { key: "sales", label: "Ventas", render: (row) => money(row.sales) },
@@ -130,17 +130,17 @@ function ManagerDashboard({ commissionsData = {}, initialPeriod = "month", onNav
       <MetricCard label="Ventas" value={money(metrics.totalSales)} onClick={() => navigate("sales")} />
       <MetricCard label="Operaciones" value={metrics.salesCount} onClick={() => navigate("operations")} />
       <MetricCard label="Servicios" value={metrics.servicesCount} onClick={() => navigate("services")} />
-      <MetricCard label="Ticket medio" value={money(metrics.averageTicket)} />
+      <MetricCard label="Ticket medio" value={money(metrics.averageTicket)} onClick={() => navigate("average-ticket")} />
       <MetricCard label="Clientes" value={metrics.clients} onClick={() => navigate("clients")} />
       <MetricCard label="Gastos" value={money(metrics.expenses)} tone="warning" onClick={() => navigate("expenses")} />
-      <MetricCard label="Resultado estimado" value={dashboard.hasDimensionFilter ? "No atribuible" : money(metrics.resultEstimated)} tone={dashboard.hasDimensionFilter ? "default" : metrics.resultEstimated < 0 ? "danger" : "success"} />
+      <MetricCard label="Resultado estimado" value={dashboard.hasDimensionFilter ? "No atribuible" : money(metrics.resultEstimated)} tone={dashboard.hasDimensionFilter ? "default" : metrics.resultEstimated < 0 ? "danger" : "success"} onClick={dashboard.hasDimensionFilter ? undefined : () => navigate("result-estimated")} />
     </section>
 
     <section className="manager-secondary-metrics">
       <MetricCard label="Comisiones pendientes" value={`${metrics.pendingCommissions} · ${money(metrics.pendingCommissionAmount)}`} tone={metrics.pendingCommissions ? "warning" : "success"} onClick={() => navigate("pending-commissions")} />
       <MetricCard label="Clientes nuevos" value={metrics.clientsNew} onClick={() => navigate("new-clients")} />
       <MetricCard label="Clientes recurrentes" value={metrics.clientsRecurring} onClick={() => navigate("recurring-clients")} />
-      <MetricCard label="Comisiones pagadas" value={metrics.paidCommissions} onClick={() => navigate("paid-commissions")} />
+      <MetricCard label="Comisiones pagadas" value={`${metrics.paidCommissions} · ${money(metrics.paidCommissionAmount)}`} onClick={() => navigate("paid-commissions")} />
     </section>
 
     <section className="manager-dashboard-grid manager-dashboard-grid-featured">

@@ -143,12 +143,12 @@ const platformSectionIds = {
 const directionSectionIds = ["agenda", "dashboard", "sales", "clients", "expenses", "cash-closing", "commissions", "statistics"];
 
 function getPlatformModeFromPath(pathname = "") {
-  const normalizedPath = String(pathname || "").toLowerCase();
+  const normalizedPath = String(pathname || "").split(/[?#]/, 1)[0].toLowerCase();
   return normalizedPath === "/pos" || normalizedPath.startsWith("/pos/") ? "pos" : "manager";
 }
 
 function getInitialPageFromPath(pathname = "") {
-  const normalizedPath = String(pathname || "").toLowerCase();
+  const normalizedPath = String(pathname || "").split(/[?#]/, 1)[0].toLowerCase();
   if (normalizedPath === "/no-permissions" || normalizedPath.startsWith("/no-permissions/")) return "access.noPermissions";
   if (normalizedPath === "/pos/my-agenda" || normalizedPath.startsWith("/pos/my-agenda/")) return "professional.agenda";
   if (normalizedPath === "/pos/my-sales" || normalizedPath.startsWith("/pos/my-sales/")) return "professional.sales";
@@ -930,7 +930,7 @@ function App() {
   };
 
   const openManagerDashboardTarget = (target, context) => {
-    const detailTargets = new Set(["sales", "operations", "services", "clients", "expenses", "pending-commissions", "paid-commissions", "new-clients", "recurring-clients"]);
+    const detailTargets = new Set(["sales", "operations", "services", "average-ticket", "clients", "expenses", "result-estimated", "pending-commissions", "paid-commissions", "new-clients", "recurring-clients"]);
     if (detailTargets.has(target)) {
       const route = buildDashboardDetailUrl(target, context);
       if (route) navigateToRoute(route, { replace: false });

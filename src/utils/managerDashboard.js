@@ -140,7 +140,7 @@ function commissionDate(row = {}) {
 }
 
 function commissionPaymentDate(row = {}) {
-  return row.paymentDate || row.fechaPagoComision || row.commissionPaymentDate || "";
+  return row.paymentDate || row.fechaPago || row.fechaPagoComision || row.commissionPaymentDate || "";
 }
 
 export function deriveManagerDashboard(source = {}, options = {}) {
@@ -160,7 +160,8 @@ export function deriveManagerDashboard(source = {}, options = {}) {
   const servicesCount = sales.reduce((sum, sale) => sum + resolvedServices(sale, catalog).reduce((serviceSum, service) => serviceSum + number(service.quantity || 1), 0), 0);
   const commissionGenerated = sales.reduce((sum, sale) => sum + number(sale.commissionAmount), 0);
   const hasDimensionFilter = professional !== "all" || category !== "all";
-  const resultEstimated = hasDimensionFilter ? null : sales.reduce((sum, sale) => sum + number(sale.netAfterCommission ?? sale.netWithoutVat ?? saleAmount(sale) - number(sale.commissionAmount)), 0) - totalExpenses;
+  const netIncomeAfterCommissions = sales.reduce((sum, sale) => sum + number(sale.netAfterCommission ?? sale.netWithoutVat ?? saleAmount(sale) - number(sale.commissionAmount)), 0);
+  const resultEstimated = hasDimensionFilter ? null : netIncomeAfterCommissions - totalExpenses;
   const clientIds = new Set(sales.map((sale) => sale.clientId).filter(Boolean));
   const clientSaleCounts = sales.reduce((counts, sale) => {
     if (sale.clientId) counts[sale.clientId] = (counts[sale.clientId] || 0) + 1;
@@ -260,6 +261,7 @@ export function deriveManagerDashboard(source = {}, options = {}) {
       pendingCommissionAmount: pendingCommissions.reduce((sum, row) => sum + number(row.commissionAmount), 0),
       pendingCommissions: pendingCommissions.length,
       paidCommissions: paidCommissions.length,
+      paidCommissionAmount: paidCommissions.reduce((sum, row) => sum + number(row.commissionAmount), 0),
       clientsNew: newClients.length,
       clientsRecurring: recurringClients.length,
     },
@@ -271,6 +273,13 @@ export function deriveManagerDashboard(source = {}, options = {}) {
     clientsInSales,
     newClients,
     recurringClients,
+    resultBreakdown: {
+      grossCollections: totalSales,
+      generatedCommissions: commissionGenerated,
+      netIncomeAfterCommissions,
+      expenses: totalExpenses,
+      result: resultEstimated,
+    },
     paymentMethods: Object.entries(paymentMethods).map(([name, amount]) => ({ name, amount })).filter((row) => row.amount > 0),
     salesSeries: groupSeries(sales, bounds, period),
     categories: Object.values(byCategory).sort((a, b) => b.amount - a.amount),

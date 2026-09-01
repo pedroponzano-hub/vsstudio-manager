@@ -14,7 +14,7 @@ const source = {
   cashClosings: [{ id: "closing-1", date: "2026-08-25", totalDifference: 0 }],
   commissionRows: [
     { saleId: "sale-1", generationDate: "2026-08-25", employee: "Marianne", commissionAmount: 5, status: "pendiente" },
-    { saleId: "paid-old-sale", generationDate: "2026-07-20", paymentDate: "2026-08-25", employee: "Marianne", commissionAmount: 4, status: "pagada" },
+    { saleId: "paid-old-sale", generationDate: "2026-07-20", fechaPago: "2026-08-25", employee: "Marianne", commissionAmount: 4, status: "pagada" },
   ],
   config: {
     employeeSettings: [
@@ -56,6 +56,7 @@ test("comisiones pagadas se incluyen por fecha de pago y pendientes por devengo"
   const dashboard = deriveManagerDashboard(source, { bounds: { from: "2026-08-25", to: "2026-08-25" }, period: "today" });
   assert.equal(dashboard.metrics.pendingCommissions, 1);
   assert.equal(dashboard.metrics.paidCommissions, 1);
+  assert.equal(dashboard.metrics.paidCommissionAmount, 4);
 });
 
 test("opciones usan únicamente configuración real activa", () => {

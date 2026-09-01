@@ -7,8 +7,10 @@ const LABELS = {
   sales: "Ventas",
   operations: "Operaciones",
   services: "Servicios",
+  "average-ticket": "Ticket medio",
   clients: "Clientes",
   expenses: "Gastos",
+  "result-estimated": "Resultado estimado",
   "pending-commissions": "Comisiones pendientes",
   "paid-commissions": "Comisiones pagadas",
   "new-clients": "Clientes nuevos",
@@ -25,6 +27,7 @@ function rowDate(row, metric) {
 }
 
 function rowConcept(row, metric) {
+  if (metric === "result-estimated") return row.concept;
   if (metric === "services") return `${row.serviceName || "Servicio"}${Number(row.quantity || 1) > 1 ? ` × ${row.quantity}` : ""}`;
   if (metric.includes("clients")) return row.name || row.clientName || row.email || "Cliente";
   if (metric.includes("commissions")) return row.services || row.serviceName || `Venta ${row.saleId || row.id || ""}`;
@@ -33,6 +36,7 @@ function rowConcept(row, metric) {
 }
 
 function rowOwner(row, metric, clientsById) {
+  if (metric === "result-estimated") return "Cálculo del periodo";
   if (metric.includes("clients")) return row.phone || row.telefono || row.email || "-";
   if (metric === "expenses") return row.provider || row.supplier || row.paymentMethod || "-";
   return row.employee || row.professionalName || row.clientName || clientsById[row.clientId] || "-";
@@ -48,12 +52,13 @@ function ManagerDashboardDetail({ commissionsData = {}, sourceData = {} }) {
   const context = useMemo(() => parseDashboardDetailSearch(window.location.search), []);
   const dashboard = useMemo(() => deriveManagerDashboard(
     { ...sourceData, commissionRows: commissionsData.rows || [] },
-    { ...context, period: "custom" },
+    context,
   ), [commissionsData.rows, context, sourceData]);
   const rows = dashboardDetailRows(dashboard, context.metric);
   const total = dashboardDetailTotal(rows, context.metric);
   const clientsById = Object.fromEntries((sourceData.clients || []).map((client) => [client.id, client.name]));
   const isCount = ["operations", "services", "clients", "new-clients", "recurring-clients"].includes(context.metric);
+  const isResult = context.metric === "result-estimated";
   const dimensionsApply = context.metric !== "expenses";
   const professionalLabel = context.professional === "all"
     ? "Todas"
@@ -78,6 +83,19 @@ function ManagerDashboardDetail({ commissionsData = {}, sourceData = {} }) {
         <article className="metric"><span>Profesional</span><strong>{!dimensionsApply ? "No aplica" : professionalLabel}</strong></article>
         <article className="metric"><span>Categoría</span><strong>{!dimensionsApply ? "No aplica" : context.category === "all" ? "Todas" : context.category}</strong></article>
       </section>
+
+      {context.metric === "average-ticket" && <section className="panel"><p className="manager-panel-note">{money(dashboard.metrics.totalSales)} en ventas / {dashboard.metrics.salesCount} operaciones = {money(dashboard.metrics.averageTicket)} de ticket medio.</p></section>}
+
+      {isResult && <section className="panel">
+        <h3>Desglose del resultado estimado</h3>
+        <div className="manager-finance-summary">
+          <div><span>Facturación cobrada</span><strong>{money(dashboard.resultBreakdown.grossCollections)}</strong></div>
+          <div><span>Comisiones generadas</span><strong>{money(dashboard.resultBreakdown.generatedCommissions)}</strong></div>
+          <div><span>Base neta tras comisiones e impuestos</span><strong>{money(dashboard.resultBreakdown.netIncomeAfterCommissions)}</strong></div>
+          <div><span>Gastos del periodo</span><strong>{money(dashboard.resultBreakdown.expenses)}</strong></div>
+          <div><span>Resultado estimado</span><strong>{money(dashboard.resultBreakdown.result)}</strong></div>
+        </div>
+      </section>}
 
       <section className="panel">
         <div className="finance-table">
