@@ -7,25 +7,26 @@ function unique(values = []) {
 }
 
 export function resolveProfessionalIdentity(user = {}, professionals = []) {
-  const requestedIds = unique([user.professionalId, user.employeeId, user.empleadaId]);
-  const requestedNames = unique([user.professionalName, user.employeeName, user.empleada, user.nombre, user.name]);
+  const safeUser = user || {};
+  const requestedIds = unique([safeUser.professionalId, safeUser.employeeId, safeUser.empleadaId]);
+  const requestedNames = unique([safeUser.professionalName, safeUser.employeeName, safeUser.empleada, safeUser.nombre, safeUser.name]);
   const activeProfessionals = (professionals || []).filter((professional) => professional && professional.active !== false);
   const byId = activeProfessionals.find((professional) => requestedIds.includes(normalized(professional.id || professional.professionalId)));
   const nameMatches = activeProfessionals.filter((professional) => requestedNames.includes(normalized(professional.name || professional.displayName || professional.professionalName)));
   const resolved = byId || (nameMatches.length === 1 ? nameMatches[0] : null);
 
   return {
-    professionalId: String(resolved?.id || resolved?.professionalId || user.professionalId || user.employeeId || user.empleadaId || "").trim(),
-    displayName: String(resolved?.displayName || resolved?.name || user.professionalName || user.employeeName || user.nombre || "").trim(),
+    professionalId: String(resolved?.id || resolved?.professionalId || safeUser.professionalId || safeUser.employeeId || safeUser.empleadaId || "").trim(),
+    displayName: String(resolved?.displayName || resolved?.name || safeUser.professionalName || safeUser.employeeName || safeUser.nombre || "").trim(),
     names: unique([
       resolved?.name,
       resolved?.displayName,
       resolved?.professionalName,
-      user.professionalName,
-      user.employeeName,
-      user.empleada,
-      user.nombre,
-      user.name,
+      safeUser.professionalName,
+      safeUser.employeeName,
+      safeUser.empleada,
+      safeUser.nombre,
+      safeUser.name,
     ]),
   };
 }

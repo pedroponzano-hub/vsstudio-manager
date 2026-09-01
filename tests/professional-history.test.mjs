@@ -8,6 +8,10 @@ const professionals = [
   { id: "professional-marianne-real", name: "Marianne", active: true },
 ];
 
+test("el arranque sin usuario autenticado devuelve una identidad vacía", () => {
+  assert.deepEqual(resolveProfessionalIdentity(null, professionals), { professionalId: "", displayName: "", names: [] });
+});
+
 test("L1 resuelve el professionalId real de Leo desde la configuración", () => {
   const identity = resolveProfessionalIdentity({ professionalId: "leo-legacy", professionalName: "Leo" }, professionals);
   assert.equal(identity.professionalId, "professional-leo-real");
