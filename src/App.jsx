@@ -19,7 +19,7 @@ import OperationalAgenda from "./components/OperationalAgendaReal.jsx";
 import { ProfessionalAgenda, ProfessionalCommissions, ProfessionalSales } from "./components/ProfessionalViews.jsx";
 import ProfessionalsSettingsReal from "./components/ProfessionalsSettingsReal.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
-import { accessDeniedMessageForRoute, allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, resolveRouteForUser } from "./permissions.js";
+import { accessDeniedMessageForRoute, allowedTabsForRole, canAccessDashboardSection, canAccessTab, canPerform, effectiveRoleForUser, getDefaultRouteForUser, getHomeRouteForUser, isOwnEmployeeOnly, onlyOwnEmployeeItems, resolveRouteForUser } from "./permissions.js";
 import DataService from "./services/DataService.js";
 import { formatMadridTime, getTodayLocalDateString } from "./utils/date.js";
 import { filterOwnSales, resolveProfessionalIdentity } from "./utils/professionalHistory.js";
@@ -519,6 +519,11 @@ function App() {
 
   const goToDefaultArea = () => {
     navigateToRoute(getDefaultRouteForUser(user));
+    setAccessDeniedMessage("");
+  };
+
+  const goHome = () => {
+    navigateToRoute(getHomeRouteForUser(user, platformMode));
     setAccessDeniedMessage("");
   };
 
@@ -1414,7 +1419,7 @@ function App() {
       )}
 
       <nav className={`${mobileMenuOpen ? "tabs nav-menu open" : "tabs nav-menu"}${platformMode === "pos" ? " pos-nav" : " manager-nav"}`} aria-label="Menu principal">
-        <div className="nav-brand">
+        <button className="nav-brand nav-brand-home" type="button" onClick={goHome} aria-label="Ir a Inicio">
           {platformMode === "pos" ? (
             <>
               <strong>DOMIA</strong>
@@ -1427,7 +1432,7 @@ function App() {
               <small>VS Studio Beauty &amp; Academy</small>
             </>
           )}
-        </div>
+        </button>
         {visibleNavigation.map((section) => {
           const sectionActive = section.items.some((item) => item.key === selectedNavKey);
           const isOpen = openMenuSections[section.id] ?? sectionActive;

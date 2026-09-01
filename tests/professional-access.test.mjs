@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { accessDeniedMessageForRoute, getDefaultRouteForUser, resolveRouteForUser } from "../src/permissions.js";
+import { accessDeniedMessageForRoute, getDefaultRouteForUser, getHomeRouteForUser, resolveRouteForUser } from "../src/permissions.js";
 import { normalizeUserProfile } from "../src/utils/userProfile.js";
 
 test("resuelve la ruta inicial del administrador", () => {
@@ -11,6 +11,19 @@ test("resuelve la ruta inicial del administrador", () => {
 test("resuelve la ruta propia de un profesional como Leo", () => {
   assert.equal(getDefaultRouteForUser({ role: "profesional", active: true, professionalId: "leo" }), "/pos/my-agenda");
   assert.equal(resolveRouteForUser({ role: "profesional", active: true, professionalId: "leo" }, "/pos/my-sales"), "/pos/my-sales");
+});
+
+test("el logo DOMIA usa la ruta principal permitida según usuario y plataforma", () => {
+  const admin = { role: "admin", active: true };
+  const leo = { role: "profesional", active: true, professionalId: "leo" };
+  const localUser = { role: "direccion", active: true };
+
+  assert.equal(getHomeRouteForUser(admin, "manager"), "/manager");
+  assert.equal(getHomeRouteForUser(admin, "pos"), "/pos/agenda-v2");
+  assert.equal(getHomeRouteForUser(localUser, "pos"), "/pos/agenda-v2");
+  assert.equal(getHomeRouteForUser(leo, "pos"), "/pos/my-agenda");
+  assert.equal(getHomeRouteForUser(leo, "manager"), "/pos/my-agenda");
+  assert.notEqual(getHomeRouteForUser(leo, "manager"), "/manager");
 });
 
 test("el detalle financiero del Dashboard permanece reservado al administrador", () => {

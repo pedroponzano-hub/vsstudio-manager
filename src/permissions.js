@@ -77,6 +77,26 @@ function getDefaultRouteForUser(user = {}) {
   return "/no-permissions";
 }
 
+function getHomeRouteForUser(user = {}, platform = "") {
+  if (!user || user.active === false) return "/no-permissions";
+  const role = effectiveRoleForUser(user);
+  const tabs = allowedTabsForRole(role);
+
+  if (platform === "manager" && tabs.some((tab) => ["dashboard", "finance", "statistics", "commissions", "settings"].includes(tab))) {
+    return resolveRouteForUser(user, "/manager");
+  }
+
+  if (platform === "pos") {
+    if (tabs.includes("professionalAgenda")) return resolveRouteForUser(user, "/pos/my-agenda");
+    if (tabs.includes("agenda")) return resolveRouteForUser(user, "/pos/agenda-v2");
+    if (tabs.some((tab) => ["sales", "expenses", "clients", "loyalty", "cashClosing"].includes(tab))) {
+      return resolveRouteForUser(user, "/pos");
+    }
+  }
+
+  return getDefaultRouteForUser(user);
+}
+
 function canAccessRouteForUser(user = {}, pathname = "") {
   if (!user || user.active === false) return false;
   const role = effectiveRoleForUser(user);
@@ -148,6 +168,7 @@ export {
   effectiveRoleForUser,
   employeeNameForUser,
   getDefaultRouteForUser,
+  getHomeRouteForUser,
   isOwnEmployeeOnly,
   onlyOwnEmployeeItems,
   professionalMatchesItem,
